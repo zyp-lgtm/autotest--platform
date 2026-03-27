@@ -34,7 +34,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
       </PopoverTrigger>
       <PopoverContent className="w-64 p-3" align="start">
         <div className="space-y-2">
-          <p className="text-sm font-medium">{getText('tag', 'title')}</p>
+          <p className="text-sm font-medium">标签</p>
           {tags.length === 0 ? <p className="text-xs text-gray-500">暂无标签</p> : (
             <div className="space-y-1">
               {tags.map(tag => (
