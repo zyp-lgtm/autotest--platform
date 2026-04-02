@@ -348,6 +348,8 @@ npm run preview
 - [x] 测试数据管理 API（CRUD）
 - [x] UI 任务管理 API
 - [x] 前端配置（React 19 + TypeScript + Vite + TailwindCSS）
+- [x] 前后端集成
+- [x] 用户认证流程
 - [x] 仪表盘页面
 - [x] 系统关键字种子脚本（9 个关键字）
 - [x] README 和文档
@@ -398,6 +400,36 @@ npm run preview
 **交互原型**：[`docs/ai-test-prototype.html`](./docs/ai-test-prototype.html)（在浏览器中打开查看）
 
 **状态**：📋 设计完成，等待 MVP 验证后启动实施
+
+## 部署验证
+
+### 本地开发环境
+
+1. 启动后端服务：
+```bash
+cd /Users/apple/aicode/.worktrees/test-platform
+docker-compose -f docker/docker-compose.yml up -d
+```
+
+2. 启动前端开发服务器：
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+3. 访问应用：
+- 前端: http://localhost:5173
+- 后端 API: http://localhost:8000
+- API 文档: http://localhost:8000/docs
+
+### 功能验证清单
+
+- [x] 用户注册
+- [x] 用户登录
+- [x] 查看仪表盘统计
+- [x] 创建测试数据
+- [x] 查看 API 文档
 
 ## 许可证
 
