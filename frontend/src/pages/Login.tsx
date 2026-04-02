@@ -27,7 +27,9 @@ function LoginPage() {
       const from = (location.state as any)?.from?.pathname || '/'
       navigate(from, { replace: true })
     } catch (err: any) {
-      setError(err.response?.data?.detail || '登录失败，请检查用户名和密码')
+      // 更好的错误处理
+      const errorMessage = err.response?.data?.detail || err.message || '登录失败，请检查用户名和密码'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
