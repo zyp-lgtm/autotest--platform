@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Boolean, DateTime, Enum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 import uuid
 from ..core.database import Base
 
@@ -17,3 +18,6 @@ class User(Base):
     role = Column(Enum("admin", "tester", "viewer", name="user_roles"), default="tester")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationship to projects
+    projects = relationship("Project", back_populates="owner")
