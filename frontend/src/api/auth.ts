@@ -3,11 +3,12 @@ import type { LoginRequest, RegisterRequest, AuthResponse, User } from '../types
 
 export const authApi = {
   login: async (data: LoginRequest): Promise<AuthResponse> => {
-    const formData = new FormData()
-    formData.append('username', data.username)
-    formData.append('password', data.password)
+    // 使用 URLSearchParams 发送 form-encoded 数据
+    const params = new URLSearchParams()
+    params.append('username', data.username)
+    params.append('password', data.password)
 
-    const response = await apiClient.post<AuthResponse>('/v1/auth/login', formData)
+    const response = await apiClient.post<AuthResponse>('/v1/auth/login', params)
     return response.data
   },
 
