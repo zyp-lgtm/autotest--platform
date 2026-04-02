@@ -22,8 +22,12 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      // 清除 token
       localStorage.removeItem('access_token')
-      window.location.href = '/login'
+      // 只在非登录/注册页面时才重定向
+      if (!window.location.pathname.match(/^(\/login|\/register)/)) {
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }
