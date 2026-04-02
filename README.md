@@ -365,11 +365,39 @@ npm run preview
 
 ### 后续计划
 
+#### 短期优化（Phase 1-3）
+
 1. **Phase 1**: 完善认证系统（密码哈希、权限控制）
 2. **Phase 2**: 实现 Playwright UI 关键字
 3. **Phase 3**: 完整的测试执行和报告
+
+#### 中期扩展（Phase 4-5）
+
 4. **Phase 4**: 分布式执行支持
 5. **Phase 5**: 性能测试集成
+
+#### 🔮 长期愿景：AI 驱动测试（优先级：高）
+
+**设计文档**: [`docs/superpowers/specs/2026-04-02-ai-driven-ui-testing-design.md`](./docs/superpowers/specs/2026-04-02-ai-driven-ui-testing-design.md)
+
+**核心能力**：
+- 🎯 **自然语言测试** - 用自然语言描述测试需求，AI 自动生成测试步骤
+- 🤖 **智能元素定位** - AI 分析页面结构，自动选择最佳元素定位策略
+- 🧠 **学习与自修复** - AI 从历史执行中学习，自动适应页面变化
+- 💡 **智能修复建议** - 测试失败时，AI 分析原因并提供修复方案
+- 💰 **成本可控** - 三层架构（大模型规划 + 小模型执行 + Playwright），成本优化
+
+**技术方案**：
+- **规划层**：GPT-4 / Claude 3.5 Sonnet（理解测试目标，生成抽象计划）
+- **适配层**：GPT-4o-mini / Claude 3.5 Haiku（智能元素定位，动态调整）
+- **执行层**：Playwright（执行 UI 操作，零 AI 成本）
+- **学习系统**：页面学习历史，持续优化
+
+**预计开发周期**：2-6 个月
+
+**交互原型**：[`docs/ai-test-prototype.html`](./docs/ai-test-prototype.html)（在浏览器中打开查看）
+
+**状态**：📋 设计完成，等待 MVP 验证后启动实施
 
 ## 许可证
 
