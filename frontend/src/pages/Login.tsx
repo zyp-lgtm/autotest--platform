@@ -6,7 +6,7 @@ import { Input } from '../components/ui/Input'
 import { Card } from '../components/ui/Card'
 import { Layout } from '../components/layout/Layout'
 
-export function LoginPage() {
+function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -81,3 +81,5 @@ export function LoginPage() {
     </Layout>
   )
 }
+
+export default LoginPage

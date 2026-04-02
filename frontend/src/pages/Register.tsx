@@ -6,7 +6,7 @@ import { Input } from '../components/ui/Input'
 import { Card } from '../components/ui/Card'
 import { Layout } from '../components/layout/Layout'
 
-export function RegisterPage() {
+function RegisterPage() {
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -106,3 +106,5 @@ export function RegisterPage() {
     </Layout>
   )
 }
+
+export default RegisterPage
