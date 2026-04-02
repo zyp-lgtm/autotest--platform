@@ -22,5 +22,5 @@ class TestData(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    creator = relationship("User")
-    project = relationship("Project")
+    creator = relationship("User", back_populates="test_data")
+    project = relationship("Project", back_populates="test_data")

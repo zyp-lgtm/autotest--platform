@@ -21,3 +21,7 @@ class User(Base):
 
     # Relationship to projects
     projects = relationship("Project", back_populates="owner")
+
+    # Relationships to keywords and test data
+    keywords = relationship("Keyword", back_populates="creator")
+    test_data = relationship("TestData", back_populates="creator")
