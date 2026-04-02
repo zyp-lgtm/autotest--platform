@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ...models.ui_scenario import UIScenario
+from ...models.ui_task import UIScenario
 from ...schemas.task import ScenarioCreate, ScenarioResponse
+from ...core.database import get_db
 
 router = APIRouter(prefix="/ui/scenarios", tags=["UI场景"])
 

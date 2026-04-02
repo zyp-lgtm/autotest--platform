@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 function Dashboard() {
-  const [stats, setStats] = useState({
+  const [stats] = useState({
     totalTasks: 0,
     totalScenarios: 0,
     totalCases: 0,

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from ...models.ui_task import UITask
 from ...schemas.task import TaskCreate, TaskResponse
+from ...core.database import get_db
 
 router = APIRouter(prefix="/ui/tasks", tags=["UI任务"])
 
