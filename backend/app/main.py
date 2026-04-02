@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .core.config import get_settings
+from .api.auth import auth as auth_router
 
 settings = get_settings()
 
@@ -24,3 +25,7 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+
+# 认证路由
+app.include_router(auth_router.router, prefix="/api/v1")
