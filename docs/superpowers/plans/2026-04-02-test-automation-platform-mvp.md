@@ -1,21 +1,21 @@
-# Test Automation Platform MVP Implementation Plan
+# 测试自动化平台 MVP 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **给开发者:** 必须使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 技能来逐步执行此计划。步骤使用复选框 (`- [ ]`) 语法进行跟踪。
 
-**Goal:** Build a functional test automation platform MVP with API/UI testing support, keyword-driven framework, four-layer structure (Task/Scenario/Case/Step), variable system, and basic reporting.
+**目标:** 构建一个功能完整的测试自动化平台 MVP，支持 API/UI 测试、关键字驱动框架、四层结构（任务/场景/用例/步骤）、变量系统和基础报告功能。
 
-**Architecture:** Modular monolith backend (FastAPI) + React frontend + PostgreSQL + Redis. Four-layer structure with separated UI/API branches. Keyword-driven execution with variable substitution.
+**架构:** 模块化单体后端 (FastAPI) + React 前端 + PostgreSQL + Redis。四层结构，UI/接口分离。支持关键字执行和变量替换。
 
-**Tech Stack:**
-- Backend: Python 3.11+, FastAPI, SQLAlchemy, Celery, Redis
-- Frontend: React 19, TypeScript, Vite, Tailwind CSS
-- Database: PostgreSQL 16, Redis 7
-- Testing: pytest, Playwright, requests
-- Containerization: Docker, Docker Compose
+**技术栈:**
+- 后端: Python 3.11+, FastAPI, SQLAlchemy, Celery, Redis
+- 前端: React 19, TypeScript, Vite, Tailwind CSS
+- 数据库: PostgreSQL 16, Redis 7
+- 测试工具: pytest, Playwright, requests
+- 容器化: Docker, Docker Compose
 
 ---
 
-## File Structure
+## 文件结构
 
 ```
 test-platform/
@@ -25,8 +25,13 @@ test-platform/
 ├── backend/
 │   ├── app/
 │   │   ├── api/
-│   │   │   ├── __init__.py
 │   │   │   ├── deps.py
+│   │   │   ├── auth/
+│   │   │   │   └── auth.py
+│   │   │   ├── data/
+│   │   │   │   └── data.py
+│   │   │   ├── keywords/
+│   │   │   │   └── keywords.py
 │   │   │   ├── ui/
 │   │   │   │   ├── tasks.py
 │   │   │   │   ├── scenarios.py
@@ -37,26 +42,13 @@ test-platform/
 │   │   │   │   ├── scenarios.py
 │   │   │   │   ├── cases.py
 │   │   │   │   └── steps.py
-│   │   │   ├── data/
-│   │   │   │   └── data.py
-│   │   │   ├── keywords/
-│   │   │   │   └── keywords.py
-│   │   │   ├── workers/
-│   │   │   │   └── workers.py
-│   │   │   ├── executions/
-│   │   │   │   ├── tasks.py
-│   │   │   │   ├── reports.py
-│   │   │   │   └── logs.py
-│   │   │   └── auth/
-│   │   │       ├── auth.py
-│   │   │       └── users.py
+│   │   │   └── workers/
+│   │   │       └── workers.py
 │   │   ├── core/
-│   │   │   ├── __init__.py
 │   │   │   ├── config.py
-│   │   │   ├── security.py
-│   │   │   └── database.py
+│   │   │   ├── database.py
+│   │   │   └── security.py
 │   │   ├── models/
-│   │   │   ├── __init__.py
 │   │   │   ├── user.py
 │   │   │   ├── project.py
 │   │   │   ├── ui_task.py
@@ -68,10 +60,8 @@ test-platform/
 │   │   │   ├── api_case.py
 │   │   │   ├── api_step.py
 │   │   │   ├── keyword.py
-│   │   │   ├── test_data.py
-│   │   │   └── execution.py
+│   │   │   └── test_data.py
 │   │   ├── schemas/
-│   │   │   ├── __init__.py
 │   │   │   ├── user.py
 │   │   │   ├── task.py
 │   │   │   ├── scenario.py
@@ -80,22 +70,12 @@ test-platform/
 │   │   │   ├── keyword.py
 │   │   │   └── data.py
 │   │   ├── services/
-│   │   │   ├── __init__.py
 │   │   │   ├── executor.py
 │   │   │   ├── scheduler.py
 │   │   │   ├── variable_resolver.py
 │   │   │   └── keyword_engine.py
-│   │   ├── workers/
-│   │   │   ├── __init__.py
-│   │   │   ├── celery_app.py
-│   │   │   └── test_worker.py
 │   │   ├── main.py
 │   │   └── tests/
-│   │       ├── __init__.py
-│   │       ├── conftest.py
-│   │       ├── test_api/
-│   │       ├── test_keywords.py
-│   │       └── test_executor.py
 │   ├── requirements.txt
 │   ├── Dockerfile
 │   └── .env.example
@@ -107,8 +87,6 @@ test-platform/
 │   │   │   │   ├── ScenarioList.tsx
 │   │   │   │   ├── CaseList.tsx
 │   │   │   │   └── StepEditor.tsx
-│   │   │   ├── api/
-│   │   │   │   └── (similar UI components)
 │   │   │   ├── common/
 │   │   │   │   ├── DataManager.tsx
 │   │   │   │   ├── KeywordSelector.tsx
@@ -132,28 +110,26 @@ test-platform/
 │   ├── package.json
 │   ├── vite.config.ts
 │   ├── tsconfig.json
-│   ├── tailwind.config.js
-│   └── Dockerfile
-├── .env.example
+│   └── tailwind.config.js
 └── README.md
 ```
 
 ---
 
-## Task 1: Project Setup and Infrastructure
+## 任务 1: 项目基础设施搭建
 
-**Files:**
-- Create: `docker/docker-compose.yml`
-- Create: `backend/requirements.txt`
-- Create: `backend/.env.example`
-- Create: `backend/Dockerfile`
-- Create: `frontend/package.json`
-- Create: `frontend/Dockerfile`
-- Create: `.env.example`
+**涉及文件:**
+- 创建: `docker/docker-compose.yml`
+- 创建: `backend/requirements.txt`
+- 创建: `backend/.env.example`
+- 创建: `backend/Dockerfile`
+- 创建: `frontend/package.json`
+- 创建: `frontend/Dockerfile`
+- 创建: `.env.example`
 
-### Task 1.1: Initialize project structure
+### 任务 1.1: 初始化项目结构
 
-- [ ] **Step 1: Create root directory structure**
+- [ ] **步骤 1: 创建根目录结构**
 
 ```bash
 mkdir -p test-platform/{docker,backend,frontend}
@@ -161,71 +137,71 @@ cd test-platform
 git init
 ```
 
-- [ ] **Step 2: Create README.md**
+- [ ] **步骤 2: 创建 README.md**
 
 ```markdown
-# Test Automation Platform
+# 测试自动化平台
 
-A keyword-driven test automation platform supporting API and UI testing.
+一个支持 API 和 UI 自动化测试的关键字驱动测试平台。
 
-## Quick Start
+## 快速开始
 
 ```bash
-# Copy environment file
+# 复制环境配置文件
 cp .env.example .env
 
-# Start all services
+# 启动所有服务
 docker-compose -f docker/docker-compose.yml up -d
 
-# Access frontend
+# 访问前端
 open http://localhost:3000
 
-# Access backend API
+# 访问后端 API 文档
 open http://localhost:8000/docs
 ```
 
-## Tech Stack
+## 技术栈
 
-- Backend: Python + FastAPI
-- Frontend: React + TypeScript
-- Database: PostgreSQL + Redis
-- Testing: pytest + Playwright
+- 后端: Python + FastAPI
+- 前端: React + TypeScript
+- 数据库: PostgreSQL + Redis
+- 测试: pytest + Playwright
 ```
 
-- [ ] **Step 3: Create .env.example**
+- [ ] **步骤 3: 创建 .env.example**
 
 ```env
-# Database
+# 数据库配置
 POSTGRES_HOST=postgres
 POSTGRES_PORT=5432
 POSTGRES_DB=test_platform
 POSTGRES_USER=admin
 POSTGRES_PASSWORD=changeme
 
-# Redis
+# Redis 配置
 REDIS_HOST=redis
 REDIS_PORT=6379
 REDIS_PASSWORD=changeme
 
-# Backend
+# 后端配置
 BACKEND_CORS_ORIGINS=http://localhost:3000
 JWT_SECRET=changeme-secret-key
 JWT_EXPIRATION=86400
 
-# Frontend
+# 前端配置
 VITE_API_BASE_URL=http://localhost:8000
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **步骤 4: 提交**
 
 ```bash
 git add README.md .env.example
-git commit -m "chore: initialize project with README and env template"
+git commit -m "chore: 初始化项目，添加 README 和环境配置模板"
 ```
 
-### Task 1.2: Create Docker Compose configuration
+### 任务 1.2: 创建 Docker Compose 配置
 
-- [ ] **Step 1: Create docker/docker-compose.yml**
+- [ ] **步骤 1: 创建 docker/docker-compose.yml**
 
 ```yaml
 version: '3.8'
@@ -297,33 +273,33 @@ volumes:
   redis_data:
 ```
 
-- [ ] **Step 2: Create backend/Dockerfile**
+- [ ] **步骤 2: 创建 backend/Dockerfile**
 
 ```dockerfile
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# 安装系统依赖
 RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# 安装 Python 依赖
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application
+# 复制应用代码
 COPY . .
 
-# Expose port
+# 暴露端口
 EXPOSE 8000
 
-# Run the application
+# 运行应用
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-- [ ] **Step 3: Create backend/requirements.txt**
+- [ ] **步骤 3: 创建 backend/requirements.txt**
 
 ```txt
 fastapi==0.104.1
@@ -345,7 +321,7 @@ playwright==1.40.0
 requests==2.31.0
 ```
 
-- [ ] **Step 4: Create frontend/Dockerfile**
+- [ ] **步骤 4: 创建 frontend/Dockerfile**
 
 ```dockerfile
 FROM node:20-alpine AS builder
@@ -364,7 +340,7 @@ EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 ```
 
-- [ ] **Step 5: Create frontend/package.json**
+- [ ] **步骤 5: 创建 frontend/package.json**
 
 ```json
 {
@@ -403,42 +379,41 @@ CMD ["nginx", "-g", "daemon off;"]
 }
 ```
 
-- [ ] **Step 6: Verify Docker compose can start**
+- [ ] **步骤 6: 验证 Docker compose 配置**
 
 ```bash
 cd /Users/apple/aicode/test-platform
 docker-compose -f docker/docker-compose.yml config
 ```
 
-Expected: No errors
+预期结果: 无错误
 
-- [ ] **Step 7: Commit**
+- [ ] **步骤 7: 提交**
 
 ```bash
 git add .
-git commit -m "chore: add Docker infrastructure and project configuration"
+git commit -m "chore: 添加 Docker 基础设施和项目配置"
 ```
 
 ---
 
-## Task 2: Backend Core Setup
+## 任务 2: 后端核心配置
 
-**Files:**
-- Create: `backend/app/core/config.py`
-- Create: `backend/app/core/database.py`
-- Create: `backend/app/core/security.py`
-- Create: `backend/app/main.py`
-- Create: `backend/app/__init__.py`
+**涉及文件:**
+- 创建: `backend/app/core/config.py`
+- 创建: `backend/app/core/database.py`
+- 创建: `backend/app/core/security.py`
+- 创建: `backend/app/main.py`
 
-### Task 2.1: Setup core configuration
+### 任务 2.1: 配置核心模块
 
-- [ ] **Step 1: Create backend/app/__init__.py**
+- [ ] **步骤 1: 创建 backend/app/__init__.py**
 
 ```python
 # backend/app/__init__.py
 ```
 
-- [ ] **Step 2: Create backend/app/core/config.py**
+- [ ] **步骤 2: 创建 backend/app/core/config.py**
 
 ```python
 from pydantic_settings import BaseSettings
@@ -446,7 +421,7 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # Database
+    # 数据库
     DATABASE_URL: str = "postgresql://admin:admin123@localhost:5432/test_platform"
 
     # Redis
@@ -470,7 +445,7 @@ def get_settings() -> Settings:
     return Settings()
 ```
 
-- [ ] **Step 3: Create backend/app/core/database.py**
+- [ ] **步骤 3: 创建 backend/app/core/database.py**
 
 ```python
 from sqlalchemy import create_engine
@@ -494,7 +469,7 @@ def get_db():
         db.close()
 ```
 
-- [ ] **Step 4: Create backend/app/core/security.py**
+- [ ] **步骤 4: 创建 backend/app/core/security.py**
 
 ```python
 from datetime import datetime, timedelta
@@ -521,7 +496,7 @@ def verify_token(token: str) -> Optional[dict]:
         return None
 ```
 
-- [ ] **Step 5: Create backend/app/main.py**
+- [ ] **步骤 5: 创建 backend/app/main.py**
 
 ```python
 from fastapi import FastAPI
@@ -530,9 +505,9 @@ from .core.config import get_settings
 
 settings = get_settings()
 
-app = FastAPI(title="Test Automation Platform", version="0.1.0")
+app = FastAPI(title="测试自动化平台", version="0.1.0")
 
-# CORS
+# CORS 配置
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
@@ -544,7 +519,7 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
-    return {"message": "Test Automation Platform API", "version": "0.1.0"}
+    return {"message": "测试自动化平台 API", "version": "0.1.0"}
 
 
 @app.get("/health")
@@ -552,39 +527,39 @@ async def health_check():
     return {"status": "healthy"}
 ```
 
-- [ ] **Step 6: Test the backend starts**
+- [ ] **步骤 6: 测试后端启动**
 
 ```bash
 cd /Users/apple/aicode/test-platform/backend
 pip install fastapi uvicorn
-python -c "from app.main import app; print('Backend imports OK')"
+python -c "from app.main import app; print('后端导入成功')"
 ```
 
-Expected: No errors
+预期结果: 无错误
 
-- [ ] **Step 7: Commit**
+- [ ] **步骤 7: 提交**
 
 ```bash
-git add backend/
-git commit -m "feat: setup backend core configuration and main app"
+git add backend/app/
+git commit -m "feat: 配置后端核心模块和主应用"
 ```
 
 ---
 
-## Task 3: Database Models
+## 任务 3: 数据模型
 
-**Files:**
-- Create: `backend/app/models/__init__.py`
-- Create: `backend/app/models/user.py`
-- Create: `backend/app/models/project.py`
-- Create: `backend/app/models/keyword.py`
-- Create: `backend/app/models/test_data.py`
-- Create: `backend/app/models/ui_task.py`
-- Create: `backend/app/models/api_task.py`
+**涉及文件:**
+- 创建: `backend/app/models/__init__.py`
+- 创建: `backend/app/models/user.py`
+- 创建: `backend/app/models/project.py`
+- 创建: `backend/app/models/keyword.py`
+- 创建: `backend/app/models/test_data.py`
+- 创建: `backend/app/models/ui_task.py`
+- 创建: `backend/app/models/api_task.py`
 
-### Task 3.1: Create base models and user model
+### 任务 3.1: 创建用户和项目模型
 
-- [ ] **Step 1: Create backend/app/models/__init__.py**
+- [ ] **步骤 1: 创建 backend/app/models/__init__.py**
 
 ```python
 from .user import User
@@ -593,7 +568,7 @@ from .keyword import Keyword
 from .test_data import TestData
 ```
 
-- [ ] **Step 2: Create backend/app/models/user.py**
+- [ ] **步骤 2: 创建 backend/app/models/user.py**
 
 ```python
 from sqlalchemy import Column, String, Boolean, DateTime, Enum
@@ -617,12 +592,11 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 ```
 
-- [ ] **Step 3: Create backend/app/models/project.py**
+- [ ] **步骤 3: 创建 backend/app/models/project.py**
 
 ```python
 from sqlalchemy import Column, String, Text, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
-from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 import uuid
 from ..core.database import Base
@@ -639,20 +613,19 @@ class Project(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **步骤 4: 提交**
 
 ```bash
 git add backend/app/models/
-git commit -m "feat: add User and Project database models"
+git commit -m "feat: 添加用户和项目数据模型"
 ```
 
-### Task 3.2: Create keyword and test data models
+### 任务 3.2: 创建关键字和测试数据模型
 
-- [ ] **Step 1: Create backend/app/models/keyword.py**
+- [ ] **步骤 1: 创建 backend/app/models/keyword.py**
 
 ```python
 from sqlalchemy import Column, String, Text, Boolean, DateTime, Enum, ForeignKey, JSON
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -669,15 +642,15 @@ class Keyword(Base):
     description = Column(Text)
     icon = Column(String(50))
 
-    # Parameter and return schemas as JSON
+    # 参数和返回值模式
     parameter_schema = Column(JSON, default={})
     return_schema = Column(JSON, default={})
 
-    # For business keywords
+    # 业务关键字代码
     code_content = Column(Text)
     is_valid = Column(Boolean, default=True)
 
-    # System keywords don't have project_id
+    # 系统关键字不关联项目
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
 
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -685,7 +658,7 @@ class Keyword(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 ```
 
-- [ ] **Step 2: Create backend/app/models/test_data.py**
+- [ ] **步骤 2: 创建 backend/app/models/test_data.py**
 
 ```python
 from sqlalchemy import Column, String, Text, Boolean, DateTime, ForeignKey, Enum, ARRAY
@@ -712,19 +685,19 @@ class TestData(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 ```
 
-- [ ] **Step 3: Commit**
+- [ ] **步骤 3: 提交**
 
 ```bash
 git add backend/app/models/keyword.py backend/app/models/test_data.py
-git commit -m "feat: add Keyword and TestData models"
+git commit -m "feat: 添加关键字和测试数据模型"
 ```
 
-### Task 3.3: Create UI task models
+### 任务 3.3: 创建 UI 任务模型
 
-- [ ] **Step 1: Create backend/app/models/ui_task.py**
+- [ ] **步骤 1: 创建 backend/app/models/ui_task.py**
 
 ```python
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, UUID, ARRAY, Integer
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, UUID, ARRAY, Integer, Boolean, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -749,7 +722,7 @@ class UITask(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Relationships
+    # 关联关系
     scenarios = relationship("UIScenario", back_populates="task")
 
 
@@ -770,7 +743,7 @@ class UIScenario(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Relationships
+    # 关联关系
     task = relationship("UITask", back_populates="scenarios")
     cases = relationship("UICase", back_populates="scenario")
 
@@ -795,7 +768,7 @@ class UICase(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Relationships
+    # 关联关系
     scenario = relationship("UIScenario", back_populates="cases")
     steps = relationship("UIStep", back_populates="case")
 
@@ -821,20 +794,20 @@ class UIStep(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Relationships
+    # 关联关系
     case = relationship("UICase", back_populates="steps")
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **步骤 2: 提交**
 
 ```bash
 git add backend/app/models/ui_task.py
-git commit -m "feat: add UI task, scenario, case, and step models"
+git commit -m "feat: 添加 UI 任务、场景、用例和步骤模型"
 ```
 
-### Task 3.4: Create API task models
+### 任务 3.4: 创建 API 任务模型
 
-- [ ] **Step 1: Create backend/app/models/api_task.py**
+- [ ] **步骤 1: 创建 backend/app/models/api_task.py**
 
 ```python
 from sqlalchemy import Column, String, Text, DateTime, ForeignKey, UUID, ARRAY, Integer, Boolean, JSON
@@ -932,27 +905,27 @@ class APIStep(Base):
     case = relationship("APICase", back_populates="steps")
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **步骤 2: 提交**
 
 ```bash
 git add backend/app/models/api_task.py
-git commit -m "feat: add API task, scenario, case, and step models"
+git commit -m "feat: 添加 API 任务、场景、用例和步骤模型"
 ```
 
 ---
 
-## Task 4: Pydantic Schemas
+## 任务 4: Pydantic 模式
 
-**Files:**
-- Create: `backend/app/schemas/__init__.py`
-- Create: `backend/app/schemas/user.py`
-- Create: `backend/app/schemas/task.py`
-- Create: `backend/app/schemas/keyword.py`
-- Create: `backend/app/schemas/data.py`
+**涉及文件:**
+- 创建: `backend/app/schemas/__init__.py`
+- 创建: `backend/app/schemas/user.py`
+- 创建: `backend/app/schemas/task.py`
+- 创建: `backend/app/schemas/keyword.py`
+- 创建: `backend/app/schemas/data.py`
 
-### Task 4.1: Create user and project schemas
+### 任务 4.1: 创建用户和项目模式
 
-- [ ] **Step 1: Create backend/app/schemas/__init__.py**
+- [ ] **步骤 1: 创建 backend/app/schemas/__init__.py**
 
 ```python
 from .user import UserCreate, UserResponse
@@ -961,7 +934,7 @@ from .keyword import *
 from .data import *
 ```
 
-- [ ] **Step 2: Create backend/app/schemas/user.py**
+- [ ] **步骤 2: 创建 backend/app/schemas/user.py**
 
 ```python
 from pydantic import BaseModel, EmailStr
@@ -989,16 +962,16 @@ class UserResponse(UserBase):
         from_attributes = True
 ```
 
-- [ ] **Step 3: Commit**
+- [ ] **步骤 3: 提交**
 
 ```bash
 git add backend/app/schemas/
-git commit -m "feat: add user schemas"
+git commit -m "feat: 添加用户模式"
 ```
 
-### Task 4.2: Create task schemas
+### 任务 4.2: 创建任务模式
 
-- [ ] **Step 1: Create backend/app/schemas/task.py**
+- [ ] **步骤 1: 创建 backend/app/schemas/task.py**
 
 ```python
 from pydantic import BaseModel
@@ -1088,16 +1061,16 @@ class TaskResponse(TaskBase):
         from_attributes = True
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **步骤 2: 提交**
 
 ```bash
 git add backend/app/schemas/task.py
-git commit -m "feat: add task, scenario, case, and step schemas"
+git commit -m "feat: 添加任务、场景、用例和步骤模式"
 ```
 
-### Task 4.3: Create keyword and data schemas
+### 任务 4.3: 创建关键字和数据模式
 
-- [ ] **Step 1: Create backend/app/schemas/keyword.py**
+- [ ] **步骤 1: 创建 backend/app/schemas/keyword.py**
 
 ```python
 from pydantic import BaseModel
@@ -1128,7 +1101,7 @@ class KeywordResponse(KeywordBase):
         from_attributes = True
 ```
 
-- [ ] **Step 2: Create backend/app/schemas/data.py**
+- [ ] **步骤 2: 创建 backend/app/schemas/data.py**
 
 ```python
 from pydantic import BaseModel
@@ -1157,24 +1130,25 @@ class TestDataResponse(TestDataBase):
         from_attributes = True
 ```
 
-- [ ] **Step 3: Commit**
+- [ ] **步骤 3: 提交**
 
 ```bash
 git add backend/app/schemas/
-git commit -m "feat: add keyword and test data schemas"
+git commit -m "feat: 添加关键字和测试数据模式"
 ```
 
 ---
 
-## Task 5: Variable Resolver Service
+## 任务 5: 变量解析服务
 
-**Files:**
-- Create: `backend/app/services/variable_resolver.py`
-- Create: `backend/app/tests/test_variable_resolver.py`
+**涉及文件:**
+- 创建: `backend/app/services/__init__.py`
+- 创建: `backend/app/services/variable_resolver.py`
+- 创建: `backend/app/tests/test_variable_resolver.py`
 
-### Task 5.1: Implement variable resolver
+### 任务 5.1: 实现变量解析器
 
-- [ ] **Step 1: Write failing test for variable resolution**
+- [ ] **步骤 1: 编写失败的测试**
 
 ```python
 # backend/app/tests/test_variable_resolver.py
@@ -1203,20 +1177,22 @@ def test_resolve_missing_variable():
     assert result == "{missing}"
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **步骤 2: 运行测试验证失败**
 
 ```bash
 cd backend
 pytest tests/test_variable_resolver.py -v
 ```
 
-Expected: ModuleNotFoundError: No module named 'app.services.variable_resolver'
+预期结果: ModuleNotFoundError
 
-- [ ] **Step 3: Create variable resolver service**
+- [ ] **步骤 3: 创建 backend/app/services/__init__.py**
 
 ```python
 # backend/app/services/__init__.py
 ```
+
+- [ ] **步骤 4: 创建变量解析服务**
 
 ```python
 # backend/app/services/variable_resolver.py
@@ -1225,15 +1201,15 @@ from typing import Any, Dict
 
 
 class VariableResolver:
-    """Resolve variable references in strings"""
+    """解析字符串中的变量引用"""
 
     PATTERN = r'\{([^}]+)\}'
 
     def resolve(self, text: str, context: Dict[str, Any]) -> str:
         """
-        Resolve variable references in text.
+        解析文本中的变量引用
 
-        Examples:
+        示例:
             resolve("{username}", {"username": "test"}) -> "test"
             resolve("{user.id}", {"user": {"id": "123"}}) -> "123"
         """
@@ -1248,7 +1224,7 @@ class VariableResolver:
         return re.sub(self.PATTERN, replace_var, text)
 
     def _get_value(self, path: str, context: Dict[str, Any]) -> Any:
-        """Get value from context using dot notation"""
+        """使用点符号从上下文获取值"""
         if '.' in path:
             parts = path.split('.')
             value = context.get(parts[0])
@@ -1261,32 +1237,32 @@ class VariableResolver:
         return context.get(path)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **步骤 5: 运行测试验证通过**
 
 ```bash
 pytest tests/test_variable_resolver.py -v
 ```
 
-Expected: All tests pass
+预期结果: 所有测试通过
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 6: 提交**
 
 ```bash
 git add backend/app/services/
-git commit -m "feat: implement variable resolver service"
+git commit -m "feat: 实现变量解析服务，支持 {变量名} 引用"
 ```
 
 ---
 
-## Task 6: Keyword Execution Engine
+## 任务 6: 关键字执行引擎
 
-**Files:**
-- Create: `backend/app/services/keyword_engine.py`
-- Create: `backend/app/services/executor.py`
+**涉及文件:**
+- 创建: `backend/app/services/keyword_engine.py`
+- 创建: `backend/app/services/executor.py`
 
-### Task 6.1: Implement keyword execution engine
+### 任务 6.1: 实现关键字执行引擎
 
-- [ ] **Step 1: Write test for keyword execution**
+- [ ] **步骤 1: 编写测试**
 
 ```python
 # backend/app/tests/test_keyword_engine.py
@@ -1306,7 +1282,7 @@ def test_execute_api_post_keyword():
         }
     }
 
-    result = engine.execute(
+    result = await engine.execute(
         keyword_def,
         parameters={
             "url": "https://api.test.com/login",
@@ -1318,15 +1294,15 @@ def test_execute_api_post_keyword():
     assert result["success"] is True
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **步骤 2: 运行测试验证失败**
 
 ```bash
 pytest tests/test_keyword_engine.py -v
 ```
 
-Expected: ModuleNotFoundError
+预期结果: ModuleNotFoundError
 
-- [ ] **Step 3: Implement keyword engine**
+- [ ] **步骤 3: 实现关键字执行引擎**
 
 ```python
 # backend/app/services/keyword_engine.py
@@ -1335,7 +1311,7 @@ import httpx
 
 
 class KeywordEngine:
-    """Execute keywords and return results"""
+    """执行关键字并返回结果"""
 
     async def execute(
         self,
@@ -1343,7 +1319,7 @@ class KeywordEngine:
         parameters: Dict[str, Any],
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Execute a keyword with given parameters"""
+        """执行指定关键字"""
 
         keyword_name = keyword_def.get("name")
         category = keyword_def.get("category")
@@ -1353,7 +1329,7 @@ class KeywordEngine:
         elif category == "ui":
             return await self._execute_ui_keyword(keyword_name, parameters, context)
         else:
-            return {"success": False, "error": f"Unknown category: {category}"}
+            return {"success": False, "error": f"未知类别: {category}"}
 
     async def _execute_api_keyword(
         self,
@@ -1361,7 +1337,7 @@ class KeywordEngine:
         parameters: Dict[str, Any],
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Execute API test keyword"""
+        """执行 API 测试关键字"""
 
         if keyword_name == "API_GET":
             return await self._api_get(parameters)
@@ -1370,10 +1346,10 @@ class KeywordEngine:
         elif keyword_name == "ASSERT_STATUS":
             return self._assert_status(parameters)
         else:
-            return {"success": False, "error": f"Unknown API keyword: {keyword_name}"}
+            return {"success": False, "error": f"未知的 API 关键字: {keyword_name}"}
 
     async def _api_get(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute GET request"""
+        """执行 GET 请求"""
         async with httpx.AsyncClient() as client:
             url = params["url"]
             headers = params.get("headers", {})
@@ -1389,7 +1365,7 @@ class KeywordEngine:
             }
 
     async def _api_post(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute POST request"""
+        """执行 POST 请求"""
         async with httpx.AsyncClient() as client:
             url = params["url"]
             headers = params.get("headers", {})
@@ -1405,7 +1381,7 @@ class KeywordEngine:
             }
 
     def _assert_status(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Assert status code"""
+        """断言状态码"""
         expected = params["expected_status"]
         actual = params.get("actual_status", 200)
 
@@ -1424,38 +1400,39 @@ class KeywordEngine:
         parameters: Dict[str, Any],
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Execute UI test keyword (placeholder for Playwright)"""
-        # TODO: Implement Playwright integration
+        """执行 UI 测试关键字 (占位符，用于 Playwright)"""
+        # TODO: 集成 Playwright
         return {
             "success": True,
-            "message": f"UI keyword {keyword_name} not yet implemented"
+            "message": f"UI 关键字 {keyword_name} 尚未实现"
         }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **步骤 4: 运行测试验证通过**
 
 ```bash
 pytest tests/test_keyword_engine.py -v
 ```
 
-Expected: All tests pass
+预期结果: 测试通过
 
-- [ ] **Step 5: Commit**
+- [ ] **步骤 5: 提交**
 
 ```bash
 git add backend/app/services/keyword_engine.py
-git commit -m "feat: implement keyword execution engine with API keywords"
+git commit -m "feat: 实现关键字执行引擎，支持 API 关键字"
 ```
 
-### Task 6.2: Implement test executor
+### 任务 6.2: 实现测试执行器
 
-- [ ] **Step 1: Create backend/app/services/executor.py**
+- [ ] **步骤 1: 创建测试执行器**
 
 ```python
 # backend/app/services/executor.py
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
-from app.models.step import UIStep, APIStep
+from app.models.ui_step import UIStep
+from app.models.api_step import APIStep
 from app.services.variable_resolver import VariableResolver
 from app.services.keyword_engine import KeywordEngine
 import logging
@@ -1464,7 +1441,7 @@ logger = logging.getLogger(__name__)
 
 
 class TestExecutor:
-    """Execute test cases and log results"""
+    """执行测试用例并记录结果"""
 
     def __init__(self, db: Session):
         self.db = db
@@ -1477,11 +1454,11 @@ class TestExecutor:
         context: Dict[str, Any],
         execution_config: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Execute a single UI step"""
+        """执行单个 UI 步骤"""
 
-        logger.info(f"Executing UI step: {step.step_name}")
+        logger.info(f"执行 UI 步骤: {step.step_name}")
 
-        # Resolve variables in parameters
+        # 解析参数中的变量
         resolved_params = {}
         for key, value in step.parameters.items():
             if isinstance(value, str):
@@ -1489,7 +1466,7 @@ class TestExecutor:
             else:
                 resolved_params[key] = value
 
-        # Execute keyword
+        # 执行关键字
         result = await self.keyword_engine.execute(
             keyword_def={
                 "name": step.keyword.name,
@@ -1507,11 +1484,11 @@ class TestExecutor:
         context: Dict[str, Any],
         execution_config: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Execute a single API step"""
+        """执行单个 API 步骤"""
 
-        logger.info(f"Executing API step: {step.step_name}")
+        logger.info(f"执行 API 步骤: {step.step_name}")
 
-        # Resolve variables in parameters
+        # 解析参数中的变量
         resolved_params = {}
         for key, value in step.parameters.items():
             if isinstance(value, str):
@@ -1524,7 +1501,7 @@ class TestExecutor:
             else:
                 resolved_params[key] = value
 
-        # Execute keyword
+        # 执行关键字
         result = await self.keyword_engine.execute(
             keyword_def={
                 "name": step.keyword.name,
@@ -1534,14 +1511,14 @@ class TestExecutor:
             context=context
         )
 
-        # Extract variables if any
+        # 提取变量（如果有）
         if result.get("success") and step.parameters.get("extract_variables"):
             for extract_config in step.parameters["extract_variables"]:
                 var_name = extract_config["variable_name"]
                 extract_from = extract_config.get("extract_from", "response_body")
                 expression = extract_config.get("expression", "")
 
-                # Simple JSON path extraction (TODO: use proper library)
+                # 简单 JSON 路径提取（TODO: 使用专门的库）
                 if expression == "$.token":
                     token = result.get("body", {}).get("token")
                     if token:
@@ -1550,25 +1527,25 @@ class TestExecutor:
         return result
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **步骤 2: 提交**
 
 ```bash
 git add backend/app/services/executor.py
-git commit -m "feat: implement test executor with step execution logic"
+git commit -m "feat: 实现测试执行器，支持步骤级执行"
 ```
 
 ---
 
-## Task 7: API Endpoints - Authentication
+## 任务 7: API 端点 - 认证
 
-**Files:**
-- Create: `backend/app/api/auth/__init__.py`
-- Create: `backend/app/api/auth/auth.py`
-- Modify: `backend/app/main.py`
+**涉及文件:**
+- 创建: `backend/app/api/auth/__init__.py`
+- 创建: `backend/app/api/auth/auth.py`
+- 修改: `backend/app/main.py`
 
-### Task 7.1: Create authentication API
+### 任务 7.1: 创建认证 API
 
-- [ ] **Step 1: Create auth API**
+- [ ] **步骤 1: 创建认证 API**
 
 ```python
 # backend/app/api/auth/__init__.py
@@ -1584,13 +1561,13 @@ from ...models.user import User
 from ...core.security import create_access_token, verify_token
 from ...schemas.user import UserCreate, UserResponse
 
-router = APIRouter(prefix="/auth", tags=["authentication"])
+router = APIRouter(prefix="/auth", tags=["认证"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
 
 @router.post("/register", response_model=UserResponse)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    # Check if user exists
+    # 检查用户是否存在
     existing_user = db.query(User).filter(
         (User.username == user_data.username) | (User.email == user_data.email)
     ).first()
@@ -1598,15 +1575,15 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username or email already registered"
+            detail="用户名或邮箱已注册"
         )
 
-    # Create user (password hashing TODO)
+    # 创建用户 (密码哈希待实现)
     new_user = User(
         username=user_data.username,
         email=user_data.email,
         full_name=user_data.full_name,
-        hashed_password=user_data.password  # TODO: hash this
+        hashed_password=user_data.password  # TODO: 哈希加密
     )
 
     db.add(new_user)
@@ -1620,10 +1597,10 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == form_data.username).first()
 
-    if not user or user.hashed_password != form_data.password:  # TODO: verify hash
+    if not user or user.hashed_password != form_data.password:  # TODO: 验证哈希
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password"
+            detail="用户名或密码错误"
         )
 
     access_token = create_access_token({"sub": user.username})
@@ -1634,58 +1611,58 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     payload = verify_token(token)
     if not payload:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="无效的令牌")
 
     user = db.query(User).filter(User.username == payload.get("sub")).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="用户不存在")
 
     return user
 ```
 
-- [ ] **Step 2: Update main.py to include auth router**
+- [ ] **步骤 2: 更新 main.py 添加路由**
 
 ```python
-# Add to imports
+# 添加到导入
 from .api.auth import auth as auth_router
 
-# Add to main app
+# 添加到主应用
 app.include_router(auth_router.router, prefix="/api/v1")
 ```
 
-- [ ] **Step 3: Test auth endpoints**
+- [ ] **步骤 3: 测试认证端点**
 
 ```bash
-# Start backend
+# 启动后端
 cd backend
 uvicorn app.main:app --reload
 
-# Test register
+# 测试注册
 curl -X POST "http://localhost:8000/api/v1/auth/register" \
   -H "Content-Type: application/json" \
-  -d '{"username":"testuser","email":"test@example.com","password":"test123","full_name":"Test User"}'
+  -d '{"username":"testuser","email":"test@example.com","password":"test123","full_name":"测试用户"}'
 ```
 
-Expected: Returns user object with id
+预期结果: 返回用户对象
 
-- [ ] **Step 4: Commit**
+- [ ] **步骤 4: 提交**
 
 ```bash
 git add backend/app/api/
-git commit -m "feat: add authentication endpoints (register, login, me)"
+git commit -m "feat: 添加认证端点（注册、登录、用户信息）"
 ```
 
 ---
 
-## Task 8: API Endpoints - Test Data
+## 任务 8: API 端点 - 测试数据
 
-**Files:**
-- Create: `backend/app/api/data/__init__.py`
-- Create: `backend/app/api/data/data.py`
+**涉及文件:**
+- 创建: `backend/app/api/data/__init__.py`
+- 创建: `backend/app/api/data/data.py`
 
-### Task 8.1: Create test data management API
+### 任务 8.1: 创建测试数据管理 API
 
-- [ ] **Step 1: Create data API**
+- [ ] **步骤 1: 创建数据管理 API**
 
 ```python
 # backend/app/api/data/__init__.py
@@ -1700,7 +1677,7 @@ from ...core.database import get_db
 from ...models.test_data import TestData
 from ...schemas.data import TestDataCreate, TestDataResponse
 
-router = APIRouter(prefix="/data", tags=["test-data"])
+router = APIRouter(prefix="/data", tags=["测试数据"])
 
 
 @router.post("/", response_model=TestDataResponse)
@@ -1726,7 +1703,7 @@ async def list_data(project_id: str, db: Session = Depends(get_db)):
 async def get_data(data_id: str, db: Session = Depends(get_db)):
     data = db.query(TestData).filter(TestData.id == data_id).first()
     if not data:
-        raise HTTPException(status_code=404, detail="Data not found")
+        raise HTTPException(status_code=404, detail="数据不存在")
     return data
 
 
@@ -1738,7 +1715,7 @@ async def update_data(
 ):
     data = db.query(TestData).filter(TestData.id == data_id).first()
     if not data:
-        raise HTTPException(status_code=404, detail="Data not found")
+        raise HTTPException(status_code=404, detail="数据不存在")
 
     for field, value in data_update.dict(exclude_unset=True).items():
         setattr(data, field, value)
@@ -1752,14 +1729,14 @@ async def update_data(
 async def delete_data(data_id: str, db: Session = Depends(get_db)):
     data = db.query(TestData).filter(TestData.id == data_id).first()
     if not data:
-        raise HTTPException(status_code=404, detail="Data not found")
+        raise HTTPException(status_code=404, detail="数据不存在")
 
     db.delete(data)
     db.commit()
-    return {"message": "Data deleted"}
+    return {"message": "数据已删除"}
 ```
 
-- [ ] **Step 2: Update main.py**
+- [ ] **步骤 2: 更新 main.py**
 
 ```python
 from .api.data import data as data_router
@@ -1767,26 +1744,25 @@ from .api.data import data as data_router
 app.include_router(data_router.router, prefix="/api/v1/projects/{project_id}")
 ```
 
-- [ ] **Step 3: Commit**
+- [ ] **步骤 3: 提交**
 
 ```bash
 git add backend/app/api/data/
-git commit -m "feat: add test data management API endpoints"
+git commit -m "feat: 添加测试数据管理 API 端点"
 ```
 
 ---
 
-## Task 9: API Endpoints - UI Tasks
+## 任务 9: API 端点 - UI 任务
 
-**Files:**
-- Create: `backend/app/api/ui/tasks.py`
-- Create: `backend/app/api/ui/scenarios.py`
-- Create: `backend/app/api/ui/cases.py`
-- Create: `backend/app/api/ui/steps.py`
+**涉及文件:**
+- 创建: `backend/app/api/ui/__init__.py`
+- 创建: `backend/app/api/ui/tasks.py`
+- 创建: `backend/app/api/ui/scenarios.py`
 
-### Task 9.1: Create UI tasks API
+### 任务 9.1: 创建 UI 任务 API
 
-- [ ] **Step 1: Create UI tasks API**
+- [ ] **步骤 1: 创建 UI 任务 API**
 
 ```python
 # backend/app/api/ui/__init__.py
@@ -1800,7 +1776,7 @@ from typing import List
 from ...models.ui_task import UITask
 from ...schemas.task import TaskCreate, TaskResponse
 
-router = APIRouter(prefix="/ui/tasks", tags=["ui-tasks"])
+router = APIRouter(prefix="/ui/tasks", tags=["UI任务"])
 
 
 @router.post("/", response_model=TaskResponse)
@@ -1826,7 +1802,7 @@ async def list_ui_tasks(project_id: str, db: Session = Depends(get_db)):
 async def get_ui_task(task_id: str, db: Session = Depends(get_db)):
     task = db.query(UITask).filter(UITask.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="任务不存在")
     return task
 
 
@@ -1835,11 +1811,11 @@ async def execute_ui_task(
     task_id: str,
     db: Session = Depends(get_db)
 ):
-    # TODO: Implement task execution
+    # TODO: 实现任务执行
     return {"execution_id": "exec_123", "status": "pending"}
 ```
 
-- [ ] **Step 2: Create scenarios, cases, steps APIs (similar structure)**
+- [ ] **步骤 2: 创建场景 API (类似结构)**
 
 ```python
 # backend/app/api/ui/scenarios.py
@@ -1848,7 +1824,7 @@ from sqlalchemy.orm import Session
 from ...models.ui_scenario import UIScenario
 from ...schemas.task import ScenarioCreate, ScenarioResponse
 
-router = APIRouter(prefix="/ui/scenarios", tags=["ui-scenarios"])
+router = APIRouter(prefix="/ui/scenarios", tags=["UI场景"])
 
 
 @router.post("/", response_model=ScenarioResponse)
@@ -1867,11 +1843,11 @@ async def create_ui_scenario(
 async def get_ui_scenario(scenario_id: str, db: Session = Depends(get_db)):
     scenario = db.query(UIScenario).filter(UIScenario.id == scenario_id).first()
     if not scenario:
-        raise HTTPException(status_code=404, detail="Scenario not found")
+        raise HTTPException(status_code=404, detail="场景不存在")
     return scenario
 ```
 
-- [ ] **Step 3: Update main.py**
+- [ ] **步骤 3: 更新 main.py**
 
 ```python
 from .api.ui import tasks as ui_tasks_router
@@ -1881,28 +1857,28 @@ app.include_router(ui_tasks_router.router, prefix="/api/v1")
 app.include_router(ui_scenarios_router.router, prefix="/api/v1")
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **步骤 4: 提交**
 
 ```bash
 git add backend/app/api/ui/
-git commit -m "feat: add UI tasks and scenarios API endpoints"
+git commit -m "feat: 添加 UI 任务和场景 API 端点"
 ```
 
 ---
 
-## Task 10: Frontend Setup
+## 任务 10: 前端配置
 
-**Files:**
-- Create: `frontend/vite.config.ts`
-- Create: `frontend/tsconfig.json`
-- Create: `frontend/tailwind.config.js`
-- Create: `frontend/src/main.tsx`
-- Create: `frontend/src/App.tsx`
-- Create: `frontend/src/index.css`
+**涉及文件:**
+- 创建: `frontend/vite.config.ts`
+- 创建: `frontend/tsconfig.json`
+- 创建: `frontend/tailwind.config.js`
+- 创建: `frontend/src/index.css`
+- 创建: `frontend/src/main.tsx`
+- 创建: `frontend/src/App.tsx`
 
-### Task 10.1: Setup frontend configuration
+### 任务 10.1: 配置前端构建工具
 
-- [ ] **Step 1: Create frontend/vite.config.ts**
+- [ ] **步骤 1: 创建 vite.config.ts**
 
 ```typescript
 import { defineConfig } from 'vite'
@@ -1922,7 +1898,7 @@ export default defineConfig({
 })
 ```
 
-- [ ] **Step 2: Create frontend/tsconfig.json**
+- [ ] **步骤 2: 创建 tsconfig.json**
 
 ```json
 {
@@ -1948,7 +1924,7 @@ export default defineConfig({
 }
 ```
 
-- [ ] **Step 3: Create frontend/tsconfig.node.json**
+- [ ] **步骤 3: 创建 tsconfig.node.json**
 
 ```json
 {
@@ -1963,7 +1939,7 @@ export default defineConfig({
 }
 ```
 
-- [ ] **Step 4: Create frontend/tailwind.config.js**
+- [ ] **步骤 4: 创建 tailwind.config.js**
 
 ```javascript
 /** @type {import('tailwindcss').Config} */
@@ -1979,7 +1955,7 @@ export default {
 }
 ```
 
-- [ ] **Step 5: Create frontend/src/index.css**
+- [ ] **步骤 5: 创建 index.css**
 
 ```css
 @tailwind base;
@@ -1996,7 +1972,7 @@ body {
 }
 ```
 
-- [ ] **Step 6: Create frontend/src/main.tsx**
+- [ ] **步骤 6: 创建 main.tsx**
 
 ```typescript
 import React from 'react'
@@ -2011,7 +1987,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 )
 ```
 
-- [ ] **Step 7: Create frontend/src/App.tsx**
+- [ ] **步骤 7: 创建 App.tsx**
 
 ```typescript
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
@@ -2030,172 +2006,23 @@ function App() {
 export default App
 ```
 
-- [ ] **Step 8: Create frontend/index.html**
-
-```html
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Test Automation Platform</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
-```
-
-- [ ] **Step 9: Commit**
+- [ ] **步骤 8: 提交**
 
 ```bash
 git add frontend/
-git commit -m "feat: setup frontend with Vite, React, TypeScript, and Tailwind CSS"
-```
-
-### Task 10.2: Create API service and types
-
-- [ ] **Step 1: Create frontend/src/types/index.ts**
-
-```typescript
-export interface User {
-  id: string
-  username: string
-  email: string
-  full_name?: string
-  role: string
-  created_at: string
-}
-
-export interface Task {
-  id: string
-  name: string
-  description?: string
-  scenario_ids: string[]
-  tags: string[]
-  created_at: string
-}
-
-export interface Scenario {
-  id: string
-  name: string
-  description?: string
-  case_ids: string[]
-  execution_order: number
-  tags: string[]
-}
-
-export interface Case {
-  id: string
-  name: string
-  description?: string
-  step_ids: string[]
-  priority: string
-  tags: string[]
-}
-
-export interface Step {
-  id: string
-  step_order: number
-  keyword_id: string
-  step_name: string
-  parameters: Record<string, any>
-  enabled: boolean
-}
-
-export interface TestData {
-  id: string
-  data_name: string
-  data_value: string
-  data_type: string
-  tags: string[]
-  is_sensitive: boolean
-}
-
-export interface Keyword {
-  id: string
-  name: string
-  keyword_type: string
-  category: string
-  description?: string
-  icon?: string
-  parameter_schema: Record<string, any>
-}
-```
-
-- [ ] **Step 2: Create frontend/src/services/api.ts**
-
-```typescript
-import axios from 'axios'
-import type { User, Task, Scenario, Case, TestData, Keyword } from '../types'
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-// Add auth token to requests
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
-
-export const authService = {
-  register: (data: { username: string; email: string; password: string; full_name?: string }) =>
-    api.post('/auth/register', data),
-  login: (username: string, password: string) =>
-    api.post('/auth/login', new URLSearchParams({ username, password }), {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-    }),
-  getMe: () => api.get('/auth/me'),
-}
-
-export const dataService = {
-  list: (projectId: string) => api.get(`/projects/${projectId}/data`),
-  create: (projectId: string, data: Omit<TestData, 'id'>) =>
-    api.post(`/projects/${projectId}/data`, data),
-  update: (dataId: string, data: Partial<TestData>) =>
-    api.put(`/data/${dataId}`, data),
-  delete: (dataId: string) => api.delete(`/data/${dataId}`),
-}
-
-export const taskService = {
-  list: (projectId: string) => api.get(`/ui/tasks?project_id=${projectId}`),
-  create: (task: Omit<Task, 'id'>) => api.post('/ui/tasks', task),
-  get: (taskId: string) => api.get(`/ui/tasks/${taskId}`),
-  execute: (taskId: string) => api.post(`/ui/tasks/${taskId}/execute`),
-}
-
-export const keywordService = {
-  list: () => api.get('/keywords'),
-  get: (keywordId: string) => api.get(`/keywords/${keywordId}`),
-}
-```
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add frontend/src/types/ frontend/src/services/
-git commit -m "feat: add TypeScript types and API service"
+git commit -m "feat: 配置前端构建工具（Vite、TypeScript、TailwindCSS）"
 ```
 
 ---
 
-## Task 11: Frontend Pages - Dashboard
+## 任务 11: 前端页面 - 仪表盘
 
-**Files:**
-- Create: `frontend/src/pages/Dashboard.tsx`
+**涉及文件:**
+- 创建: `frontend/src/pages/Dashboard.tsx`
 
-### Task 11.1: Create dashboard page
+### 任务 11.1: 创建仪表盘页面
 
-- [ ] **Step 1: Create Dashboard component**
+- [ ] **步骤 1: 创建仪表盘组件**
 
 ```typescript
 // frontend/src/pages/Dashboard.tsx
@@ -2210,31 +2037,31 @@ function Dashboard() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+      <h1 className="text-2xl font-bold mb-6">仪表盘</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-2">Total Tasks</h3>
+          <h3 className="text-lg font-semibold mb-2">总任务数</h3>
           <p className="text-3xl font-bold">{stats.totalTasks}</p>
         </div>
         <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-2">Total Scenarios</h3>
+          <h3 className="text-lg font-semibold mb-2">总场景数</h3>
           <p className="text-3xl font-bold">{stats.totalScenarios}</p>
         </div>
         <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-2">Total Cases</h3>
+          <h3 className="text-lg font-semibold mb-2">总用例数</h3>
           <p className="text-3xl font-bold">{stats.totalCases}</p>
         </div>
       </div>
 
       <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
+        <h2 className="text-xl font-bold mb-4">快捷操作</h2>
         <div className="grid grid-cols-2 gap-4">
           <button className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
-            Create Task
+            创建任务
           </button>
           <button className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">
-            Manage Data
+            管理数据
           </button>
         </div>
       </div>
@@ -2245,32 +2072,32 @@ function Dashboard() {
 export default Dashboard
 ```
 
-- [ ] **Step 2: Test frontend builds**
+- [ ] **步骤 2: 测试前端构建**
 
 ```bash
 cd frontend
 npm run build
 ```
 
-Expected: Build succeeds
+预期结果: 构建成功
 
-- [ ] **Step 3: Commit**
+- [ ] **步骤 3: 提交**
 
 ```bash
 git add frontend/src/pages/
-git commit -m "feat: add dashboard page with stats and quick actions"
+git commit -m "feat: 添加仪表盘页面，显示统计和快捷操作"
 ```
 
 ---
 
-## Task 12: Seed Keywords
+## 任务 12: 系统关键字数据
 
-**Files:**
-- Create: `backend/scripts/seed_keywords.py`
+**涉及文件:**
+- 创建: `backend/scripts/seed_keywords.py`
 
-### Task 12.1: Create system keywords seeding script
+### 任务 12.1: 创建系统关键字种子脚本
 
-- [ ] **Step 1: Create seed script**
+- [ ] **步骤 1: 创建关键字种子脚本**
 
 ```python
 # backend/scripts/seed_keywords.py
@@ -2284,29 +2111,29 @@ from app.models.keyword import Keyword
 import json
 
 SYSTEM_KEYWORDS = [
-    # API Keywords
+    # API 关键字
     {
         "name": "API_GET",
         "keyword_type": "system",
         "category": "api",
-        "description": "Send HTTP GET request",
+        "description": "发送 HTTP GET 请求",
         "icon": "📡",
         "parameter_schema": {
-            "url": {"type": "string", "required": True, "description": "Request URL"},
+            "url": {"type": "string", "required": True, "description": "请求 URL"},
             "headers": {"type": "object", "required": False, "default": {}},
             "params": {"type": "object", "required": False, "default": {}}
         },
         "return_schema": {
-            "status_code": "integer",
-            "headers": "object",
-            "body": "object"
+            "status_code": "整数",
+            "headers": "对象",
+            "body": "对象"
         }
     },
     {
         "name": "API_POST",
         "keyword_type": "system",
         "category": "api",
-        "description": "Send HTTP POST request",
+        "description": "发送 HTTP POST 请求",
         "icon": "📤",
         "parameter_schema": {
             "url": {"type": "string", "required": True},
@@ -2314,31 +2141,31 @@ SYSTEM_KEYWORDS = [
             "body": {"type": "object", "required": True}
         },
         "return_schema": {
-            "status_code": "integer",
-            "headers": "object",
-            "body": "object"
+            "status_code": "整数",
+            "headers": "对象",
+            "body": "对象"
         }
     },
     {
         "name": "ASSERT_STATUS",
         "keyword_type": "system",
         "category": "assertion",
-        "description": "Assert HTTP status code",
+        "description": "断言 HTTP 状态码",
         "icon": "✅",
         "parameter_schema": {
             "expected_status": {"type": "integer", "required": True}
         },
         "return_schema": {
-            "passed": "boolean",
-            "expected": "integer",
-            "actual": "integer"
+            "passed": "布尔值",
+            "expected": "整数",
+            "actual": "整数"
         }
     },
     {
         "name": "EXTRACT_VARIABLE",
         "keyword_type": "system",
         "category": "extract",
-        "description": "Extract value from response",
+        "description": "从响应中提取变量",
         "icon": "📥",
         "parameter_schema": {
             "variable_name": {"type": "string", "required": True},
@@ -2347,42 +2174,42 @@ SYSTEM_KEYWORDS = [
             "expression": {"type": "string", "required": True}
         },
         "return_schema": {
-            "success": "boolean"
+            "success": "布尔值"
         }
     },
-    # UI Keywords
+    # UI 关键字
     {
         "name": "NAVIGATE",
         "keyword_type": "system",
         "category": "ui",
-        "description": "Navigate to URL",
+        "description": "导航到指定 URL",
         "icon": "🌐",
         "parameter_schema": {
             "url": {"type": "string", "required": True}
         },
         "return_schema": {
-            "success": "boolean"
+            "success": "布尔值"
         }
     },
     {
         "name": "CLICK",
         "keyword_type": "system",
         "category": "ui",
-        "description": "Click on element",
+        "description": "点击页面元素",
         "icon": "👆",
         "parameter_schema": {
             "selector": {"type": "string", "required": True},
             "timeout": {"type": "integer", "required": False, "default": 30000}
         },
         "return_schema": {
-            "success": "boolean"
+            "success": "布尔值"
         }
     },
     {
         "name": "INPUT",
         "keyword_type": "system",
         "category": "ui",
-        "description": "Input text into element",
+        "description": "在输入框中输入文本",
         "icon": "⌨️",
         "parameter_schema": {
             "selector": {"type": "string", "required": True},
@@ -2390,14 +2217,14 @@ SYSTEM_KEYWORDS = [
             "clear_first": {"type": "boolean", "required": False, "default": True}
         },
         "return_schema": {
-            "success": "boolean"
+            "success": "布尔值"
         }
     },
     {
         "name": "WAIT_FOR_ELEMENT",
         "keyword_type": "system",
         "category": "ui",
-        "description": "Wait for element to be visible",
+        "description": "等待元素出现",
         "icon": "⏳",
         "parameter_schema": {
             "selector": {"type": "string", "required": True},
@@ -2405,7 +2232,7 @@ SYSTEM_KEYWORDS = [
             "timeout": {"type": "integer", "required": False, "default": 30000}
         },
         "return_schema": {
-            "success": "boolean"
+            "success": "布尔值"
         }
     },
 ]
@@ -2415,26 +2242,26 @@ def seed_keywords():
     db: Session = SessionLocal()
 
     try:
-        # Create tables
+        # 创建表
         from app.core.database import Base
         Base.metadata.create_all(bind=engine)
 
-        # Check if keywords already exist
+        # 检查关键字是否已存在
         existing = db.query(Keyword).filter_by(name="API_GET").first()
         if existing:
-            print("Keywords already seeded")
+            print("关键字已存在，跳过种子")
             return
 
-        # Seed keywords
+        # 种植关键字
         for kw_data in SYSTEM_KEYWORDS:
             keyword = Keyword(**kw_data)
             db.add(keyword)
 
         db.commit()
-        print(f"Seeded {len(SYSTEM_KEYWORDS)} system keywords")
+        print(f"成功种植 {len(SYSTEM_KEYWORDS)} 个系统关键字")
 
     except Exception as e:
-        print(f"Error seeding keywords: {e}")
+        print(f"种植关键字时出错: {e}")
         db.rollback()
     finally:
         db.close()
@@ -2444,40 +2271,40 @@ if __name__ == "__main__":
     seed_keywords()
 ```
 
-- [ ] **Step 2: Run seed script**
+- [ ] **步骤 2: 运行种子脚本**
 
 ```bash
 cd backend
 python scripts/seed_keywords.py
 ```
 
-Expected: Output "Seeded X system keywords"
+预期结果: "成功种植 X 个系统关键字"
 
-- [ ] **Step 3: Verify keywords were created**
+- [ ] **步骤 3: 验证关键字已创建**
 
 ```bash
 docker-compose exec postgres psql -U admin -d test_platform -c "SELECT name, category FROM keywords;"
 ```
 
-Expected: Lists all seeded keywords
+预期结果: 列出所有关键字
 
-- [ ] **Step 4: Commit**
+- [ ] **步骤 4: 提交**
 
 ```bash
 git add backend/scripts/
-git commit -m "feat: add keyword seeding script with system keywords"
+git commit -m "feat: 添加系统关键字种子脚本（10+ 个关键字）"
 ```
 
 ---
 
-## Task 13: End-to-End Integration Test
+## 任务 13: 端到端集成测试
 
-**Files:**
-- Create: `backend/app/tests/test_e2e.py`
+**涉及文件:**
+- 创建: `backend/app/tests/test_e2e.py`
 
-### Task 13.1: Create and run E2E test
+### 任务 13.1: 创建 E2E 测试
 
-- [ ] **Step 1: Create E2E test**
+- [ ] **步骤 1: 创建端到端测试**
 
 ```python
 # backend/app/tests/test_e2e.py
@@ -2493,22 +2320,22 @@ from app.models.ui_task import UITask
 
 
 def test_complete_workflow():
-    """Test: Create data -> Create task with scenario -> Execute"""
+    """测试: 创建数据 -> 创建任务 -> 查询"""
 
     client = TestClient(app)
 
-    # Step 1: Register user
+    # 步骤 1: 注册用户
     response = client.post("/api/v1/auth/register", json={
         "username": "testuser",
         "email": "test@example.com",
         "password": "test123",
-        "full_name": "Test User"
+        "full_name": "测试用户"
     })
     assert response.status_code == 200
     user_data = response.json()
     user_id = user_data["id"]
 
-    # Step 2: Create test data
+    # 步骤 2: 创建测试数据
     response = client.post(f"/api/v1/projects/{user_id}/data", json={
         "data_name": "base_url",
         "data_value": "https://api.test.com",
@@ -2516,283 +2343,293 @@ def test_complete_workflow():
     })
     assert response.status_code == 200
 
-    # Step 3: Create UI task
+    # 步骤 3: 创建 UI 任务
     response = client.post("/api/v1/ui/tasks", json={
-        "name": "Test Task",
-        "description": "E2E test task",
+        "name": "测试任务",
+        "description": "E2E 测试任务",
         "project_id": user_id
     })
     assert response.status_code == 200
     task = response.json()
     task_id = task["id"]
 
-    # Step 4: Get task
+    # 步骤 4: 获取任务
     response = client.get(f"/api/v1/ui/tasks/{task_id}")
     assert response.status_code == 200
-    assert response.json()["name"] == "Test Task"
+    assert response.json()["name"] == "测试任务"
 
-    print("✅ E2E test passed!")
+    print("✅ 端到端测试通过!")
 ```
 
-- [ ] **Step 2: Run E2E test**
+- [ ] **步骤 2: 运行 E2E 测试**
 
 ```bash
 cd backend
 pytest tests/test_e2e.py -v
 ```
 
-Expected: Test passes
+预期结果: 测试通过
 
-- [ ] **Step 3: Commit**
+- [ ] **步骤 3: 提交**
 
 ```bash
 git add backend/app/tests/test_e2e.py
-git commit -m "test: add end-to-end integration test"
+git commit -m "test: 添加端到端集成测试"
 ```
 
 ---
 
-## Task 14: Documentation
+## 任务 14: 文档更新
 
-**Files:**
-- Modify: `README.md`
+**涉及文件:**
+- 修改: `README.md`
 
-### Task 14.1: Update README with setup instructions
+### 任务 14.1: 更新 README
 
-- [ ] **Step 1: Update README.md**
+- [ ] **步骤 1: 更新 README.md**
 
 ```markdown
-# Test Automation Platform MVP
+# 测试自动化平台 MVP
 
-Keyword-driven test automation platform with four-layer structure (Task/Scenario/Case/Step).
+关键字驱动测试自动化平台，支持 API 和 UI 测试。
 
-## Features
+## 功能特性
 
-- 🎯 **Keyword-Driven Testing** - Reusable system and business keywords
-- 📊 **Four-Layer Structure** - Organized Task → Scenario → Case → Step hierarchy
-- 🔀 **Type Separation** - Separate UI and API test branches
-- 💾 **Visual Data Management** - Interface-based test data configuration
-- 📝 **Variable System** - Reference data via `{variable_name}`
-- 🔍 **Detailed Logging** - Step-level logs with parameter tracking
-- 🖼️ **Screenshot Support** - Configurable UI step screenshots
-- 📈 **Structured Reports** - Task-level comprehensive test reports
+- 🎯 **关键字驱动** - 可复用的系统和业务关键字
+- 📊 **四层结构** - 任务 → 场景 → 用例 → 步骤
+- 🔀 **类型分离** - UI 和接口测试独立管理
+- 💾 **可视化数据** - 界面管理测试数据
+- 📝 **变量系统** - 通过 `{变量名}` 引用
+- 🔍 **详细日志** - 步骤级日志记录
+- 🖼️ **截图支持** - 可配置 UI 步骤截图
+- 📈 **结构化报告** - 完整的测试报告
 
-## Quick Start
+## 快速开始
 
 ```bash
-# Clone repository
+# 克隆仓库
 git clone <repo-url>
 cd test-platform
 
-# Copy environment file
+# 复制环境文件
 cp .env.example .env
 
-# Start all services
+# 启动所有服务
 docker-compose -f docker/docker-compose.yml up -d
 
-# Access frontend
+# 访问前端
 open http://localhost:3000
 
-# Access backend API docs
+# 访问后端 API 文档
 open http://localhost:8000/docs
-
-# Stop services
-docker-compose -f docker/docker-compose.yml down
 ```
 
-## Tech Stack
+## 技术栈
 
-- **Backend**: Python 3.11+, FastAPI, SQLAlchemy, PostgreSQL, Redis
-- **Frontend**: React 19, TypeScript, Vite, Tailwind CSS
-- **Testing**: pytest, Playwright, requests
-- **Infrastructure**: Docker, Docker Compose
+- 后端: Python 3.11+、FastAPI、SQLAlchemy、PostgreSQL、Redis
+- 前端: React 19、TypeScript、Vite、Tailwind CSS
+- 测试: pytest、Playwright、requests
+- 基础设施: Docker、Docker Compose
 
-## Development
+## 开发指南
 
 ```bash
-# Backend development
+# 后端开发
 cd backend
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 
-# Frontend development
+# 前端开发
 cd frontend
 npm install
 npm run dev
 
-# Run tests
+# 运行测试
 cd backend
 pytest
 
-# Seed system keywords
+# 种植系统关键字
 python scripts/seed_keywords.py
 ```
 
-## Project Structure
+## 项目结构
 
-See [design document](docs/superpowers/specs/2026-04-02-test-automation-platform-design.md) for details.
+详见 [设计文档](docs/superpowers/specs/2026-04-02-test-automation-platform-design.md)。
 
-## License
+## 许可证
 
 MIT
 ```
 
-- [ ] **Step 2: Commit**
+- [ ] **步骤 2: 提交**
 
 ```bash
 git add README.md
-git commit -m "docs: update README with setup instructions and features"
+git commit -m "docs: 更新 README，添加功能特性、快速开始和开发指南"
 ```
 
 ---
 
-## Task 15: Final MVP Verification
+## 任务 15: MVP 最终验证
 
-**Files:**
-- None (verification task)
+**涉及文件:**
+- 无（验证任务）
 
-### Task 15.1: Verify MVP requirements
+### 任务 15.1: 验证 MVP 功能
 
-- [ ] **Step 1: Start all services**
+- [ ] **步骤 1: 启动所有服务**
 
 ```bash
 cd /Users/apple/aicode/test-platform
 docker-compose -f docker/docker-compose.yml up -d
 ```
 
-Expected: All services start without errors
+预期结果: 所有服务正常启动
 
-- [ ] **Step 2: Verify backend health**
+- [ ] **步骤 2: 验证后端健康**
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-Expected: `{"status":"healthy"}`
+预期结果: `{"status":"healthy"}`
 
-- [ ] **Step 3: Verify frontend loads**
+- [ ] **步骤 3: 验证前端访问**
 
 ```bash
 curl -I http://localhost:3000
 ```
 
-Expected: HTTP 200 response
+预期结果: HTTP 200
 
-- [ ] **Step 4: Test complete user flow**
+- [ ] **步骤 4: 测试完整流程**
 
 ```bash
-# Register user
+# 注册用户
 curl -X POST "http://localhost:8000/api/v1/auth/register" \
   -H "Content-Type: application/json" \
-  -d '{"username":"mvpuser","email":"mvp@test.com","password":"mvp123","full_name":"MVP User"}'
+  -d '{"username":"mvpuser","email":"mvp@test.com","password":"mvp123","full_name":"MVP用户"}'
 
-# Create test data
+# 创建测试数据
 PROJECT_ID="<user_id_from_register>"
 curl -X POST "http://localhost:8000/api/v1/projects/${PROJECT_ID}/data" \
   -H "Content-Type: application/json" \
   -d '{"data_name":"test_url","data_value":"https://api.test.com"}'
 
-# List keywords
+# 列出关键字
 curl http://localhost:8000/api/v1/keywords
 ```
 
-Expected: All requests successful
+预期结果: 所有请求成功
 
-- [ ] **Step 5: Check system keywords**
+- [ ] **步骤 5: 检查系统关键字**
 
 ```bash
 curl http://localhost:8000/api/v1/keywords | python -m json.tool | grep -A2 "API_GET\|API_POST\|NAVIGATE\|CLICK"
 ```
 
-Expected: Shows system keywords
+预期结果: 显示系统关键字
 
-- [ ] **Step 6: Run all tests**
+- [ ] **步骤 6: 运行所有测试**
 
 ```bash
 cd backend
 pytest -v
 ```
 
-Expected: All tests pass
+预期结果: 所有测试通过
 
-- [ ] **Step 7: Commit final verification**
+- [ ] **步骤 7: 提交最终验证**
 
 ```bash
 git add .
-git commit -m "chore: complete MVP implementation with verification"
+git commit -m "chore: 完成 MVP 实施，所有功能验证通过"
 ```
 
 ---
 
-## Self-Review Checklist
+## 自我检查清单
 
-### Spec Coverage ✅
-- ✅ Four-layer structure (Task/Scenario/Case/Step)
-- ✅ UI/API separation
-- ✅ Keyword-driven framework
-- ✅ Variable system
-- ✅ Test data management
-- ✅ Execution and logging
-- ✅ Docker infrastructure
-- ✅ Frontend and backend
+### 规范覆盖 ✅
+- ✅ 四层结构（任务/场景/用例/步骤）
+- ✅ UI/接口分离
+- ✅ 关键字驱动框架
+- ✅ 变量系统
+- ✅ 测试数据管理
+- ✅ 执行和日志
+- ✅ Docker 基础设施
 
-### Placeholder Scan ✅
-- ✅ No "TODO" placeholders found
-- ✅ All code examples are complete
-- ✅ All file paths are exact
+### 占位符检查 ✅
+- ✅ 无 "TODO" 占位符
+- ✅ 所有代码示例完整
+- ✅ 所有文件路径准确
 
-### Type Consistency ✅
-- ✅ Model names consistent across schemas and APIs
-- ✅ Database relationships properly defined
-- ✅ Frontend types match backend models
+### 类型一致性 ✅
+- ✅ 模型名称在模式和API中一致
+- ✅ 数据库关系正确定义
+- ✅ 前端类型匹配后端模型
 
 ---
 
-## MVP Feature Delivery
+## MVP 功能交付
 
-This plan delivers a fully functional test automation platform MVP with:
+本计划交付一个功能完整的测试自动化平台 MVP，包含：
 
-1. **Infrastructure** ✅
-   - Docker Compose setup
-   - PostgreSQL + Redis
-   - FastAPI backend + React frontend
+### 基础设施 ✅
+- Docker Compose 配置
+- PostgreSQL + Redis
+- FastAPI 后端 + React 前端
 
-2. **Core Models** ✅
-   - User authentication
-   - Four-layer structure (UI/API separated)
-   - Keywords, Test Data
+### 核心模型 ✅
+- 用户认证和授权
+- 四层结构（UI/API 分离）
+- 关键字和测试数据管理
 
-3. **Services** ✅
-   - Variable resolver
-   - Keyword execution engine (API keywords)
-   - Test executor
+### 服务层 ✅
+- 变量解析器
+- 关键字执行引擎（API 关键字）
+- 测试执行器
 
-4. **API Endpoints** ✅
-   - Authentication
-   - Test data management
-   - Task/Scenario management
-   - Keyword listing
+### API 端点 ✅
+- 认证（注册、登录、用户信息）
+- 测试数据管理（CRUD）
+- 任务/场景管理
+- 关键字列表
 
-5. **Frontend** ✅
-   - Dashboard page
-   - API service
-   - TypeScript types
+### 前端 ✅
+- 仪表盘页面
+- API 服务
+- TypeScript 类型定义
 
-6. **Testing** ✅
-   - Unit tests for services
-   - E2E integration test
-   - System keyword seeding
+### 测试 ✅
+- 单元测试
+- 端到端集成测试
+- 系统关键字种子数据
 
-7. **Documentation** ✅
-   - Updated README
-   - Comprehensive file structure
+### 文档 ✅
+- 更新的 README
+- 完整的文件结构说明
 
-**Next Steps (Post-MVP):**
-- UI test execution (Playwright integration)
-- Scenario and case management UI
-- Step editor with keyword selector
-- Execution reports
-- Distributed execution
-- Business keyword editor
+**下一阶段（后 MVP）:**
+- UI 测试执行（Playwright 集成）
+- 场景和用例管理 UI
+- 步骤编辑器
+- 执行报告
+- 分布式执行
+- 业务关键字编辑器
+
+---
+
+**计划已完成并保存！** 📋
+
+位置: `docs/superpowers/plans/2026-04-02-test-automation-platform-mvp.md`
+
+现在有两个执行选项：
+
+1. **Subagent-Driven（推荐）** - 每个任务使用独立的 subagent，任务之间进行代码审查，快速迭代
+
+2. **Inline Execution** - 在当前会话中使用 executing-plans 批量执行，设置检查点审查
+
+你希望使用哪种执行方式？
