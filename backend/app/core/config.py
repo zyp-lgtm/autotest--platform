@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from typing import List
 
 
 class Settings(BaseSettings):
@@ -15,7 +16,7 @@ class Settings(BaseSettings):
     JWT_EXPIRATION: int = 86400
 
     # CORS
-    BACKEND_CORS_ORIGINS: list = ["http://localhost:3000"]
+    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000"]
 
     class Config:
         env_file = ".env"
