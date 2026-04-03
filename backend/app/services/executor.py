@@ -78,21 +78,27 @@ class TaskExecutor:
                 # 尝试自动检测并连接本地浏览器
                 logger.info("尝试自动连接本地浏览器...")
                 try:
-                    test_browser = PlaywrightBrowser(config={"use_local": True, "headless": browser_config.get("headless", False)})
-                    await test_browser.start_browser()
-                    # 如果成功，使用这个配置
-                    browser_config["use_local"] = True
-                    browser_config["headless"] = browser_config.get("headless", False)
-                    await test_browser.close()
+                    # 直接尝试创建并连接本地浏览器
+                    self.browser_manager = PlaywrightBrowser(config={
+                        "use_local": True,
+                        "headless": browser_config.get("headless", False)
+                    })
+                    await self.browser_manager.start_browser()
                     logger.info("✓ 检测到本地浏览器可用，将使用本地浏览器")
                 except Exception as e:
                     logger.info(f"本地浏览器不可用 ({e})，将使用容器内浏览器")
-                    # 本地浏览器不可用，使用容器内浏览器
-                    browser_config["use_local"] = False
-                    browser_config["headless"] = browser_config.get("headless", True)
+                    # 本地浏览器不可用，创建容器内浏览器
+                    self.browser_manager = PlaywrightBrowser(config={
+                        "browser_type": browser_config.get("browser_type", "chromium"),
+                        "headless": browser_config.get("headless", True),
+                        "use_local": False
+                    })
+                    await self.browser_manager.start_browser()
+            else:
+                # 使用用户提供的配置
+                self.browser_manager = PlaywrightBrowser(config=browser_config)
+                await self.browser_manager.start_browser()
 
-            self.browser_manager = PlaywrightBrowser(config=browser_config)
-            await self.browser_manager.start_browser()
             self.keyword_engine = KeywordEngine(browser_manager=self.browser_manager)
 
             # 4. 加载场景
