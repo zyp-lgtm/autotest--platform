@@ -75,6 +75,9 @@ class TaskExecutor:
 
             # 4. 检查是否有可用的本地 Agent
             available_agents = agent_manager.manager.get_all_agents()
+            logger.info(f"当前可用 Agent 数量: {len(available_agents)}")
+            logger.info(f"browser_config: {browser_config}")
+            logger.info(f"use_agent 配置: {browser_config.get('use_agent', True)}")
 
             if available_agents and browser_config.get("use_agent", True):
                 # 使用本地 Agent 执行
