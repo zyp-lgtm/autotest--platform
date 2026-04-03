@@ -2,7 +2,7 @@
 场景管理 API
 提供场景、用例、步骤的 CRUD 操作
 """
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import uuid
@@ -20,28 +20,31 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ui/scenarios", tags=["场景管理"])
 
 
-# ==================== 场景管理 ====================
-
 @router.post("/", response_model=ScenarioResponse)
 async def create_scenario(
     scenario: ScenarioCreate,
-    task_id: str,
+    task_id: str = Query(..., description="任务ID"),
     db: Session = Depends(get_db)
 ):
     """创建场景"""
+    try:
+        task_id_uuid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效的任务ID格式")
+
     # 验证任务存在
-    task = db.query(UITask).filter(UITask.id == task_id).first()
+    task = db.query(UITask).filter(UITask.id == task_id_uuid).first()
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
     # 获取当前最大执行顺序
     max_order = db.query(UIScenario).filter(
-        UIScenario.task_id == task_id
+        UIScenario.task_id == task_id_uuid
     ).count()
 
     new_scenario = UIScenario(
         **scenario.dict(),
-        task_id=task_id,
+        task_id=task_id_uuid,
         project_id=task.project_id,
         execution_order=max_order
     )
@@ -58,22 +61,44 @@ async def create_scenario(
     return new_scenario
 
 
-@router.get("/", response_model=List[ScenarioResponse])
+@router.get("/")
 async def list_scenarios(
-    task_id: str,
+    task_id: str = Query(..., description="任务ID"),
     db: Session = Depends(get_db)
 ):
     """获取任务的所有场景"""
+    try:
+        task_id_uuid = uuid.UUID(task_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效的任务ID格式")
+
     scenarios = db.query(UIScenario).filter(
-        UIScenario.task_id == task_id
+        UIScenario.task_id == task_id_uuid
     ).order_by(UIScenario.execution_order).all()
-    return scenarios
+
+    # 简化序列化
+    result = []
+    for scenario in scenarios:
+        result.append({
+            "id": str(scenario.id),
+            "task_id": str(scenario.task_id),
+            "project_id": str(scenario.project_id),
+            "name": scenario.name,
+            "description": scenario.description,
+            "scenario_type": scenario.scenario_type,
+            "execution_order": scenario.execution_order,
+            "case_ids": [str(cid) for cid in (scenario.case_ids or [])],
+            "tags": list(scenario.tags) if scenario.tags else [],
+            "created_at": scenario.created_at.isoformat() if scenario.created_at else None,
+            "updated_at": scenario.updated_at.isoformat() if scenario.updated_at else None
+        })
+    return result
 
 
 @router.get("/{scenario_id}", response_model=ScenarioResponse)
 async def get_scenario(scenario_id: str, db: Session = Depends(get_db)):
     """获取场景详情"""
-    scenario = db.query(UIScenario).filter(UIScenario.id == scenario_id).first()
+    scenario = db.query(UIScenario).filter(UIScenario.id == uuid.UUID(scenario_id)).first()
     if not scenario:
         raise HTTPException(status_code=404, detail="场景不存在")
     return scenario
@@ -86,7 +111,7 @@ async def update_scenario(
     db: Session = Depends(get_db)
 ):
     """更新场景"""
-    scenario = db.query(UIScenario).filter(UIScenario.id == scenario_id).first()
+    scenario = db.query(UIScenario).filter(UIScenario.id == uuid.UUID(scenario_id)).first()
     if not scenario:
         raise HTTPException(status_code=404, detail="场景不存在")
 
@@ -102,7 +127,7 @@ async def update_scenario(
 @router.delete("/{scenario_id}")
 async def delete_scenario(scenario_id: str, db: Session = Depends(get_db)):
     """删除场景"""
-    scenario = db.query(UIScenario).filter(UIScenario.id == scenario_id).first()
+    scenario = db.query(UIScenario).filter(UIScenario.id == uuid.UUID(scenario_id)).first()
     if not scenario:
         raise HTTPException(status_code=404, detail="场景不存在")
 
@@ -130,13 +155,13 @@ async def create_case(
     db: Session = Depends(get_db)
 ):
     """创建用例"""
-    scenario = db.query(UIScenario).filter(UIScenario.id == scenario_id).first()
+    scenario = db.query(UIScenario).filter(UIScenario.id == uuid.UUID(scenario_id)).first()
     if not scenario:
         raise HTTPException(status_code=404, detail="场景不存在")
 
     new_case = UICase(
         **case.dict(),
-        scenario_id=scenario_id,
+        scenario_id=uuid.UUID(scenario_id),
         project_id=scenario.project_id
     )
     db.add(new_case)
@@ -152,11 +177,30 @@ async def create_case(
     return new_case
 
 
-@router.get("/{scenario_id}/cases", response_model=List[CaseResponse])
+@router.get("/{scenario_id}/cases")
 async def list_cases(scenario_id: str, db: Session = Depends(get_db)):
     """获取场景的所有用例"""
-    cases = db.query(UICase).filter(UICase.scenario_id == scenario_id).all()
-    return cases
+    cases = db.query(UICase).filter(UICase.scenario_id == uuid.UUID(scenario_id)).all()
+
+    # 简化序列化
+    result = []
+    for case_item in cases:
+        result.append({
+            "id": str(case_item.id),
+            "scenario_id": str(case_item.scenario_id),
+            "project_id": str(case_item.project_id),
+            "name": case_item.name,
+            "description": case_item.description,
+            "case_type": case_item.case_type,
+            "step_ids": [str(sid) for sid in (case_item.step_ids or [])],
+            "priority": case_item.priority,
+            "tags": list(case_item.tags) if case_item.tags else [],
+            "data_bindings": case_item.data_bindings or {},
+            "browser_config": case_item.browser_config or {},
+            "created_at": case_item.created_at.isoformat() if case_item.created_at else None,
+            "updated_at": case_item.updated_at.isoformat() if case_item.updated_at else None
+        })
+    return result
 
 
 @router.put("/cases/{case_id}", response_model=CaseResponse)
@@ -166,29 +210,29 @@ async def update_case(
     db: Session = Depends(get_db)
 ):
     """更新用例"""
-    case = db.query(UICase).filter(UICase.id == case_id).first()
-    if not case:
+    case_item = db.query(UICase).filter(UICase.id == uuid.UUID(case_id)).first()
+    if not case_item:
         raise HTTPException(status_code=404, detail="用例不存在")
 
     update_data = case_update.dict(exclude_unset=True)
     for field, value in update_data.items():
-        setattr(case, field, value)
+        setattr(case_item, field, value)
 
     db.commit()
-    db.refresh(case)
-    return case
+    db.refresh(case_item)
+    return case_item
 
 
 @router.delete("/cases/{case_id}")
 async def delete_case(case_id: str, db: Session = Depends(get_db)):
     """删除用例"""
-    case = db.query(UICase).filter(UICase.id == case_id).first()
-    if not case:
+    case_item = db.query(UICase).filter(UICase.id == uuid.UUID(case_id)).first()
+    if not case_item:
         raise HTTPException(status_code=404, detail="用例不存在")
 
-    scenario_id = case.scenario_id
+    scenario_id = case_item.scenario_id
 
-    db.delete(case)
+    db.delete(case_item)
     db.commit()
 
     # 更新场景的用例列表
@@ -209,8 +253,8 @@ async def create_step(
     db: Session = Depends(get_db)
 ):
     """创建步骤"""
-    case = db.query(UICase).filter(UICase.id == case_id).first()
-    if not case:
+    case_item = db.query(UICase).filter(UICase.id == uuid.UUID(case_id)).first()
+    if not case_item:
         raise HTTPException(status_code=404, detail="用例不存在")
 
     # 验证关键字存在
@@ -219,13 +263,13 @@ async def create_step(
         raise HTTPException(status_code=404, detail="关键字不存在")
 
     # 获取当前最大步骤顺序
-    max_order = db.query(UIStep).filter(UIStep.case_id == case_id).count()
+    max_order = db.query(UIStep).filter(UIStep.case_id == uuid.UUID(case_id)).count()
 
     new_step = UIStep(
         **step.dict(),
         id=uuid.uuid4(),
-        case_id=case_id,
-        scenario_id=case.scenario_id,
+        case_id=uuid.UUID(case_id),
+        scenario_id=case_item.scenario_id,
         step_order=max_order,
         step_type=keyword.category
     )
@@ -234,19 +278,39 @@ async def create_step(
     db.refresh(new_step)
 
     # 更新用例的步骤列表
-    if not case.step_ids:
-        case.step_ids = []
-    case.step_ids.append(new_step.id)
+    if not case_item.step_ids:
+        case_item.step_ids = []
+    case_item.step_ids.append(new_step.id)
     db.commit()
 
     return new_step
 
 
-@router.get("/cases/{case_id}/steps", response_model=List[StepResponse])
+@router.get("/cases/{case_id}/steps")
 async def list_steps(case_id: str, db: Session = Depends(get_db)):
     """获取用例的所有步骤"""
-    steps = db.query(UIStep).filter(UIStep.case_id == case_id).order_by(UIStep.step_order).all()
-    return steps
+    steps = db.query(UIStep).filter(UIStep.case_id == uuid.UUID(case_id)).order_by(UIStep.step_order).all()
+
+    # 简化序列化
+    result = []
+    for step_item in steps:
+        result.append({
+            "id": str(step_item.id),
+            "case_id": str(step_item.case_id),
+            "scenario_id": str(step_item.scenario_id),
+            "task_id": str(step_item.task_id),
+            "step_order": step_item.step_order,
+            "keyword_id": str(step_item.keyword_id),
+            "step_name": step_item.step_name,
+            "step_type": step_item.step_type,
+            "parameters": step_item.parameters or {},
+            "enabled": step_item.enabled,
+            "continue_on_failure": step_item.continue_on_failure,
+            "screenshot_config": step_item.screenshot_config or {},
+            "created_at": step_item.created_at.isoformat() if step_item.created_at else None,
+            "updated_at": step_item.updated_at.isoformat() if step_item.updated_at else None
+        })
+    return result
 
 
 @router.put("/steps/{step_id}", response_model=StepResponse)
@@ -256,8 +320,8 @@ async def update_step(
     db: Session = Depends(get_db)
 ):
     """更新步骤"""
-    step = db.query(UIStep).filter(UIStep.id == step_id).first()
-    if not step:
+    step_item = db.query(UIStep).filter(UIStep.id == uuid.UUID(step_id)).first()
+    if not step_item:
         raise HTTPException(status_code=404, detail="步骤不存在")
 
     update_data = step_update.dict(exclude_unset=True)
@@ -269,29 +333,29 @@ async def update_step(
             update_data['step_type'] = keyword.category
 
     for field, value in update_data.items():
-        setattr(step, field, value)
+        setattr(step_item, field, value)
 
     db.commit()
-    db.refresh(step)
-    return step
+    db.refresh(step_item)
+    return step_item
 
 
 @router.delete("/steps/{step_id}")
 async def delete_step(step_id: str, db: Session = Depends(get_db)):
     """删除步骤"""
-    step = db.query(UIStep).filter(UIStep.id == step_id).first()
-    if not step:
+    step_item = db.query(UIStep).filter(UIStep.id == uuid.UUID(step_id)).first()
+    if not step_item:
         raise HTTPException(status_code=404, detail="步骤不存在")
 
-    case_id = step.case_id
+    case_id = step_item.case_id
 
-    db.delete(step)
+    db.delete(step_item)
     db.commit()
 
     # 更新用例的步骤列表
-    case = db.query(UICase).filter(UICase.id == case_id).first()
-    if case and case.step_ids:
-        case.step_ids = [sid for sid in case.step_ids if sid != uuid.UUID(step_id)]
+    case_item = db.query(UICase).filter(UICase.id == case_id).first()
+    if case_item and case_item.step_ids:
+        case_item.step_ids = [sid for sid in case_item.step_ids if sid != uuid.UUID(step_id)]
         db.commit()
 
     return {"message": "步骤已删除"}
