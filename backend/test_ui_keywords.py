@@ -23,7 +23,7 @@ async def test_baidu_search():
     print("=" * 60)
 
     # 初始化
-    browser = PlaywrightBrowser(headless=False)  # 使用有头模式以便观察
+    browser = PlaywrightBrowser(config={"headless": False})  # 使用有头模式以便观察
     engine = KeywordEngine(browser_manager=browser)
 
     try:
@@ -126,7 +126,7 @@ async def test_simple():
     print("简单测试：访问 example.com")
     print("=" * 60)
 
-    browser = PlaywrightBrowser(headless=False)
+    browser = PlaywrightBrowser(config={"headless": False})
     engine = KeywordEngine(browser_manager=browser)
 
     try:

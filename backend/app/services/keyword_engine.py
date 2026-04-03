@@ -1,6 +1,9 @@
 from typing import Dict, Any
 import httpx
+import logging
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+logger = logging.getLogger(__name__)
 
 
 class KeywordEngine:
