@@ -9,6 +9,7 @@ export default function ExecutionReport() {
   const [execution, setExecution] = useState<TestExecution | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [screenshotModal, setScreenshotModal] = useState<{ url: string; title: string } | null>(null)
 
   useEffect(() => {
     loadExecution()
@@ -225,14 +226,19 @@ export default function ExecutionReport() {
                       )}
 
                       {stepExec.screenshot_path && (
-                        <div className="mt-1">
-                          <span className="text-xs text-gray-500">
-                            <a href={`http://localhost:8000/screenshots/${stepExec.screenshot_path.split('/')[-1]}`}
-                               target="_blank"
-                               className="text-blue-600 hover:underline">
-                              查看截图
-                            </a>
-                          </span>
+                        <div className="mt-2">
+                          <button
+                            onClick={() => setScreenshotModal({
+                              url: stepExec.screenshot_path!,
+                              title: `${stepExec.step_name} - 失败截图`
+                            })}
+                            className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            查看截图
+                          </button>
                         </div>
                       )}
                     </div>
@@ -243,6 +249,46 @@ export default function ExecutionReport() {
           </div>
         ))}
       </div>
+
+      {/* 截图预览模态框 */}
+      {screenshotModal && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"
+          onClick={() => setScreenshotModal(null)}
+        >
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b flex justify-between items-center">
+              <h3 className="text-lg font-semibold">{screenshotModal.title}</h3>
+              <button
+                onClick={() => setScreenshotModal(null)}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4">
+              <img
+                src={screenshotModal.url}
+                alt={screenshotModal.title}
+                className="w-full rounded"
+                onError={(e) => {
+                  e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjE1MCIgZmlsbD0iI2VjZWNlYyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LXNpemU9IjE0IiBmaWxsPSIjOTk5Ij7lipvvvI7lnKjnva7lm648L3RleHQ+PC9zdmc+'
+                }}
+              />
+            </div>
+            <div className="p-4 border-t">
+              <a
+                href={screenshotModal.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline text-sm"
+              >
+                在新窗口打开
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

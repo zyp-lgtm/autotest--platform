@@ -87,15 +87,32 @@ export default function Scenarios() {
     setModalType('scenario')
   }
 
+  const openEditScenario = (scenario: Scenario) => {
+    setEditingScenario(scenario)
+    setModalType('scenario')
+  }
+
   const openCreateCase = (scenarioId: string) => {
     setModalScenarioId(scenarioId)
     setEditingCase(undefined)
     setModalType('case')
   }
 
+  const openEditCase = (testCase: Case, scenarioId: string) => {
+    setModalScenarioId(scenarioId)
+    setEditingCase(testCase)
+    setModalType('case')
+  }
+
   const openCreateStep = (caseId: string) => {
     setModalCaseId(caseId)
     setEditingStep(undefined)
+    setModalType('step')
+  }
+
+  const openEditStep = (step: Step, caseId: string) => {
+    setModalCaseId(caseId)
+    setEditingStep(step)
     setModalType('step')
   }
 
@@ -109,28 +126,56 @@ export default function Scenarios() {
     setEditingStep(undefined)
   }
 
-  // 处理创建成功
+  // 处理创建/更新成功
   const handleScenarioSuccess = (scenario: Scenario) => {
-    setScenarios(prev => [...prev, scenario])
+    if (editingScenario) {
+      // 更新
+      setScenarios(prev => prev.map(s => s.id === scenario.id ? scenario : s))
+    } else {
+      // 创建
+      setScenarios(prev => [...prev, scenario])
+    }
     closeModal()
   }
 
   const handleCaseSuccess = (testCase: Case) => {
-    if (modalScenarioId) {
-      setCases(prev => ({
-        ...prev,
-        [modalScenarioId]: [...(prev[modalScenarioId] || []), testCase]
-      }))
+    if (editingCase) {
+      // 更新
+      if (modalScenarioId) {
+        setCases(prev => ({
+          ...prev,
+          [modalScenarioId]: prev[modalScenarioId].map(c => c.id === testCase.id ? testCase : c)
+        }))
+      }
+    } else {
+      // 创建
+      if (modalScenarioId) {
+        setCases(prev => ({
+          ...prev,
+          [modalScenarioId]: [...(prev[modalScenarioId] || []), testCase]
+        }))
+      }
     }
     closeModal()
   }
 
   const handleStepSuccess = (step: Step) => {
-    if (modalCaseId) {
-      setSteps(prev => ({
-        ...prev,
-        [modalCaseId]: [...(prev[modalCaseId] || []), step]
-      }))
+    if (editingStep) {
+      // 更新
+      if (modalCaseId) {
+        setSteps(prev => ({
+          ...prev,
+          [modalCaseId]: prev[modalCaseId].map(s => s.id === step.id ? step : s)
+        }))
+      }
+    } else {
+      // 创建
+      if (modalCaseId) {
+        setSteps(prev => ({
+          ...prev,
+          [modalCaseId]: [...(prev[modalCaseId] || []), step]
+        }))
+      }
     }
     closeModal()
   }
@@ -266,6 +311,12 @@ export default function Scenarios() {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={(e) => { e.stopPropagation(); openEditScenario(scenario) }}
+                    className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    编辑
+                  </button>
+                  <button
                     onClick={(e) => { e.stopPropagation(); openCreateCase(scenario.id) }}
                     className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
                   >
@@ -321,6 +372,12 @@ export default function Scenarios() {
                               {caseItem.priority}
                             </span>
                             <button
+                              onClick={(e) => { e.stopPropagation(); openEditCase(caseItem, scenario.id) }}
+                              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                              编辑
+                            </button>
+                            <button
                               onClick={(e) => { e.stopPropagation(); openCreateStep(caseItem.id) }}
                               className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
                             >
@@ -367,12 +424,20 @@ export default function Scenarios() {
                                       <span className="text-xs text-gray-500">({keyword?.name || step.keyword_id})</span>
                                       {!step.enabled && <span className="text-xs text-gray-400">[禁用]</span>}
                                     </div>
-                                    <button
-                                      onClick={() => handleDeleteStep(step.id, step.step_name, caseItem.id)}
-                                      className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
-                                    >
-                                      删除
-                                    </button>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => openEditStep(step, caseItem.id)}
+                                        className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                                      >
+                                        编辑
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteStep(step.id, step.step_name, caseItem.id)}
+                                        className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                                      >
+                                        删除
+                                      </button>
+                                    </div>
                                   </div>
                                 )
                               })
@@ -395,9 +460,9 @@ export default function Scenarios() {
           <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-xl font-semibold mb-4">
-                {modalType === 'scenario' && '创建场景'}
-                {modalType === 'case' && '创建用例'}
-                {modalType === 'step' && '创建步骤'}
+                {modalType === 'scenario' && (editingScenario ? '编辑场景' : '创建场景')}
+                {modalType === 'case' && (editingCase ? '编辑用例' : '创建用例')}
+                {modalType === 'step' && (editingStep ? '编辑步骤' : '创建步骤')}
               </h2>
 
               {modalType === 'scenario' && taskId && (

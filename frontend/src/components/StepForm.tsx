@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { scenariosApi, Step, StepCreate, StepUpdate } from '../api/scenarios'
+import { keywordsApi, Keyword } from '../api/keywords'
 import KeywordSelector from './KeywordSelector'
 
 interface StepFormProps {
@@ -19,6 +20,48 @@ export default function StepForm({ caseId, step, onSuccess, onCancel }: StepForm
   const [continueOnFailure, setContinueOnFailure] = useState(step?.continue_on_failure || false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedKeyword, setSelectedKeyword] = useState<Keyword | null>(null)
+
+  // 当选择关键字时，加载关键字详情
+  useEffect(() => {
+    if (keywordId) {
+      loadKeywordDetails(keywordId)
+    }
+  }, [keywordId])
+
+  const loadKeywordDetails = async (kwId: string) => {
+    try {
+      const kw = await keywordsApi.getKeyword(kwId)
+      setSelectedKeyword(kw)
+      // 如果参数为空且关键字有参数schema，设置一个默认模板
+      if (parameters === '{}' && kw.parameter_schema && Object.keys(kw.parameter_schema).length > 0) {
+        const defaultParams: Record<string, any> = {}
+        for (const [key, schema] of Object.entries(kw.parameter_schema)) {
+          const def = schema as any
+          if (def.default !== undefined) {
+            defaultParams[key] = def.default
+          } else if (def.type === 'string') {
+            defaultParams[key] = ''
+          } else if (def.type === 'object') {
+            defaultParams[key] = {}
+          } else if (def.type === 'integer' || def.type === 'number') {
+            defaultParams[key] = def.default || 0
+          } else if (def.type === 'boolean') {
+            defaultParams[key] = def.default || false
+          }
+        }
+        setParameters(JSON.stringify(defaultParams, null, 2))
+      }
+    } catch (err) {
+      console.error('加载关键字详情失败:', err)
+    }
+  }
+
+  const fillExample = () => {
+    if (selectedKeyword?.examples && selectedKeyword.examples.length > 0) {
+      setParameters(JSON.stringify(selectedKeyword.examples[0], null, 2))
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -96,9 +139,42 @@ export default function StepForm({ caseId, step, onSuccess, onCancel }: StepForm
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          参数配置 (JSON格式)
-        </label>
+        <div className="flex justify-between items-center mb-1">
+          <label className="block text-sm font-medium text-gray-700">
+            参数配置 (JSON格式)
+          </label>
+          {selectedKeyword?.examples && selectedKeyword.examples.length > 0 && (
+            <button
+              type="button"
+              onClick={fillExample}
+              className="text-xs text-blue-600 hover:text-blue-800"
+            >
+              填充示例
+            </button>
+          )}
+        </div>
+
+        {/* 参数说明 */}
+        {selectedKeyword?.parameter_schema && Object.keys(selectedKeyword.parameter_schema).length > 0 && (
+          <div className="mb-2 p-2 bg-blue-50 rounded text-xs">
+            <div className="font-medium text-blue-900 mb-1">可用参数:</div>
+            <div className="space-y-1">
+              {Object.entries(selectedKeyword.parameter_schema).map(([key, schema]: any) => (
+                <div key={key} className="flex items-center gap-2">
+                  <code className="bg-blue-100 px-1 rounded">{key}</code>
+                  <span className="text-gray-600">
+                    ({schema.type || 'any'})
+                    {schema.required && <span className="text-red-500"> *必填</span>}
+                  </span>
+                  {schema.description && (
+                    <span className="text-gray-500">- {schema.description}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <textarea
           value={parameters}
           onChange={(e) => setParameters(e.target.value)}
@@ -107,7 +183,7 @@ export default function StepForm({ caseId, step, onSuccess, onCancel }: StepForm
           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
         />
         <p className="text-xs text-gray-500 mt-1">
-          输入JSON格式的参数，例如: {"{"}selector": "#input"{"}"}
+          输入JSON格式的参数，例如: {"{"}selector": "#input", "text": "hello"{"}"}
         </p>
       </div>
 
