@@ -1,9 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
+import uuid
 from ...models.ui_task import UITask
 from ...schemas.task import TaskCreate, TaskUpdate, TaskResponse
+from ...schemas.execution import ExecutionRequest, TestExecutionResponse
 from ...core.database import get_db
+from ...services.executor import TaskExecutor
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ui/tasks", tags=["UI任务"])
 
@@ -35,13 +41,36 @@ async def get_ui_task(task_id: str, db: Session = Depends(get_db)):
     return task
 
 
-@router.post("/{task_id}/execute")
+@router.post("/{task_id}/execute", response_model=TestExecutionResponse)
 async def execute_ui_task(
     task_id: str,
     db: Session = Depends(get_db)
 ):
-    # TODO: 实现任务执行
-    return {"execution_id": "exec_123", "status": "pending"}
+    """执行 UI 任务"""
+    # 验证任务存在
+    task = db.query(UITask).filter(UITask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    # 创建执行请求
+    request = ExecutionRequest(
+        task_id=uuid.UUID(task_id),
+        execution_config=task.execution_config or {},
+        browser_config={"headless": True},  # 默认无头模式
+        environment="production"
+    )
+
+    # 创建执行器并执行
+    executor = TaskExecutor(db)
+
+    try:
+        execution = await executor.execute_task(request)
+        return execution
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Task execution error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"执行失败: {str(e)}")
 
 
 @router.put("/{task_id}", response_model=TaskResponse)
