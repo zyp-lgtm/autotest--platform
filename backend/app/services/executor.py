@@ -10,7 +10,7 @@
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -57,7 +57,7 @@ class TaskExecutor:
             project_id=task.project_id,
             user_id=None,  # TODO: 从 token 获取
             status="running",
-            started_at=datetime.now(),
+            started_at=datetime.now(timezone.utc),
             execution_config=request.execution_config or {},
             browser_config=request.browser_config or {},
             environment=request.environment
@@ -103,7 +103,7 @@ class TaskExecutor:
                 failed_steps += scenario_result["failed_steps"]
 
             # 6. 更新执行结果
-            execution.completed_at = datetime.now()
+            execution.completed_at = datetime.now(timezone.utc)
             execution.duration = (execution.completed_at - execution.started_at).total_seconds()
             execution.total_scenarios = len(scenarios)
             execution.total_steps = total_steps
@@ -127,7 +127,7 @@ class TaskExecutor:
             execution.status = "failed"
             execution.result = "error"
             execution.error_message = str(e)
-            execution.completed_at = datetime.now()
+            execution.completed_at = datetime.now(timezone.utc)
 
             if execution.started_at:
                 execution.duration = (execution.completed_at - execution.started_at).total_seconds()
@@ -138,7 +138,7 @@ class TaskExecutor:
         finally:
             # 7. 清理浏览器
             if self.browser_manager:
-                await self.browser_manager.close_browser()
+                await self.browser_manager.close()
 
         return execution
 
@@ -155,7 +155,7 @@ class TaskExecutor:
             test_execution_id=task_execution.id,
             scenario_id=scenario.id,
             status="running",
-            started_at=datetime.now(),
+            started_at=datetime.now(timezone.utc),
             execution_order=scenario.execution_order
         )
         self.db.add(scenario_execution)
@@ -189,7 +189,7 @@ class TaskExecutor:
                 failed_steps += case_result["failed_steps"]
 
             # 更新场景执行结果
-            scenario_execution.completed_at = datetime.now()
+            scenario_execution.completed_at = datetime.now(timezone.utc)
             scenario_execution.duration = (scenario_execution.completed_at - scenario_execution.started_at).total_seconds()
             scenario_execution.total_cases = len(cases)
             scenario_execution.total_steps = total_steps
@@ -216,7 +216,7 @@ class TaskExecutor:
             scenario_execution.status = "failed"
             scenario_execution.result = "error"
             scenario_execution.error_message = str(e)
-            scenario_execution.completed_at = datetime.now()
+            scenario_execution.completed_at = datetime.now(timezone.utc)
             self.db.commit()
             raise
 
@@ -233,7 +233,7 @@ class TaskExecutor:
             scenario_execution_id=scenario_execution.id,
             case_id=case.id,
             status="running",
-            started_at=datetime.now(),
+            started_at=datetime.now(timezone.utc),
             priority=case.priority
         )
         self.db.add(case_execution)
@@ -282,7 +282,7 @@ class TaskExecutor:
                         break
 
             # 更新用例执行结果
-            case_execution.completed_at = datetime.now()
+            case_execution.completed_at = datetime.now(timezone.utc)
             case_execution.duration = (case_execution.completed_at - case_execution.started_at).total_seconds()
             case_execution.total_steps = total_steps
             case_execution.passed_steps = passed_steps
@@ -308,7 +308,7 @@ class TaskExecutor:
             case_execution.status = "failed"
             case_execution.result = "error"
             case_execution.error_message = str(e)
-            case_execution.completed_at = datetime.now()
+            case_execution.completed_at = datetime.now(timezone.utc)
             self.db.commit()
             raise
 
@@ -326,7 +326,7 @@ class TaskExecutor:
             step_id=step.id,
             keyword_id=step.keyword_id,
             status="running",
-            started_at=datetime.now(),
+            started_at=datetime.now(timezone.utc),
             step_name=step.step_name,
             step_order=step.step_order,
             keyword_name="",
@@ -356,7 +356,7 @@ class TaskExecutor:
             )
 
             # 更新执行结果
-            step_execution.completed_at = datetime.now()
+            step_execution.completed_at = datetime.now(timezone.utc)
             step_execution.duration = (step_execution.completed_at - step_execution.started_at).total_seconds()
             step_execution.status = "completed"
             step_execution.result = "pass" if result.get("success") else "fail"
@@ -365,7 +365,7 @@ class TaskExecutor:
             # 添加日志
             logs = result.get("logs", [])
             if logs:
-                step_execution.logs = [{"timestamp": datetime.now().isoformat(), "level": "info", "message": log} for log in logs]
+                step_execution.logs = [{"timestamp": datetime.now(timezone.utc).isoformat(), "level": "info", "message": log} for log in logs]
 
             self.db.commit()
 
@@ -378,7 +378,7 @@ class TaskExecutor:
         except Exception as e:
             logger.error(f"Step execution failed: {e}", exc_info=True)
 
-            step_execution.completed_at = datetime.now()
+            step_execution.completed_at = datetime.now(timezone.utc)
             step_execution.duration = (step_execution.completed_at - step_execution.started_at).total_seconds()
             step_execution.status = "completed"
             step_execution.result = "fail"
