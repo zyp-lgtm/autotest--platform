@@ -2,9 +2,10 @@
 关键字 API
 提供关键字查询接口
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import uuid
 import json
 
 from ...models.keyword import Keyword
@@ -13,7 +14,7 @@ from ...core.database import get_db
 router = APIRouter(prefix="/ui/keywords", tags=["UI关键字"])
 
 
-@router.get("/", response_model=List[dict])
+@router.get("/")
 async def list_keywords(
     category: Optional[str] = Query(None, description="按类别过滤"),
     enabled_only: bool = Query(False, description="仅显示有效的关键字"),
@@ -56,9 +57,14 @@ async def get_categories(db: Session = Depends(get_db)):
 @router.get("/{keyword_id}")
 async def get_keyword(keyword_id: str, db: Session = Depends(get_db)):
     """获取单个关键字详情"""
-    keyword = db.query(Keyword).filter(Keyword.id == keyword_id).first()
+    try:
+        keyword_id_uuid = uuid.UUID(keyword_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效的关键字ID格式")
+
+    keyword = db.query(Keyword).filter(Keyword.id == keyword_id_uuid).first()
     if not keyword:
-        return {"error": "关键字不存在"}
+        raise HTTPException(status_code=404, detail="关键字不存在")
 
     return {
         "id": str(keyword.id),

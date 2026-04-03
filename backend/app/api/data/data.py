@@ -1,64 +1,158 @@
-from fastapi import APIRouter, Depends, HTTPException
+"""
+测试数据 API
+提供测试数据的 CRUD 操作
+"""
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
-from ...core.database import get_db
+import uuid
+
 from ...models.test_data import TestData
-from ...schemas.data import TestDataCreate, TestDataResponse
+from ...schemas.data import TestDataCreate
+from ...core.database import get_db
 
 router = APIRouter(prefix="/data", tags=["测试数据"])
 
 
-@router.post("/", response_model=TestDataResponse)
+@router.post("/")
 async def create_data(
     data: TestDataCreate,
-    project_id: str,
+    project_id: str = Query(..., description="项目ID"),
     db: Session = Depends(get_db)
 ):
-    new_data = TestData(**data.dict(), project_id=project_id)
+    """创建测试数据"""
+    try:
+        project_id_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效的项目ID格式")
+
+    new_data = TestData(**data.dict(), project_id=project_id_uuid)
     db.add(new_data)
     db.commit()
     db.refresh(new_data)
-    return new_data
+
+    # 手动序列化
+    return {
+        "id": str(new_data.id),
+        "project_id": str(new_data.project_id),
+        "name": new_data.name,
+        "description": new_data.description,
+        "data_type": new_data.data_type,
+        "content": new_data.content,
+        "tags": list(new_data.tags) if new_data.tags else [],
+        "created_at": new_data.created_at.isoformat() if new_data.created_at else None,
+        "updated_at": new_data.updated_at.isoformat() if new_data.updated_at else None
+    }
 
 
-@router.get("/", response_model=List[TestDataResponse])
-async def list_data(project_id: str, db: Session = Depends(get_db)):
-    data = db.query(TestData).filter(TestData.project_id == project_id).all()
-    return data
+@router.get("/")
+async def list_data(
+    project_id: str = Query(..., description="项目ID"),
+    db: Session = Depends(get_db)
+):
+    """获取项目的所有测试数据"""
+    try:
+        project_id_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效的项目ID格式")
+
+    data_list = db.query(TestData).filter(
+        TestData.project_id == project_id_uuid
+    ).order_by(TestData.created_at.desc()).all()
+
+    # 手动序列化
+    result = []
+    for data_item in data_list:
+        result.append({
+            "id": str(data_item.id),
+            "project_id": str(data_item.project_id),
+            "name": data_item.name,
+            "description": data_item.description,
+            "data_type": data_item.data_type,
+            "content": data_item.content,
+            "tags": list(data_item.tags) if data_item.tags else [],
+            "created_at": data_item.created_at.isoformat() if data_item.created_at else None,
+            "updated_at": data_item.updated_at.isoformat() if data_item.updated_at else None
+        })
+    return result
 
 
-@router.get("/{data_id}", response_model=TestDataResponse)
+@router.get("/{data_id}")
 async def get_data(data_id: str, db: Session = Depends(get_db)):
-    data = db.query(TestData).filter(TestData.id == data_id).first()
-    if not data:
+    """获取单个测试数据详情"""
+    try:
+        data_id_uuid = uuid.UUID(data_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效的数据ID格式")
+
+    data_item = db.query(TestData).filter(TestData.id == data_id_uuid).first()
+    if not data_item:
         raise HTTPException(status_code=404, detail="数据不存在")
-    return data
+
+    # 手动序列化
+    return {
+        "id": str(data_item.id),
+        "project_id": str(data_item.project_id),
+        "name": data_item.name,
+        "description": data_item.description,
+        "data_type": data_item.data_type,
+        "content": data_item.content,
+        "tags": list(data_item.tags) if data_item.tags else [],
+        "created_at": data_item.created_at.isoformat() if data_item.created_at else None,
+        "updated_at": data_item.updated_at.isoformat() if data_item.updated_at else None
+    }
 
 
-@router.put("/{data_id}", response_model=TestDataResponse)
+@router.put("/{data_id}")
 async def update_data(
     data_id: str,
     data_update: TestDataCreate,
     db: Session = Depends(get_db)
 ):
-    data = db.query(TestData).filter(TestData.id == data_id).first()
-    if not data:
+    """更新测试数据"""
+    try:
+        data_id_uuid = uuid.UUID(data_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效的数据ID格式")
+
+    data_item = db.query(TestData).filter(TestData.id == data_id_uuid).first()
+    if not data_item:
         raise HTTPException(status_code=404, detail="数据不存在")
 
-    for field, value in data_update.dict(exclude_unset=True).items():
-        setattr(data, field, value)
+    # 更新非空字段
+    update_data = data_update.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(data_item, field, value)
 
     db.commit()
-    db.refresh(data)
-    return data
+    db.refresh(data_item)
+
+    # 手动序列化
+    return {
+        "id": str(data_item.id),
+        "project_id": str(data_item.project_id),
+        "name": data_item.name,
+        "description": data_item.description,
+        "data_type": data_item.data_type,
+        "content": data_item.content,
+        "tags": list(data_item.tags) if data_item.tags else [],
+        "created_at": data_item.created_at.isoformat() if data_item.created_at else None,
+        "updated_at": data_item.updated_at.isoformat() if data_item.updated_at else None
+    }
 
 
 @router.delete("/{data_id}")
 async def delete_data(data_id: str, db: Session = Depends(get_db)):
-    data = db.query(TestData).filter(TestData.id == data_id).first()
-    if not data:
+    """删除测试数据"""
+    try:
+        data_id_uuid = uuid.UUID(data_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效的数据ID格式")
+
+    data_item = db.query(TestData).filter(TestData.id == data_id_uuid).first()
+    if not data_item:
         raise HTTPException(status_code=404, detail="数据不存在")
 
-    db.delete(data)
+    db.delete(data_item)
     db.commit()
     return {"message": "数据已删除"}
