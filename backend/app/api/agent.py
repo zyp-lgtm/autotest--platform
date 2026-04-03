@@ -9,9 +9,6 @@ import uuid
 from datetime import datetime
 from typing import Dict, Set
 from fastapi import WebSocket, WebSocketDisconnect
-from sqlalchemy.orm import Session
-
-from ..database import get_db
 
 logger = logging.getLogger(__name__)
 
