@@ -10,6 +10,7 @@
 
 import asyncio
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
@@ -425,6 +426,23 @@ class TaskExecutor:
             step_execution.keyword_name = keyword.name
             step_execution.category = keyword.category
 
+            # 记录开始执行日志
+            execution_logs = []
+            execution_logs.append({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "level": "info",
+                "message": f"开始执行步骤: {step.step_name} (关键字: {keyword.name})"
+            })
+
+            # 记录参数日志
+            if step.parameters:
+                params_str = ", ".join([f"{k}={v}" for k, v in step.parameters.items()])
+                execution_logs.append({
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "level": "info",
+                    "message": f"参数: {params_str}"
+                })
+
             # 执行关键字
             result = await self.keyword_engine.execute(
                 keyword_def=keyword,
@@ -432,17 +450,36 @@ class TaskExecutor:
                 context={}
             )
 
+            # 记录执行结果日志
+            if result.get("success"):
+                execution_logs.append({
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "level": "info",
+                    "message": f"✓ 步骤执行成功: {step.step_name}"
+                })
+            else:
+                execution_logs.append({
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "level": "error",
+                    "message": f"✗ 步骤执行失败: {result.get('error', '未知错误')}"
+                })
+
+            # 添加关键字引擎返回的日志
+            if "logs" in result:
+                for log in result["logs"]:
+                    execution_logs.append({
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "level": "info",
+                        "message": str(log)
+                    })
+
             # 更新执行结果
             step_execution.completed_at = datetime.now(timezone.utc)
             step_execution.duration = (step_execution.completed_at - step_execution.started_at).total_seconds()
             step_execution.status = "completed"
             step_execution.result = "pass" if result.get("success") else "fail"
             step_execution.output = result
-
-            # 添加日志
-            logs = result.get("logs", [])
-            if logs:
-                step_execution.logs = [{"timestamp": datetime.now(timezone.utc).isoformat(), "level": "info", "message": log} for log in logs]
+            step_execution.logs = execution_logs
 
             self.db.commit()
 
@@ -478,7 +515,7 @@ class TaskExecutor:
 
     async def _execute_via_agent(self, agent_id: str, task: UITask, browser_config: dict) -> Dict[str, Any]:
         """
-        通过本地 Agent 执行任务
+        通过本地 Agent 执行任务（带完整日志记录）
 
         Args:
             agent_id: Agent ID
@@ -489,11 +526,13 @@ class TaskExecutor:
             执行结果
         """
         logger.info(f"通过 Agent {agent_id} 执行任务 {task.id}")
-        logger.info(f"浏览器配置: {browser_config}")  # 添加日志
+        logger.info(f"浏览器配置: {browser_config}")
 
-        # 加载场景和步骤
-        agent_steps = []
+        # 加载场景和步骤，同时创建执行记录
         total_steps = 0
+        passed_steps = 0
+        failed_steps = 0
+        all_step_results = []
 
         for scenario_id in task.scenario_ids:
             scenario = self.db.query(UIScenario).filter(
@@ -503,6 +542,18 @@ class TaskExecutor:
             if not scenario:
                 continue
 
+            # 创建场景执行记录
+            scenario_execution = ScenarioExecution(
+                test_execution_id=self.current_execution.id,
+                scenario_id=scenario.id,
+                status="running",
+                started_at=datetime.now(timezone.utc),
+                execution_order=scenario.execution_order
+            )
+            self.db.add(scenario_execution)
+            self.db.commit()
+            self.db.refresh(scenario_execution)
+
             for case_id in scenario.case_ids:
                 case = self.db.query(UICase).filter(
                     and_(UICase.id == case_id, UICase.scenario_id == scenario.id)
@@ -510,6 +561,21 @@ class TaskExecutor:
 
                 if not case:
                     continue
+
+                # 创建用例执行记录
+                case_execution = CaseExecution(
+                    scenario_execution_id=scenario_execution.id,
+                    case_id=case.id,
+                    status="running",
+                    started_at=datetime.now(timezone.utc)
+                )
+                self.db.add(case_execution)
+                self.db.commit()
+                self.db.refresh(case_execution)
+
+                # 收集步骤并转换为 Agent 格式
+                agent_steps = []
+                step_mappings = []  # 保存步骤ID映射
 
                 for step_id in case.step_ids:
                     step = self.db.query(UIStep).filter(
@@ -528,46 +594,183 @@ class TaskExecutor:
                     agent_step = self._convert_step_to_agent_format(keyword, step.parameters)
                     if agent_step:
                         agent_steps.append(agent_step)
+                        step_mappings.append({
+                            "step_id": step.id,
+                            "step_name": step.step_name,
+                            "keyword_name": keyword.name,
+                            "keyword_id": keyword.id,
+                            "parameters": step.parameters,
+                            "step_order": step.step_order
+                        })
                         total_steps += 1
 
-        logger.info(f"转换了 {len(agent_steps)} 个步骤")
+                # 下发任务给 Agent
+                task_message = {
+                    "type": "task",
+                    "task_id": str(task.id),
+                    "browser_type": browser_config.get("browser_type", "chromium"),
+                    "headless": browser_config.get("headless", False),
+                    "steps": agent_steps
+                }
 
-        # 构建任务消息
-        task_message = {
-            "type": "task",
-            "task_id": str(task.id),
-            "browser_type": browser_config.get("browser_type", "chromium"),
-            "headless": browser_config.get("headless", False),
-            "steps": agent_steps
-        }
+                logger.info(f"下发 {len(agent_steps)} 个步骤到 Agent")
+                success = await agent_manager.manager.send_to_agent(agent_id, task_message)
 
-        # 下发任务给 Agent
-        success = await agent_manager.manager.send_to_agent(agent_id, task_message)
+                if not success:
+                    # 记录失败
+                    for mapping in step_mappings:
+                        self._create_step_execution_record(
+                            case_execution.id,
+                            mapping,
+                            mapping["keyword_id"],
+                            "failed",
+                            error="发送任务到 Agent 失败"
+                        )
+                    failed_steps += len(step_mappings)
+                    continue
 
-        if not success:
-            return {
-                "success": False,
-                "error": "发送任务到 Agent 失败",
-                "total_steps": 0,
-                "passed_steps": 0,
-                "failed_steps": 0
-            }
+                # 等待 Agent 执行完成
+                logger.info("等待 Agent 执行完成...")
+                task_result_data = await agent_manager.manager.wait_for_task_result(str(task.id), timeout=60.0)
 
-        # TODO: 等待 Agent 返回结果
-        # 当前返回假设成功，实际需要实现结果等待机制
-        logger.info("任务已下发到 Agent，等待执行完成...")
+                # 清理任务结果缓存
+                agent_manager.manager.clear_task_result(str(task.id))
 
-        # 简单等待（实际应该使用更可靠的机制）
-        import asyncio
-        await asyncio.sleep(5)
+                # 处理 Agent 返回的结果
+                agent_results = []
+                if task_result_data and task_result_data.get("result"):
+                    agent_result = task_result_data["result"]
+                    if agent_result.get("success") and "results" in agent_result:
+                        agent_results = agent_result["results"]
+                        logger.info(f"收到 Agent 执行结果: {len(agent_results)} 个步骤")
+
+                # 根据实际结果创建执行记录
+                for i, mapping in enumerate(step_mappings):
+                    # 获取对应步骤的执行结果
+                    step_agent_result = agent_results[i] if i < len(agent_results) else {}
+
+                    if step_agent_result.get("success"):
+                        step_result = "pass"
+                        status = "completed"
+
+                        # 构建详细日志
+                        logs = [{
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "level": "info",
+                            "message": f"开始执行步骤: {mapping['step_name']} (关键字: {mapping['keyword_name']})"
+                        }]
+
+                        # 添加参数日志
+                        if mapping.get("parameters"):
+                            params_str = ", ".join([f"{k}={v}" for k, v in mapping["parameters"].items()])
+                            logs.append({
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "level": "info",
+                                "message": f"参数: {params_str}"
+                            })
+
+                        # 添加成功完成日志
+                        logs.append({
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "level": "info",
+                            "message": f"✓ 步骤执行成功: {mapping['step_name']}"
+                        })
+
+                        # 如果有截图路径，添加到日志中
+                        if step_agent_result.get("screenshot"):
+                            logs.append({
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "level": "info",
+                                "message": f"截图已保存: {step_agent_result['screenshot']}"
+                            })
+                    else:
+                        step_result = "fail"
+                        status = "failed"
+
+                        error_msg = step_agent_result.get("error", "未知错误")
+
+                        logs = [{
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "level": "error",
+                            "message": f"步骤执行失败: {mapping['step_name']} - {error_msg}"
+                        }]
+
+                    self._create_step_execution_record(
+                        case_execution.id,
+                        mapping,
+                        mapping["keyword_id"],
+                        status,
+                        result=step_result,
+                        logs=logs,
+                        error=step_agent_result.get("error") if not step_agent_result.get("success") else None
+                    )
+
+                    if step_result == "pass":
+                        passed_steps += 1
+                    else:
+                        failed_steps += 1
+
+                # 更新用例执行结果
+                case_execution.completed_at = datetime.now(timezone.utc)
+                case_execution.duration = (case_execution.completed_at - case_execution.started_at).total_seconds()
+                case_execution.total_steps = len(step_mappings)
+                case_execution.passed_steps = passed_steps
+                case_execution.failed_steps = failed_steps
+                case_execution.status = "completed"
+                case_execution.result = "pass" if failed_steps == 0 else "fail"
+
+                self.db.commit()
+
+            # 更新场景执行结果
+            scenario_execution.completed_at = datetime.now(timezone.utc)
+            scenario_execution.duration = (scenario_execution.completed_at - scenario_execution.started_at).total_seconds()
+            scenario_execution.total_cases = 1
+            scenario_execution.total_steps = total_steps
+            scenario_execution.passed_steps = passed_steps
+            scenario_execution.failed_steps = failed_steps
+            scenario_execution.status = "completed"
+            scenario_execution.result = "pass" if failed_steps == 0 else "fail"
+
+            self.db.commit()
 
         return {
             "success": True,
             "total_steps": total_steps,
-            "passed_steps": total_steps,  # 假设全部通过
-            "failed_steps": 0,
-            "message": "任务已通过 Agent 执行"
+            "passed_steps": passed_steps,
+            "failed_steps": failed_steps
         }
+
+    def _create_step_execution_record(
+        self,
+        case_execution_id: uuid.UUID,
+        step_mapping: dict,
+        keyword_id: uuid.UUID,
+        status: str,
+        result: str = None,
+        error: str = None,
+        logs: list = None
+    ):
+        """创建步骤执行记录"""
+        step_execution = StepExecution(
+            case_execution_id=case_execution_id,
+            step_id=step_mapping["step_id"],
+            keyword_id=keyword_id,  # 使用实际的 keyword_id
+            status=status,
+            started_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(timezone.utc),
+            duration=0,
+            step_name=step_mapping["step_name"],
+            step_order=step_mapping["step_order"],
+            keyword_name=step_mapping["keyword_name"],
+            category="UI",
+            parameters=step_mapping["parameters"],
+            continue_on_failure=False,
+            logs=logs or [],
+            error_message=error,
+            result=result or ("pass" if status == "completed" and not error else "fail")
+        )
+        self.db.add(step_execution)
+        self.db.commit()
 
     def _convert_step_to_agent_format(self, keyword: Keyword, parameters: dict) -> Optional[dict]:
         """

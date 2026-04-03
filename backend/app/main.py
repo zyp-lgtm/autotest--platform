@@ -1,3 +1,4 @@
+import logging
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from .core.config import get_settings
@@ -8,6 +9,13 @@ from .api.ui import scenarios as ui_scenarios_router
 from .api.ui import keywords as ui_keywords_router
 from .api import agent
 from .api import agent_management as agent_management_router
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
 
 settings = get_settings()
 

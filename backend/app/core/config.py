@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 from typing import List
 
@@ -22,9 +22,12 @@ class Settings(BaseSettings):
         "http://localhost:5173",  # Vite默认端口
     ]
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        env_ignore_empty=True,
+        extra="ignore"
+    )
 
 
 @lru_cache()

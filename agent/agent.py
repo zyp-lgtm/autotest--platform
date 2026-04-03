@@ -148,10 +148,16 @@ class LocalAgent:
         url = task_data.get("url")
         steps = task_data.get("steps", [])
 
+        logger.info("=" * 60)
         logger.info(f"开始执行任务: {task_id}")
         logger.info(f"浏览器: {browser_type}, headless: {headless}")
+        logger.info(f"步骤总数: {len(steps)}")
+        logger.info("=" * 60)
 
         results = []
+        step_count = 0
+        success_count = 0
+        fail_count = 0
 
         try:
             # 启动浏览器
@@ -172,21 +178,46 @@ class LocalAgent:
             page = await self.browser.new_page()
 
             # 执行步骤
-            for step in steps:
+            for i, step in enumerate(steps, 1):
+                step_count = i
+                logger.info(f"\n[步骤 {i}/{len(steps)}]")
+
                 step_result = await self._execute_step(page, step)
                 results.append(step_result)
 
-                if not step_result.get("success", False):
+                if step_result.get("success", False):
+                    success_count += 1
+                else:
+                    fail_count += 1
                     break  # 失败则停止
 
+            # 任务完成后关闭浏览器
+            await self._close_browser()
+
+            # 输出执行摘要
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("执行摘要")
+            logger.info("=" * 60)
+            logger.info(f"总步骤数: {step_count}")
+            logger.info(f"成功: {success_count}")
+            logger.info(f"失败: {fail_count}")
+            logger.info(f"结果: {'✓ 通过' if fail_count == 0 else '✗ 失败'}")
+            logger.info("=" * 60)
+
             return {
-                "success": True,
+                "success": fail_count == 0,
                 "results": results,
                 "message": "任务执行完成"
             }
 
         except Exception as e:
+            logger.error(f"")
+            logger.error("=" * 60)
             logger.error(f"执行任务失败: {e}")
+            logger.error("=" * 60)
+            # 出错时也关闭浏览器
+            await self._close_browser()
             return {
                 "success": False,
                 "error": str(e),
@@ -195,43 +226,78 @@ class LocalAgent:
 
     async def _execute_step(self, page: Page, step: Dict[str, Any]) -> Dict[str, Any]:
         """执行单个步骤"""
+        import time
         action = step.get("action")
         params = step.get("parameters", {})
 
-        logger.info(f"执行步骤: {action}")
+        # 记录开始时间
+        start_time = time.time()
+
+        # 增强日志输出
+        if action == "navigate":
+            logger.info(f"  操作: 导航到 URL")
+            logger.info(f"  参数: url={params.get('url')}")
+        elif action == "click":
+            logger.info(f"  操作: 点击元素")
+            logger.info(f"  参数: selector={params.get('selector')}")
+        elif action == "input":
+            logger.info(f"  操作: 输入文本")
+            logger.info(f"  参数: selector={params.get('selector')}, text={params.get('text')}")
+        elif action == "wait":
+            logger.info(f"  操作: 等待元素")
+            logger.info(f"  参数: selector={params.get('selector')}, timeout={params.get('timeout', 5000)}ms")
+        elif action == "screenshot":
+            logger.info(f"  操作: 截图")
+            logger.info(f"  参数: path={params.get('path')}")
+        else:
+            logger.info(f"  操作: {action}")
+            logger.info(f"  参数: {params}")
 
         try:
             if action == "navigate":
                 url = params.get("url")
                 await page.goto(url)
+                elapsed = time.time() - start_time
+                logger.info(f"  ✓ 成功 | 耗时: {elapsed:.2f}秒")
                 return {"success": True, "action": action}
 
             elif action == "click":
                 selector = params.get("selector")
                 await page.click(selector)
+                elapsed = time.time() - start_time
+                logger.info(f"  ✓ 成功 | 耗时: {elapsed:.2f}秒")
                 return {"success": True, "action": action}
 
             elif action == "input":
                 selector = params.get("selector")
                 text = params.get("text")
                 await page.fill(selector, text)
+                elapsed = time.time() - start_time
+                logger.info(f"  ✓ 成功 | 耗时: {elapsed:.2f}秒")
                 return {"success": True, "action": action}
 
             elif action == "wait":
                 selector = params.get("selector")
                 timeout = params.get("timeout", 5000)
                 await page.wait_for_selector(selector, timeout=timeout)
+                elapsed = time.time() - start_time
+                logger.info(f"  ✓ 成功 | 耗时: {elapsed:.2f}秒")
                 return {"success": True, "action": action}
 
             elif action == "screenshot":
                 path = params.get("path", f"screenshot_{uuid.uuid4().hex}.png")
                 await page.screenshot(path=path)
+                elapsed = time.time() - start_time
+                logger.info(f"  ✓ 成功 | 保存路径: {path} | 耗时: {elapsed:.2f}秒")
                 return {"success": True, "action": action, "screenshot": path}
 
             else:
                 return {"success": False, "action": action, "error": f"未知操作: {action}"}
 
         except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(f"  ✗ 失败 | 耗时: {elapsed:.2f}秒")
+            logger.error(f"  错误详情: {str(e)}")
             return {"success": False, "action": action, "error": str(e)}
 
     async def _close_browser(self):

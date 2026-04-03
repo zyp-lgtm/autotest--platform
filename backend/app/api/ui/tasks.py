@@ -119,12 +119,20 @@ async def execute_ui_task(
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
-    # 合并浏览器配置
+    # 合并浏览器配置（优先级：API参数 > 任务配置 > 默认值）
     final_browser_config = {"headless": True}
-    if browser_config:
-        final_browser_config.update(browser_config)
-    elif task.execution_config and "browser_config" in task.execution_config:
+
+    # 1. 先应用任务的默认配置
+    if task.execution_config and "browser_config" in task.execution_config:
         final_browser_config.update(task.execution_config["browser_config"])
+
+    # 2. 再用 API 参数覆盖（如果提供）
+    if browser_config:
+        # 如果 browser_config 中嵌套了 browser_config 键，提取内部配置
+        if "browser_config" in browser_config and len(browser_config) == 1:
+            final_browser_config.update(browser_config["browser_config"])
+        else:
+            final_browser_config.update(browser_config)
 
     # 创建执行请求
     request = ExecutionRequest(
@@ -139,7 +147,74 @@ async def execute_ui_task(
 
     try:
         execution = await executor.execute_task(request)
-        return execution
+
+        # 重新加载执行记录以获取完整的步骤日志
+        db.refresh(execution)
+
+        # 加载步骤执行详情
+        from ...models.execution import ScenarioExecution, CaseExecution, StepExecution
+
+        scenario_executions = db.query(ScenarioExecution).filter(
+            ScenarioExecution.test_execution_id == execution.id
+        ).all()
+
+        scenarios_data = []
+        for scenario_exec in scenario_executions:
+            case_executions = db.query(CaseExecution).filter(
+                CaseExecution.scenario_execution_id == scenario_exec.id
+            ).all()
+
+            cases_data = []
+            for case_exec in case_executions:
+                step_executions = db.query(StepExecution).filter(
+                    StepExecution.case_execution_id == case_exec.id
+                ).order_by(StepExecution.step_order).all()
+
+                steps_data = []
+                for step_exec in step_executions:
+                    steps_data.append({
+                        "step_name": step_exec.step_name,
+                        "step_order": step_exec.step_order,
+                        "keyword_name": step_exec.keyword_name,
+                        "status": step_exec.status,
+                        "result": step_exec.result,
+                        "duration": step_exec.duration,
+                        "error_message": step_exec.error_message,
+                        "logs": step_exec.logs or [],
+                        "screenshot_path": step_exec.screenshot_path
+                    })
+
+                cases_data.append({
+                    "status": case_exec.status,
+                    "result": case_exec.result,
+                    "total_steps": case_exec.total_steps,
+                    "passed_steps": case_exec.passed_steps,
+                    "failed_steps": case_exec.failed_steps,
+                    "steps": steps_data
+                })
+
+            scenarios_data.append({
+                "status": scenario_exec.status,
+                "result": scenario_exec.result,
+                "cases": cases_data
+            })
+
+        # 返回带日志的执行结果
+        return {
+            "id": str(execution.id),
+            "task_id": str(execution.task_id),
+            "status": execution.status,
+            "result": execution.result,
+            "started_at": execution.started_at.isoformat() if execution.started_at else None,
+            "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
+            "duration": execution.duration,
+            "total_steps": execution.total_steps,
+            "passed_steps": execution.passed_steps,
+            "failed_steps": execution.failed_steps,
+            "error_message": execution.error_message,
+            "scenarios": scenarios_data
+        }
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -292,7 +367,6 @@ async def get_execution(
                     "duration": step_exec.duration,
                     "error_message": step_exec.error_message,
                     "screenshot_path": step_exec.screenshot_path,
-                    "enabled": step_exec.enabled,
                     "continue_on_failure": step_exec.continue_on_failure,
                     "logs": step_exec.logs or [],
                     "output": step_exec.output,

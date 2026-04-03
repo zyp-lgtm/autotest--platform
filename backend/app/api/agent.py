@@ -6,8 +6,9 @@ Agent 管理 API - WebSocket 端点
 import logging
 import json
 import uuid
+import asyncio
 from datetime import datetime
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,10 @@ class ConnectionManager:
         self.active_connections: Dict[str, WebSocket] = {}
         # agent_id -> agent_info
         self.agents: Dict[str, dict] = {}
+        # task_id -> task_result (用于等待执行结果)
+        self.task_results: Dict[str, dict] = {}
+        # task_id -> event (用于通知等待的协程)
+        self.task_events: Dict[str, asyncio.Event] = {}
 
     async def connect(self, websocket: WebSocket, agent_id: str):
         """接受连接"""
@@ -72,6 +77,37 @@ class ConnectionManager:
             except Exception as e:
                 logger.error(f"广播消息失败 ({agent_id}): {e}")
 
+    def set_task_result(self, task_id: str, result: dict):
+        """设置任务执行结果"""
+        self.task_results[task_id] = result
+        # 通知等待的协程
+        if task_id in self.task_events:
+            self.task_events[task_id].set()
+        logger.info(f"任务结果已存储: {task_id}")
+
+    async def wait_for_task_result(self, task_id: str, timeout: float = 30.0) -> Optional[dict]:
+        """等待任务执行结果"""
+        # 创建事件
+        event = asyncio.Event()
+        self.task_events[task_id] = event
+
+        try:
+            # 等待结果或超时
+            await asyncio.wait_for(event.wait(), timeout=timeout)
+            return self.task_results.get(task_id)
+        except asyncio.TimeoutError:
+            logger.warning(f"等待任务结果超时: {task_id}")
+            return None
+        finally:
+            # 清理事件
+            if task_id in self.task_events:
+                del self.task_events[task_id]
+
+    def clear_task_result(self, task_id: str):
+        """清理任务结果"""
+        if task_id in self.task_results:
+            del self.task_results[task_id]
+
 
 # 全局连接管理器
 manager = ConnectionManager()
@@ -110,10 +146,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     elif data.get("type") == "task_result":
                         # 接收任务结果
                         task_id = data.get("task_id")
+                        agent_id_from_msg = data.get("agent_id")
                         result = data.get("result")
-                        logger.info(f"收到任务结果: {task_id} - {result}")
+                        logger.info(f"收到任务结果: task_id={task_id}, agent_id={agent_id_from_msg}, result={result}")
 
-                        # TODO: 保存到数据库
+                        # 存储任务结果，供等待的执行器使用
+                        if task_id:
+                            manager.set_task_result(task_id, {
+                                "agent_id": agent_id_from_msg,
+                                "result": result
+                            })
 
                     elif data.get("type") == "pong":
                         # 心跳响应

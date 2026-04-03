@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const apiClient = axios.create({
   baseURL: '/api',
-  timeout: 10000,
+  timeout: 180000, // 3分钟超时，UI测试执行需要较长时间
 })
 
 // 请求拦截器：添加 token
