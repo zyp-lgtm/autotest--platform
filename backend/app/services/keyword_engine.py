@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Union
 import httpx
 import logging
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
@@ -20,14 +20,27 @@ class KeywordEngine:
 
     async def execute(
         self,
-        keyword_def: Dict[str, Any],
+        keyword_def: Any,
         parameters: Dict[str, Any],
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """执行指定关键字"""
+        """执行指定关键字
 
-        keyword_name = keyword_def.get("name")
-        category = keyword_def.get("category")
+        Args:
+            keyword_def: 关键字定义（SQLAlchemy 模型或字典）
+            parameters: 关键字参数
+            context: 执行上下文
+        """
+
+        # 兼容 SQLAlchemy 对象和字典
+        if hasattr(keyword_def, "name"):
+            # SQLAlchemy 模型
+            keyword_name = keyword_def.name
+            category = keyword_def.category
+        else:
+            # 字典
+            keyword_name = keyword_def.get("name")
+            category = keyword_def.get("category")
 
         if category == "api":
             return await self._execute_api_keyword(keyword_name, parameters, context)
