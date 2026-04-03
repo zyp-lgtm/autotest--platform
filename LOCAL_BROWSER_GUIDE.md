@@ -33,30 +33,36 @@ open -a "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir=/tmp
 - 端口 `9222` 是Chrome DevTools Protocol默认端口
 - `--user-data-dir` 创建独立的用户配置目录，避免影响现有Chrome配置
 
-### 2. 执行测试任务
+### 2. 在任务中配置"打开浏览器"关键字
+
+**重要**: `use_local` 和 `remote_url` 参数需要通过 **"打开浏览器"** 关键字的参数来配置。
 
 #### 方式1: 使用 `use_local` 参数（推荐）
 
-```bash
-curl 'http://localhost:8000/api/v1/ui/tasks/939de5db-b0aa-408e-a746-dc0cc2562d93/execute' \
-  -H 'Authorization: Bearer YOUR_TOKEN' \
-  -H 'Content-Type: application/json' \
-  --data-raw '{
+在任务的第一个步骤中，配置"打开浏览器"关键字：
+
+```json
+{
+  "keyword": "打开浏览器",
+  "parameters": {
     "use_local": true,
     "headless": false
-  }'
+  }
+}
 ```
 
 #### 方式2: 使用 `remote_url` 参数
 
-```bash
-curl 'http://localhost:8000/api/v1/ui/tasks/939de5db-b0aa-408e-a746-dc0cc2562d93/execute' \
-  -H 'Authorization: Bearer YOUR_TOKEN' \
-  -H 'Content-Type: application/json' \
-  --data-raw '{
+连接到指定的远程浏览器：
+
+```json
+{
+  "keyword": "打开浏览器",
+  "parameters": {
     "remote_url": "ws://host.docker.internal:9222",
     "headless": false
-  }'
+  }
+}
 ```
 
 ### 3. 查看执行过程
@@ -69,12 +75,15 @@ curl 'http://localhost:8000/api/v1/ui/tasks/939de5db-b0aa-408e-a746-dc0cc2562d93
 
 ## 浏览器配置选项
 
+"打开浏览器"关键字支持的参数：
+
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `use_local` | boolean | false | 连接到本地浏览器（host.docker.internal:9222） |
 | `remote_url` | string | null | 远程浏览器WebSocket URL（如 ws://192.168.1.100:9222） |
 | `headless` | boolean | true | 是否无头模式（false=显示浏览器窗口） |
 | `viewport` | object | {"width": 1920, "height": 1080} | 浏览器视口大小 |
+| `timeout` | integer | 30000 | 超时时间（毫秒） |
 
 ## 工作原理
 
@@ -140,19 +149,16 @@ Error: Unable to connect to browser
 # 1. 启动本地Chrome
 open -a "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug
 
-# 2. 登录获取token
-TOKEN=$(curl -s 'http://localhost:8000/api/v1/auth/login' \
-  -H 'Content-Type: application/x-www-form-urlencoded' \
-  --data-raw 'username=demo&password=demo123' | jq -r '.access_token')
+# 2. 创建包含本地浏览器配置的任务（通过API或UI）
+# 任务的第一个步骤应该是 "打开浏览器" 关键字，并设置 use_local: true
 
-# 3. 执行测试
-curl 'http://localhost:8000/api/v1/ui/tasks/939de5db-b0aa-408e-a746-dc0cc2562d93/execute' \
+# 3. 执行任务
+curl 'http://localhost:8000/api/v1/ui/tasks/{task_id}/execute' \
   -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' \
-  --data-raw '{"use_local": true, "headless": false}'
+  -H 'Content-Type: application/json'
 
 # 4. 查看执行记录
-curl 'http://localhost:8000/api/v1/ui/tasks/939de5db-b0aa-408e-a746-dc0cc2562d93/executions?limit=1' \
+curl 'http://localhost:8000/api/v1/ui/tasks/{task_id}/executions?limit=1' \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -162,6 +168,7 @@ curl 'http://localhost:8000/api/v1/ui/tasks/939de5db-b0aa-408e-a746-dc0cc2562d93
 2. **执行前关闭其他Chrome实例** - 避免端口冲突
 3. **非headless模式会显示浏览器窗口** - 可以看到实际操作
 4. **测试完成后Chrome会保持打开** - 需要手动关闭或复用
+5. **本地/远程连接仅支持 Chromium** - Firefox 和 Webkit 不支持 CDP 连接
 
 ## 高级配置
 
@@ -169,8 +176,11 @@ curl 'http://localhost:8000/api/v1/ui/tasks/939de5db-b0aa-408e-a746-dc0cc2562d93
 
 ```json
 {
-  "remote_url": "ws://192.168.1.100:9222",
-  "headless": false
+  "keyword": "打开浏览器",
+  "parameters": {
+    "remote_url": "ws://192.168.1.100:9222",
+    "headless": false
+  }
 }
 ```
 
@@ -178,11 +188,14 @@ curl 'http://localhost:8000/api/v1/ui/tasks/939de5db-b0aa-408e-a746-dc0cc2562d93
 
 ```json
 {
-  "use_local": true,
-  "headless": false,
-  "viewport": {
-    "width": 1920,
-    "height": 1080
+  "keyword": "打开浏览器",
+  "parameters": {
+    "use_local": true,
+    "headless": false,
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    }
   }
 }
 ```
@@ -191,8 +204,11 @@ curl 'http://localhost:8000/api/v1/ui/tasks/939de5db-b0aa-408e-a746-dc0cc2562d93
 
 ```json
 {
-  "use_local": true,
-  "timeout": 60000,
-  "headless": false
+  "keyword": "打开浏览器",
+  "parameters": {
+    "use_local": true,
+    "timeout": 60000,
+    "headless": false
+  }
 }
 ```

@@ -165,51 +165,124 @@ class KeywordEngine:
     # ========== UI 关键字实现 ==========
 
     async def _open_browser(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """打开浏览器或切换浏览器类型"""
+        """打开浏览器或切换浏览器类型
+
+        支持参数:
+        - browser_type: 浏览器类型（chromium/firefox/webkit，默认 chromium）
+        - headless: 是否无头模式（默认 True）
+        - use_local: 是否连接到本地浏览器（ws://host.docker.internal:9222）
+        - remote_url: 远程浏览器 WebSocket URL（如 ws://192.168.1.100:9222）
+        - viewport: 视口大小（如 {"width": 1920, "height": 1080}）
+        - timeout: 默认超时时间（毫秒）
+        """
         browser_type = params.get("browser_type", "chromium")
         headless = params.get("headless", True)
+        use_local = params.get("use_local", False)
+        remote_url = params.get("remote_url")
+        viewport = params.get("viewport")
+        timeout = params.get("timeout")
 
-        # 验证浏览器类型
-        valid_types = ["chromium", "firefox", "webkit"]
-        if browser_type not in valid_types:
-            return {
-                "success": False,
-                "error": f"无效的浏览器类型: {browser_type}，支持的类型: {', '.join(valid_types)}"
-            }
+        # 验证浏览器类型（本地/远程连接仅支持 Chromium）
+        if use_local or remote_url:
+            if browser_type != "chromium":
+                logger.warning(f"本地/远程连接仅支持 Chromium，自动切换类型")
+                browser_type = "chromium"
+            # 本地/远程连接通常使用非 headless 模式
+            headless = params.get("headless", False)
+        else:
+            # 验证浏览器类型
+            valid_types = ["chromium", "firefox", "webkit"]
+            if browser_type not in valid_types:
+                return {
+                    "success": False,
+                    "error": f"无效的浏览器类型: {browser_type}，支持的类型: {', '.join(valid_types)}"
+                }
 
         try:
-            # 如果浏览器已启动，检查是否需要切换
+            # 构建新配置
+            new_config = {
+                "browser_type": browser_type,
+                "headless": headless
+            }
+
+            # 添加可选配置
+            if use_local:
+                new_config["use_local"] = True
+                logger.info("启用本地浏览器连接")
+
+            if remote_url:
+                new_config["remote_url"] = remote_url
+                logger.info(f"使用远程浏览器: {remote_url}")
+
+            if viewport:
+                new_config["viewport"] = viewport
+
+            if timeout:
+                new_config["timeout"] = timeout
+
+            # 如果浏览器已启动，检查是否需要重启
             if self.browser_manager.is_started():
                 current_type = self.browser_manager.browser_type
                 current_headless = self.browser_manager.headless
+                current_local = getattr(self.browser_manager, 'use_local', False)
+                current_remote = getattr(self.browser_manager, 'remote_url', None)
 
-                # 如果配置相同，无需重启
-                if current_type == browser_type and current_headless == headless:
+                # 检查配置是否相同
+                config_changed = (
+                    current_type != browser_type or
+                    current_headless != headless or
+                    current_local != use_local or
+                    current_remote != remote_url
+                )
+
+                if not config_changed:
                     logger.info(f"浏览器已运行: {browser_type} (headless={headless})")
                     return {
                         "success": True,
                         "message": f"浏览器已在运行: {browser_type}",
                         "browser_type": browser_type,
-                        "headless": headless
+                        "headless": headless,
+                        "use_local": use_local,
+                        "remote_url": remote_url
                     }
 
                 # 配置不同，重启浏览器
-                logger.info(f"切换浏览器: {current_type} -> {browser_type}")
-                await self.browser_manager.restart_with_config({
-                    "browser_type": browser_type,
-                    "headless": headless
-                })
+                logger.info(f"浏览器配置已更改，重启浏览器")
+                await self.browser_manager.restart_with_config(new_config)
             else:
-                # 浏览器未启动，启动新浏览器
+                # 浏览器未启动，先更新配置再启动
+                self.browser_manager.config.update(new_config)
+                if "browser_type" in new_config:
+                    self.browser_manager.browser_type = new_config["browser_type"]
+                if "headless" in new_config:
+                    self.browser_manager.headless = new_config["headless"]
+                if "use_local" in new_config:
+                    self.browser_manager.use_local = new_config["use_local"]
+                if "remote_url" in new_config:
+                    self.browser_manager.remote_url = new_config["remote_url"]
+                if "viewport" in new_config:
+                    self.browser_manager.viewport = new_config["viewport"]
+                if "timeout" in new_config:
+                    self.browser_manager.timeout = new_config["timeout"]
+
                 await self.browser_manager.start_browser()
 
-            logger.info(f"浏览器已启动: {browser_type} (headless={headless})")
+            # 构建返回消息
+            connection_info = f"{browser_type} (headless={headless})"
+            if use_local:
+                connection_info = f"本地浏览器 ({connection_info})"
+            elif remote_url:
+                connection_info = f"远程浏览器 {remote_url} ({connection_info})"
+
+            logger.info(f"浏览器已启动: {connection_info}")
 
             return {
                 "success": True,
-                "message": f"已启动浏览器: {browser_type}",
+                "message": f"已启动浏览器: {connection_info}",
                 "browser_type": browser_type,
-                "headless": headless
+                "headless": headless,
+                "use_local": use_local,
+                "remote_url": remote_url
             }
 
         except Exception as e:
