@@ -11,6 +11,7 @@ const RegisterPage = lazy(() => import('./pages/Register'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const TaskForm = lazy(() => import('./components/TaskForm'))
 const ExecutionReportPage = lazy(() => import('./pages/ExecutionReport'))
+const Scenarios = lazy(() => import('./pages/Scenarios'))
 
 // 懒加载组件的加载指示器
 function LazyLoader() {
@@ -50,6 +51,7 @@ function App() {
                         <Route path="/tasks" element={<Tasks />} />
                         <Route path="/tasks/new" element={<TaskForm mode="create" />} />
                         <Route path="/tasks/:taskId/edit" element={<TaskForm mode="edit" />} />
+                        <Route path="/tasks/:taskId/scenarios" element={<Scenarios />} />
                         <Route path="/executions/:executionId" element={<ExecutionReportPage />} />
                         {/* 未来添加更多路由 */}
                       </Routes>

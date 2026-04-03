@@ -227,6 +227,12 @@ export default function Tasks() {
                     {showHistory[task.id] ? '收起历史' : '查看历史'}
                   </button>
                   <button
+                    onClick={() => navigate(`/tasks/${task.id}/scenarios`)}
+                    className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700 transition"
+                  >
+                    管理场景
+                  </button>
+                  <button
                     onClick={() => navigate(`/tasks/${task.id}/edit`)}
                     className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
                   >

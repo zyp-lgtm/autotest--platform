@@ -5,6 +5,7 @@ from .api.auth import auth as auth_router
 from .api.data import data as data_router
 from .api.ui import tasks as ui_tasks_router
 from .api.ui import scenarios as ui_scenarios_router
+from .api.ui import keywords as ui_keywords_router
 
 settings = get_settings()
 
@@ -37,3 +38,4 @@ app.include_router(auth_router.router, prefix="/api/v1")
 app.include_router(data_router.router, prefix="/api/v1/projects/{project_id}")
 app.include_router(ui_tasks_router.router, prefix="/api/v1")
 app.include_router(ui_scenarios_router.router, prefix="/api/v1")
+app.include_router(ui_keywords_router.router, prefix="/api/v1")
