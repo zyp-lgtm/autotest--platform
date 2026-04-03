@@ -486,6 +486,7 @@ class TaskExecutor:
             执行结果
         """
         logger.info(f"通过 Agent {agent_id} 执行任务 {task.id}")
+        logger.info(f"浏览器配置: {browser_config}")  # 添加日志
 
         # 加载场景和步骤
         agent_steps = []
