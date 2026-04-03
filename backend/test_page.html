@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>关键字测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        h1 { color: #333; }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .form-group { margin: 15px 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        input[type="checkbox"] {
+            margin-right: 10px;
+        }
+        .button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .hover-target {
+            padding: 10px;
+            background: #e9ecef;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        #scroll-section {
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 15px;
+            background: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <h1>UI 关键字测试页面</h1>
+
+    <div class="section">
+        <h2>文本提取测试</h2>
+        <p id="test-text">这是用于测试 GET_TEXT 关键字的示例文本。</p>
+        <p><a href="#link-test" id="link-test">测试链接</a></p>
+    </div>
+
+    <div class="section">
+        <h2>表单控件测试</h2>
+
+        <div class="form-group">
+            <label for="dropdown">下拉选择框：</label>
+            <select id="dropdown">
+                <option value="">请选择</option>
+                <option value="option1">选项一</option>
+                <option value="option2">选项二</option>
+                <option value="option3">选项三</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="checkbox1" value="agree">
+                我同意相关条款
+            </label>
+        </div>
+
+        <div class="form-group">
+            <label for="input1">文本输入：</label>
+            <input type="text" id="input1" placeholder="输入测试文本">
+        </div>
+
+        <button class="button" onclick="showResult()">显示结果</button>
+    </div>
+
+    <div class="section">
+        <h2>悬停测试</h2>
+        <div class="hover-target" id="hover-area">
+            鼠标悬停在这里会看到效果
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>滚动测试</h2>
+        <div id="scroll-section">
+            <p>第 1 行内容</p>
+            <p>第 2 行内容</p>
+            <p>第 3 行内容</p>
+            <p>第 4 行内容</p>
+            <p>第 5 行内容</p>
+            <p>第 6 行内容</p>
+            <p>第 7 行内容</p>
+            <p>第 8 行内容</p>
+            <p>第 9 行内容</p>
+            <p>第 10 行内容</p>
+            <p>这是底部的内容，用于测试 SCROLL 关键字。</p>
+        </div>
+        <button class="button" onclick="window.scrollTo(0,0)">回到顶部</button>
+    </div>
+
+    <div class="section" id="result-section">
+        <h2>测试结果</h2>
+        <div id="result-text"></div>
+    </div>
+
+    <script>
+        function showResult() {
+            const dropdown = document.getElementById('dropdown');
+            const checkbox = document.getElementById('checkbox1');
+            const input1 = document.getElementById('input1');
+
+            const resultText = `
+                <strong>下拉框选择:</strong> ${dropdown.value || '未选择'}<br>
+                <strong>复选框状态:</strong> ${checkbox.checked ? '已勾选' : '未勾选'}<br>
+                <strong>输入框内容:</strong> ${input1.value || '空'}
+            `;
+
+            document.getElementById('result-text').innerHTML = resultText;
+        }
+    </script>
+</body>
+</html>
