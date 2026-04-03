@@ -5,7 +5,6 @@ import uuid
 
 
 class StepBase(BaseModel):
-    step_order: int
     keyword_id: uuid.UUID
     step_name: str
     parameters: dict = {}
@@ -15,6 +14,7 @@ class StepBase(BaseModel):
 
 
 class StepCreate(StepBase):
+    # step_order 由系统自动计算，不在创建时指定
     pass
 
 
@@ -33,6 +33,7 @@ class StepResponse(StepBase):
     case_id: uuid.UUID
     scenario_id: uuid.UUID
     task_id: uuid.UUID
+    step_order: int
     step_type: str
     created_at: datetime
     updated_at: Optional[datetime] = None

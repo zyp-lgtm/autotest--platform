@@ -369,6 +369,11 @@ async def create_step(
     if not case_item:
         raise HTTPException(status_code=404, detail="用例不存在")
 
+    # 获取场景和任务信息
+    scenario = db.query(UIScenario).filter(UIScenario.id == case_item.scenario_id).first()
+    if not scenario:
+        raise HTTPException(status_code=404, detail="场景不存在")
+
     # 验证关键字存在
     keyword = db.query(Keyword).filter(Keyword.id == step.keyword_id).first()
     if not keyword:
@@ -382,6 +387,7 @@ async def create_step(
         id=uuid.uuid4(),
         case_id=case_id_uuid,
         scenario_id=case_item.scenario_id,
+        task_id=scenario.task_id,
         step_order=max_order,
         step_type=keyword.category
     )
