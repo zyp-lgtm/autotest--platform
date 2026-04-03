@@ -84,8 +84,14 @@ class TaskExecutor:
                 agent_id = list(available_agents.keys())[0]
                 logger.info(f"使用 Agent: {agent_id}")
 
+                # Agent 执行时默认显示浏览器（除非明确要求 headless）
+                agent_browser_config = browser_config.copy()
+                if "headless" not in agent_browser_config:
+                    agent_browser_config["headless"] = False
+                    logger.info("Agent 执行模式：显示浏览器")
+
                 # 转换任务为 Agent 格式并下发
-                result = await self._execute_via_agent(agent_id, task, browser_config)
+                result = await self._execute_via_agent(agent_id, task, agent_browser_config)
 
                 # 更新执行结果
                 execution.completed_at = datetime.now(timezone.utc)
