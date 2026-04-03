@@ -81,3 +81,71 @@ export interface ApiResponse<T> {
   detail?: string
   message?: string
 }
+
+// 执行记录类型
+export interface StepExecution {
+  id: string
+  step_id: string
+  step_name: string
+  step_order: number
+  keyword_name: string
+  category: string
+  status: string
+  result?: string
+  duration?: number
+  error_message?: string
+  screenshot_path?: string
+  logs: Array<{ timestamp: string; level: string; message: string }>
+  output?: any
+}
+
+export interface CaseExecution {
+  id: string
+  case_id: string
+  status: string
+  result?: string
+  duration?: number
+  total_steps: number
+  passed_steps: number
+  failed_steps: number
+  error_message?: string
+  step_executions: StepExecution[]
+}
+
+export interface ScenarioExecution {
+  id: string
+  scenario_id: string
+  status: string
+  result?: string
+  duration?: number
+  execution_order: number
+  total_cases: number
+  total_steps: number
+  passed_steps: number
+  failed_steps: number
+  case_executions: CaseExecution[]
+}
+
+export interface TestExecution {
+  id: string
+  task_id: string
+  project_id: string
+  user_id?: string
+  status: string
+  result?: string
+  started_at?: string
+  completed_at?: string
+  duration?: number
+
+  // 统计
+  total_scenarios: number
+  total_cases: number
+  total_steps: number
+  passed_steps: number
+  failed_steps: number
+  skipped_steps: number
+
+  error_message?: string
+  scenario_executions: ScenarioExecution[]
+  created_at: string
+}

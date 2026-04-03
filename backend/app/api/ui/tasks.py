@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 import uuid
 from ...models.ui_task import UITask
+from ...models.execution import TestExecution
 from ...schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from ...schemas.execution import ExecutionRequest, TestExecutionResponse
 from ...core.database import get_db
@@ -105,3 +106,33 @@ async def delete_ui_task(
     db.delete(task)
     db.commit()
     return {"message": "任务已删除"}
+
+
+@router.get("/{task_id}/executions", response_model=List[TestExecutionResponse])
+async def get_task_executions(
+    task_id: str,
+    limit: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db)
+):
+    """获取任务的执行记录"""
+    executions = db.query(TestExecution).filter(
+        TestExecution.task_id == uuid.UUID(task_id)
+    ).order_by(TestExecution.created_at.desc()).limit(limit).all()
+
+    return executions
+
+
+@router.get("/executions/{execution_id}", response_model=TestExecutionResponse)
+async def get_execution(
+    execution_id: str,
+    db: Session = Depends(get_db)
+):
+    """获取单个执行记录详情"""
+    execution = db.query(TestExecution).filter(
+        TestExecution.id == uuid.UUID(execution_id)
+    ).first()
+
+    if not execution:
+        raise HTTPException(status_code=404, detail="执行记录不存在")
+
+    return execution

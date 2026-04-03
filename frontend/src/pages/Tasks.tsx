@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useProject } from '../contexts/ProjectContext'
 import { tasksApi } from '../api/tasks'
 import type { UITask } from '../types'
+import type { TestExecution } from '../types'
 
 export default function Tasks() {
   const navigate = useNavigate()
@@ -11,6 +12,8 @@ export default function Tasks() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
+  const [executions, setExecutions] = useState<Record<string, TestExecution[]>>({})
+  const [showHistory, setShowHistory] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     loadTasks()
@@ -50,9 +53,49 @@ export default function Tasks() {
   const handleExecute = async (taskId: string) => {
     try {
       const result = await tasksApi.executeTask(taskId)
-      alert(`任务已提交执行，执行ID: ${result.execution_id}`)
+      // 执行成功后导航到报告页面
+      navigate(`/executions/${result.id}`)
     } catch (err: any) {
       alert('执行失败: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  const loadExecutions = async (taskId: string) => {
+    try {
+      const data = await tasksApi.getTaskExecutions(taskId, 5)
+      setExecutions(prev => ({ ...prev, [taskId]: data }))
+    } catch (err: any) {
+      console.error('加载执行历史失败:', err)
+    }
+  }
+
+  const toggleHistory = async (taskId: string) => {
+    const isShowing = showHistory[taskId]
+    setShowHistory(prev => ({ ...prev, [taskId]: !isShowing }))
+
+    // 如果首次展开，加载执行历史
+    if (!isShowing && !executions[taskId]) {
+      await loadExecutions(taskId)
+    }
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'text-green-600'
+      case 'running': return 'text-blue-600'
+      case 'failed': return 'text-red-600'
+      default: return 'text-gray-600'
+    }
+  }
+
+  const getResultBadge = (result?: string) => {
+    if (!result) return null
+    switch (result) {
+      case 'pass': return 'bg-green-100 text-green-700'
+      case 'fail': return 'bg-red-100 text-red-700'
+      case 'partial': return 'bg-orange-100 text-orange-700'
+      case 'error': return 'bg-red-100 text-red-700'
+      default: return 'bg-gray-100 text-gray-700'
     }
   }
 
@@ -178,6 +221,12 @@ export default function Tasks() {
                     执行
                   </button>
                   <button
+                    onClick={() => toggleHistory(task.id)}
+                    className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 transition"
+                  >
+                    {showHistory[task.id] ? '收起历史' : '查看历史'}
+                  </button>
+                  <button
                     onClick={() => navigate(`/tasks/${task.id}/edit`)}
                     className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition"
                   >
@@ -191,6 +240,50 @@ export default function Tasks() {
                   </button>
                 </div>
               </div>
+
+              {/* 执行历史 */}
+              {showHistory[task.id] && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">执行历史</h4>
+                  {!executions[task.id] ? (
+                    <div className="text-sm text-gray-500">加载中...</div>
+                  ) : executions[task.id].length === 0 ? (
+                    <div className="text-sm text-gray-500">暂无执行记录</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {executions[task.id].map((execution) => (
+                        <div
+                          key={execution.id}
+                          className="flex items-center justify-between bg-gray-50 rounded px-3 py-2 hover:bg-gray-100 transition cursor-pointer"
+                          onClick={() => navigate(`/executions/${execution.id}`)}
+                        >
+                          <div className="flex items-center gap-3 text-sm">
+                            <span className={getStatusColor(execution.status)}>
+                              {execution.status === 'completed' ? (execution.result || '完成') : execution.status}
+                            </span>
+                            <span className="text-gray-500">
+                              {execution.started_at ? new Date(execution.started_at).toLocaleString('zh-CN') : '-'}
+                            </span>
+                            <span className="text-gray-500">
+                              耗时: {execution.duration ? `${Math.floor(execution.duration / 60)}分${Math.floor(execution.duration % 60)}秒` : '-'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {execution.result && (
+                              <span className={`px-2 py-0.5 text-xs rounded ${getResultBadge(execution.result)}`}>
+                                {execution.result.toUpperCase()}
+                              </span>
+                            )}
+                            <span className="text-xs text-gray-500">
+                              通过: {execution.passed_steps} / 失败: {execution.failed_steps}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

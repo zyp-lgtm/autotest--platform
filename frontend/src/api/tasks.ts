@@ -26,8 +26,18 @@ export const tasksApi = {
     await apiClient.delete(`/v1/ui/tasks/${taskId}`)
   },
 
-  executeTask: async (taskId: string): Promise<{ execution_id: string; status: string }> => {
-    const response = await apiClient.post<{ execution_id: string; status: string }>(`/v1/ui/tasks/${taskId}/execute`, {})
+  executeTask: async (taskId: string): Promise<any> => {
+    const response = await apiClient.post(`/v1/ui/tasks/${taskId}/execute`, {})
+    return response.data
+  },
+
+  getTaskExecutions: async (taskId: string, limit: number = 10): Promise<any[]> => {
+    const response = await apiClient.get(`/v1/ui/tasks/${taskId}/executions?limit=${limit}`)
+    return response.data
+  },
+
+  getExecution: async (executionId: string): Promise<any> => {
+    const response = await apiClient.get(`/v1/ui/tasks/executions/${executionId}`)
     return response.data
   },
 }
