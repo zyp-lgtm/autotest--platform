@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { scenariosApi, Scenario, Case, Step } from '../api/scenarios'
 import { keywordsApi, Keyword } from '../api/keywords'
+import ScenarioForm from '../components/ScenarioForm'
+import CaseForm from '../components/CaseForm'
+import StepForm from '../components/StepForm'
+
+type ModalType = 'scenario' | 'case' | 'step' | null
 
 export default function Scenarios() {
   const { taskId } = useParams<{ taskId: string }>()
@@ -15,6 +20,14 @@ export default function Scenarios() {
   const [expandedScenarios, setExpandedScenarios] = useState<Record<string, boolean>>({})
   const [expandedCases, setExpandedCases] = useState<Record<string, boolean>>({})
 
+  // Modal state
+  const [modalType, setModalType] = useState<ModalType>(null)
+  const [modalScenarioId, setModalScenarioId] = useState<string | null>(null)
+  const [modalCaseId, setModalCaseId] = useState<string | null>(null)
+  const [editingScenario, setEditingScenario] = useState<Scenario | undefined>(undefined)
+  const [editingCase, setEditingCase] = useState<Case | undefined>(undefined)
+  const [editingStep, setEditingStep] = useState<Step | undefined>(undefined)
+
   useEffect(() => {
     loadData()
   }, [taskId])
@@ -26,11 +39,9 @@ export default function Scenarios() {
       setLoading(true)
       setError(null)
 
-      // 加载场景
       const scenariosData = await scenariosApi.getScenarios(taskId)
       setScenarios(scenariosData)
 
-      // 加载所有用例
       const casesData: Record<string, Case[]> = {}
       for (const scenario of scenariosData) {
         if (scenario.case_ids.length > 0) {
@@ -39,7 +50,6 @@ export default function Scenarios() {
       }
       setCases(casesData)
 
-      // 加载所有步骤
       const stepsData: Record<string, Step[]> = {}
       for (const [, caseList] of Object.entries(casesData)) {
         for (const caseItem of caseList) {
@@ -50,7 +60,6 @@ export default function Scenarios() {
       }
       setSteps(stepsData)
 
-      // 加载关键字映射
       const keywordsData = await keywordsApi.getKeywords()
       const kwMap: Record<string, Keyword> = {}
       for (const kw of keywordsData) {
@@ -72,10 +81,62 @@ export default function Scenarios() {
     setExpandedCases(prev => ({ ...prev, [caseId]: !prev[caseId] }))
   }
 
-  const handleDeleteScenario = async (scenarioId: string, scenarioName: string) => {
-    if (!confirm(`确定要删除场景 "${scenarioName}" 吗？`)) {
-      return
+  // 打开创建模态框
+  const openCreateScenario = () => {
+    setEditingScenario(undefined)
+    setModalType('scenario')
+  }
+
+  const openCreateCase = (scenarioId: string) => {
+    setModalScenarioId(scenarioId)
+    setEditingCase(undefined)
+    setModalType('case')
+  }
+
+  const openCreateStep = (caseId: string) => {
+    setModalCaseId(caseId)
+    setEditingStep(undefined)
+    setModalType('step')
+  }
+
+  // 关闭模态框
+  const closeModal = () => {
+    setModalType(null)
+    setModalScenarioId(null)
+    setModalCaseId(null)
+    setEditingScenario(undefined)
+    setEditingCase(undefined)
+    setEditingStep(undefined)
+  }
+
+  // 处理创建成功
+  const handleScenarioSuccess = (scenario: Scenario) => {
+    setScenarios(prev => [...prev, scenario])
+    closeModal()
+  }
+
+  const handleCaseSuccess = (testCase: Case) => {
+    if (modalScenarioId) {
+      setCases(prev => ({
+        ...prev,
+        [modalScenarioId]: [...(prev[modalScenarioId] || []), testCase]
+      }))
     }
+    closeModal()
+  }
+
+  const handleStepSuccess = (step: Step) => {
+    if (modalCaseId) {
+      setSteps(prev => ({
+        ...prev,
+        [modalCaseId]: [...(prev[modalCaseId] || []), step]
+      }))
+    }
+    closeModal()
+  }
+
+  const handleDeleteScenario = async (scenarioId: string, scenarioName: string) => {
+    if (!confirm(`确定要删除场景 "${scenarioName}" 吗？`)) return
 
     try {
       await scenariosApi.deleteScenario(scenarioId)
@@ -86,9 +147,7 @@ export default function Scenarios() {
   }
 
   const handleDeleteCase = async (caseId: string, caseName: string, scenarioId: string) => {
-    if (!confirm(`确定要删除用例 "${caseName}" 吗？`)) {
-      return
-    }
+    if (!confirm(`确定要删除用例 "${caseName}" 吗？`)) return
 
     try {
       await scenariosApi.deleteCase(caseId)
@@ -102,13 +161,10 @@ export default function Scenarios() {
   }
 
   const handleDeleteStep = async (stepId: string, stepName: string, caseId: string) => {
-    if (!confirm(`确定要删除步骤 "${stepName}" 吗？`)) {
-      return
-    }
+    if (!confirm(`确定要删除步骤 "${stepName}" 吗？`)) return
 
     try {
       await scenariosApi.deleteStep(stepId)
-      // 更新步骤列表
       for (const [cId, stepList] of Object.entries(steps)) {
         if (cId === caseId) {
           setSteps(prev => ({
@@ -160,23 +216,30 @@ export default function Scenarios() {
         </div>
         <div className="flex gap-2">
           <button
+            onClick={openCreateScenario}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            创建场景
+          </button>
+          <button
             onClick={() => navigate(-1)}
             className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
           >
             返回
           </button>
-          {/* <button
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            创建场景
-          </button> */}
         </div>
       </div>
 
       {/* 场景列表 */}
       {scenarios.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border border-dashed border-gray-300">
-          <p className="text-gray-500">暂无场景</p>
+          <p className="text-gray-500 mb-4">暂无场景</p>
+          <button
+            onClick={openCreateScenario}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            创建第一个场景
+          </button>
         </div>
       ) : (
         <div className="space-y-4">
@@ -203,6 +266,12 @@ export default function Scenarios() {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
+                    onClick={(e) => { e.stopPropagation(); openCreateCase(scenario.id) }}
+                    className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                  >
+                    添加用例
+                  </button>
+                  <button
                     onClick={(e) => {
                       e.stopPropagation()
                       handleDeleteScenario(scenario.id, scenario.name)
@@ -218,7 +287,15 @@ export default function Scenarios() {
               {expandedScenarios[scenario.id] && (
                 <div className="p-4 border-t border-gray-200 space-y-3">
                   {!cases[scenario.id] || cases[scenario.id].length === 0 ? (
-                    <div className="text-center text-gray-500 py-4">暂无用例</div>
+                    <div className="text-center text-gray-500 py-4">
+                      暂无用例
+                      <button
+                        onClick={() => openCreateCase(scenario.id)}
+                        className="ml-2 text-blue-600 hover:underline"
+                      >
+                        添加用例
+                      </button>
+                    </div>
                   ) : (
                     cases[scenario.id].map((caseItem) => (
                       <div key={caseItem.id} className="border border-gray-200 rounded-lg overflow-hidden">
@@ -244,6 +321,12 @@ export default function Scenarios() {
                               {caseItem.priority}
                             </span>
                             <button
+                              onClick={(e) => { e.stopPropagation(); openCreateStep(caseItem.id) }}
+                              className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                            >
+                              添加步骤
+                            </button>
+                            <button
                               onClick={(e) => {
                                 e.stopPropagation()
                                 handleDeleteCase(caseItem.id, caseItem.name, scenario.id)
@@ -259,7 +342,15 @@ export default function Scenarios() {
                         {expandedCases[caseItem.id] && (
                           <div className="p-3 bg-white space-y-2">
                             {!steps[caseItem.id] || steps[caseItem.id].length === 0 ? (
-                              <div className="text-center text-gray-500 py-2 text-sm">暂无步骤</div>
+                              <div className="text-center text-gray-500 py-2 text-sm">
+                                暂无步骤
+                                <button
+                                  onClick={() => openCreateStep(caseItem.id)}
+                                  className="ml-2 text-blue-600 hover:underline"
+                                >
+                                  添加步骤
+                                </button>
+                              </div>
                             ) : (
                               steps[caseItem.id].map((step) => {
                                 const keyword = keywords[step.keyword_id]
@@ -274,9 +365,7 @@ export default function Scenarios() {
                                       <span className="text-gray-400">{step.step_order + 1}.</span>
                                       <span className="font-medium">{step.step_name}</span>
                                       <span className="text-xs text-gray-500">({keyword?.name || step.keyword_id})</span>
-                                      {!step.enabled && (
-                                        <span className="text-xs text-gray-400">[禁用]</span>
-                                      )}
+                                      {!step.enabled && <span className="text-xs text-gray-400">[禁用]</span>}
                                     </div>
                                     <button
                                       onClick={() => handleDeleteStep(step.id, step.step_name, caseItem.id)}
@@ -297,6 +386,48 @@ export default function Scenarios() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 模态框 */}
+      {modalType && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-xl font-semibold mb-4">
+                {modalType === 'scenario' && '创建场景'}
+                {modalType === 'case' && '创建用例'}
+                {modalType === 'step' && '创建步骤'}
+              </h2>
+
+              {modalType === 'scenario' && taskId && (
+                <ScenarioForm
+                  taskId={taskId}
+                  scenario={editingScenario}
+                  onSuccess={handleScenarioSuccess}
+                  onCancel={closeModal}
+                />
+              )}
+
+              {modalType === 'case' && modalScenarioId && (
+                <CaseForm
+                  scenarioId={modalScenarioId}
+                  case={editingCase}
+                  onSuccess={handleCaseSuccess}
+                  onCancel={closeModal}
+                />
+              )}
+
+              {modalType === 'step' && modalCaseId && (
+                <StepForm
+                  caseId={modalCaseId}
+                  step={editingStep}
+                  onSuccess={handleStepSuccess}
+                  onCancel={closeModal}
+                />
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
