@@ -35,7 +35,7 @@ async def health_check():
 app.include_router(auth_router.router, prefix="/api/v1")
 
 # 项目相关的 API 路由
-app.include_router(data_router.router, prefix="/api/v1/projects/{project_id}")
+app.include_router(data_router.router, prefix="/api/v1")
 app.include_router(ui_tasks_router.router, prefix="/api/v1")
 app.include_router(ui_scenarios_router.router, prefix="/api/v1")
 app.include_router(ui_keywords_router.router, prefix="/api/v1")
