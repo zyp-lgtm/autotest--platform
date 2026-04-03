@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from .core.config import get_settings
 from .api.auth import auth as auth_router
@@ -6,6 +6,8 @@ from .api.data import data as data_router
 from .api.ui import tasks as ui_tasks_router
 from .api.ui import scenarios as ui_scenarios_router
 from .api.ui import keywords as ui_keywords_router
+from .api import agent
+from .api import agent_management as agent_management_router
 
 settings = get_settings()
 
@@ -31,6 +33,12 @@ async def health_check():
     return {"status": "healthy"}
 
 
+@app.websocket("/agent")
+async def agent_websocket(websocket: WebSocket):
+    """Agent WebSocket 连接端点"""
+    await agent.websocket_endpoint(websocket)
+
+
 # 认证路由
 app.include_router(auth_router.router, prefix="/api/v1")
 
@@ -39,3 +47,4 @@ app.include_router(data_router.router, prefix="/api/v1")
 app.include_router(ui_tasks_router.router, prefix="/api/v1")
 app.include_router(ui_scenarios_router.router, prefix="/api/v1")
 app.include_router(ui_keywords_router.router, prefix="/api/v1")
+app.include_router(agent_management_router.router, prefix="/api/v1")
