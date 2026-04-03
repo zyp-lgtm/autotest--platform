@@ -70,7 +70,10 @@ class TaskExecutor:
         self.current_execution = execution
 
         try:
-            # 3. 检查是否有可用的本地 Agent
+            # 3. 获取浏览器配置
+            browser_config = request.browser_config or {}
+
+            # 4. 检查是否有可用的本地 Agent
             available_agents = agent_manager.manager.get_all_agents()
 
             if available_agents and browser_config.get("use_agent", True):
@@ -107,9 +110,8 @@ class TaskExecutor:
 
                 return execution
 
-            # 4. 没有 Agent 或不使用 Agent，在容器内执行
+            # 5. 没有 Agent 或不使用 Agent，在容器内执行
             logger.info("在容器内执行任务")
-            browser_config = request.browser_config or {}
 
             # 自动尝试连接本地浏览器（如果未配置）
             # 优先级：1. 明确配置的 use_local/remote_url 2. 自动尝试本地浏览器 3. 容器内浏览器
