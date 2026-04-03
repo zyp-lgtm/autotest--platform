@@ -16,7 +16,11 @@ class Settings(BaseSettings):
     JWT_EXPIRATION: int = 86400
 
     # CORS
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+    BACKEND_CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:5173",  # Vite默认端口
+    ]
 
     class Config:
         env_file = ".env"
