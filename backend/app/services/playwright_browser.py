@@ -26,6 +26,8 @@ class PlaywrightBrowser:
                 - viewport: 视口大小（默认 {"width": 1920, "height": 1080}）
                 - user_agent: 用户代理字符串
                 - screenshot_dir: 截图保存目录
+                - remote_url: 远程浏览器URL（如 ws://localhost:9222）
+                - use_local: 使用本地浏览器（连接到 host.docker.internal）
         """
         self.config = config or {}
         self.headless = self.config.get("headless", True)
@@ -33,6 +35,8 @@ class PlaywrightBrowser:
         self.viewport = self.config.get("viewport", {"width": 1920, "height": 1080})
         self.user_agent = self.config.get("user_agent")
         self.screenshot_dir = self.config.get("screenshot_dir", "./screenshots")
+        self.remote_url = self.config.get("remote_url")
+        self.use_local = self.config.get("use_local", False)
 
         # 确保截图目录存在
         os.makedirs(self.screenshot_dir, exist_ok=True)
@@ -46,7 +50,7 @@ class PlaywrightBrowser:
         self._is_started = False
 
     async def start_browser(self) -> None:
-        """启动浏览器"""
+        """启动浏览器或连接到远程浏览器"""
         if self._is_started:
             logger.warning("浏览器已经启动")
             return
@@ -54,11 +58,29 @@ class PlaywrightBrowser:
         try:
             self.playwright = await async_playwright().start()
 
-            # 启动浏览器
-            self.browser = await self.playwright.chromium.launch(
-                headless=self.headless,
-                args=['--no-sandbox', '--disable-setuid-sandbox'] if not self.headless else []
-            )
+            # 支持连接到远程浏览器（本地或远程CDP）
+            if self.remote_url:
+                # 连接到远程浏览器
+                logger.info(f"连接到远程浏览器: {self.remote_url}")
+                self.browser = await self.playwright.chromium.connect(self.remote_url)
+            elif self.use_local:
+                # 连接到本地浏览器（Docker访问宿主机）
+                local_url = "ws://host.docker.internal:9222"
+                logger.info(f"连接到本地浏览器: {local_url}")
+                try:
+                    self.browser = await self.playwright.chromium.connect(local_url)
+                except Exception as e:
+                    logger.warning(f"无法连接到本地浏览器 ({e})，将启动容器内浏览器")
+                    self.browser = await self.playwright.chromium.launch(
+                        headless=self.headless,
+                        args=['--no-sandbox', '--disable-setuid-sandbox']
+                    )
+            else:
+                # 在容器内启动浏览器
+                self.browser = await self.playwright.chromium.launch(
+                    headless=self.headless,
+                    args=['--no-sandbox', '--disable-setuid-sandbox']
+                )
 
             # 创建浏览器上下文
             context_options = {

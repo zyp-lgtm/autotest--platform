@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Body
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 
 from ...models.ui_task import UITask
@@ -105,6 +105,7 @@ async def get_ui_task(
 @router.post("/{task_id}/execute")
 async def execute_ui_task(
     task_id: str,
+    browser_config: Optional[Dict[str, Any]] = Body(None),
     db: Session = Depends(get_db)
 ):
     """执行 UI 任务"""
@@ -118,11 +119,18 @@ async def execute_ui_task(
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
+    # 合并浏览器配置
+    final_browser_config = {"headless": True}
+    if browser_config:
+        final_browser_config.update(browser_config)
+    elif task.execution_config and "browser_config" in task.execution_config:
+        final_browser_config.update(task.execution_config["browser_config"])
+
     # 创建执行请求
     request = ExecutionRequest(
         task_id=task_id_uuid,
         execution_config=task.execution_config or {},
-        browser_config={"headless": True},
+        browser_config=final_browser_config,
         environment="production"
     )
 
