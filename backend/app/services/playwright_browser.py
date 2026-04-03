@@ -86,11 +86,21 @@ class PlaywrightBrowser:
                 try:
                     self.browser = await browser_engine.connect(local_url)
                 except Exception as e:
-                    logger.warning(f"无法连接到本地浏览器 ({e})，将启动容器内浏览器")
-                    self.browser = await browser_engine.launch(
-                        headless=self.headless,
-                        args=['--no-sandbox', '--disable-setuid-sandbox']
+                    # 本地浏览器连接失败，给出详细提示
+                    error_msg = (
+                        f"无法连接到本地浏览器: {e}\n"
+                        f"\n"
+                        f"请确保本地浏览器服务已启动：\n"
+                        f"  1. 在项目根目录运行: ./scripts/start-local-browser.sh\n"
+                        f"  2. 或手动启动: open -a 'Google Chrome' --args --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug\n"
+                        f"\n"
+                        f"检查状态: ./scripts/browser-daemon.sh status\n"
+                        f"停止服务: ./scripts/browser-daemon.sh stop\n"
                     )
+                    logger.error(error_msg)
+                    raise ConnectionError(
+                        "无法连接到本地浏览器。请确保已运行 ./scripts/start-local-browser.sh"
+                    ) from e
             else:
                 # 在容器内启动浏览器
                 launch_args = {
