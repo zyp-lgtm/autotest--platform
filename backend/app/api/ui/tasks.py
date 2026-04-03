@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from ...models.ui_task import UITask
-from ...schemas.task import TaskCreate, TaskResponse
+from ...schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from ...core.database import get_db
 
 router = APIRouter(prefix="/ui/tasks", tags=["UI任务"])
@@ -42,3 +42,37 @@ async def execute_ui_task(
 ):
     # TODO: 实现任务执行
     return {"execution_id": "exec_123", "status": "pending"}
+
+
+@router.put("/{task_id}", response_model=TaskResponse)
+async def update_ui_task(
+    task_id: str,
+    task_update: TaskUpdate,
+    db: Session = Depends(get_db)
+):
+    task = db.query(UITask).filter(UITask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    # 更新非空字段
+    update_data = task_update.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(task, field, value)
+
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+@router.delete("/{task_id}")
+async def delete_ui_task(
+    task_id: str,
+    db: Session = Depends(get_db)
+):
+    task = db.query(UITask).filter(UITask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    db.delete(task)
+    db.commit()
+    return {"message": "任务已删除"}

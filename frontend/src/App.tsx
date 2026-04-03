@@ -8,6 +8,8 @@ import { lazy, Suspense } from 'react'
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const LoginPage = lazy(() => import('./pages/Login'))
 const RegisterPage = lazy(() => import('./pages/Register'))
+const Tasks = lazy(() => import('./pages/Tasks'))
+const TaskForm = lazy(() => import('./components/TaskForm'))
 
 // 懒加载组件的加载指示器
 function LazyLoader() {
@@ -44,6 +46,9 @@ function App() {
                     <Layout>
                       <Routes>
                         <Route path="/" element={<Dashboard />} />
+                        <Route path="/tasks" element={<Tasks />} />
+                        <Route path="/tasks/new" element={<TaskForm mode="create" />} />
+                        <Route path="/tasks/:taskId/edit" element={<TaskForm mode="edit" />} />
                         {/* 未来添加更多路由 */}
                       </Routes>
                     </Layout>

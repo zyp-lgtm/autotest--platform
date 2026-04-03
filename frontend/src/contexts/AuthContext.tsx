@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const fetchCurrentUser = async (accessToken: string) => {
+  const fetchCurrentUser = async (_accessToken: string) => {
     try {
       const userData = await authApi.getCurrentUser()
       setUser(userData)

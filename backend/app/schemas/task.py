@@ -76,6 +76,13 @@ class TaskCreate(TaskBase):
     pass
 
 
+class TaskUpdate(TaskBase):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+    scenario_ids: Optional[List[uuid.UUID]] = None
+
+
 class TaskResponse(TaskBase):
     id: uuid.UUID
     scenario_ids: List[uuid.UUID] = []

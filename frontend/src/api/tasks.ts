@@ -16,4 +16,18 @@ export const tasksApi = {
     const response = await apiClient.post<UITask>(`/v1/ui/tasks/?project_id=${projectId}`, data)
     return response.data
   },
+
+  updateTask: async (taskId: string, data: Partial<UITask>): Promise<UITask> => {
+    const response = await apiClient.put<UITask>(`/v1/ui/tasks/${taskId}`, data)
+    return response.data
+  },
+
+  deleteTask: async (taskId: string): Promise<void> => {
+    await apiClient.delete(`/v1/ui/tasks/${taskId}`)
+  },
+
+  executeTask: async (taskId: string): Promise<{ execution_id: string; status: string }> => {
+    const response = await apiClient.post<{ execution_id: string; status: string }>(`/v1/ui/tasks/${taskId}/execute`, {})
+    return response.data
+  },
 }

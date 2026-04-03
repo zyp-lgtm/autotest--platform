@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { tasksApi } from '../api/tasks'
-import { dataApi } from '../api/data'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 
