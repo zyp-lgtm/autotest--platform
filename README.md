@@ -370,6 +370,16 @@ npm run preview
 - [x] 部署指南
 - [x] 手动测试报告
 
+#### Playwright UI 自动化（2026-04-03 新增）
+- [x] Playwright 浏览器管理器（异步 API）
+- [x] NAVIGATE 关键字（导航到 URL）
+- [x] CLICK 关键字（点击元素）
+- [x] INPUT 关键字（输入文本）
+- [x] WAIT_FOR_ELEMENT 关键字（等待元素）
+- [x] SCREENSHOT 功能（截图保存）
+- [x] 完整错误处理和日志
+- [x] 测试脚本（test_ui_keywords.py）
+
 ### 🎯 验证通过的功能
 
 #### 用户认证
