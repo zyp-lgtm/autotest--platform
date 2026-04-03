@@ -70,7 +70,28 @@ class TaskExecutor:
 
         try:
             # 3. 初始化浏览器
-            self.browser_manager = PlaywrightBrowser(config=request.browser_config or {})
+            browser_config = request.browser_config or {}
+
+            # 自动尝试连接本地浏览器（如果未配置）
+            # 优先级：1. 明确配置的 use_local/remote_url 2. 自动尝试本地浏览器 3. 容器内浏览器
+            if not browser_config.get("use_local") and not browser_config.get("remote_url"):
+                # 尝试自动检测并连接本地浏览器
+                logger.info("尝试自动连接本地浏览器...")
+                try:
+                    test_browser = PlaywrightBrowser(config={"use_local": True, "headless": browser_config.get("headless", False)})
+                    await test_browser.start_browser()
+                    # 如果成功，使用这个配置
+                    browser_config["use_local"] = True
+                    browser_config["headless"] = browser_config.get("headless", False)
+                    await test_browser.close()
+                    logger.info("✓ 检测到本地浏览器可用，将使用本地浏览器")
+                except Exception as e:
+                    logger.info(f"本地浏览器不可用 ({e})，将使用容器内浏览器")
+                    # 本地浏览器不可用，使用容器内浏览器
+                    browser_config["use_local"] = False
+                    browser_config["headless"] = browser_config.get("headless", True)
+
+            self.browser_manager = PlaywrightBrowser(config=browser_config)
             await self.browser_manager.start_browser()
             self.keyword_engine = KeywordEngine(browser_manager=self.browser_manager)
 
