@@ -193,16 +193,12 @@ class KeywordEngine:
         try:
             page = await self.browser_manager.get_page()
 
-            # 等待元素可点击
-            element = await page.wait_for_selector(
-                selector,
-                state="visible",
-                timeout=timeout
-            )
+            # 设置超时
+            page.set_default_timeout(timeout)
 
-            # 点击元素
+            # 点击元素（Playwright 自动等待）
             for _ in range(click_count):
-                await element.click(force=force)
+                await page.click(selector, force=force)
 
             logger.info(f"点击成功: {selector}")
 
@@ -211,12 +207,6 @@ class KeywordEngine:
                 "message": f"已点击元素: {selector}"
             }
 
-        except PlaywrightTimeoutError:
-            return {
-                "success": False,
-                "error": f"元素未找到或不可见: {selector}",
-                "timeout": timeout
-            }
         except Exception as e:
             return {
                 "success": False,
@@ -236,16 +226,27 @@ class KeywordEngine:
         try:
             page = await self.browser_manager.get_page()
 
-            # 等待输入框可见
-            await page.wait_for_selector(selector, state="visible", timeout=timeout)
+            # 使用 type() 方法模拟真实用户输入
+            # 设置超时
+            page.set_default_timeout(timeout)
 
-            # 清空现有内容
+            # 点击输入框激活它
+            try:
+                await page.click(selector, timeout=2000)
+            except:
+                pass  # 忽略点击失败
+
+            # 清空（如果需要）
             if clear_first:
-                await page.fill(selector, "")
-                logger.debug(f"已清空输入框: {selector}")
+                try:
+                    # 使用 Ctrl+A 选择全部，然后删除
+                    await page.press(selector, "Control+A")
+                    await page.press(selector, "Backspace")
+                except:
+                    pass  # 忽略清空失败
 
-            # 输入文本
-            await page.fill(selector, text)
+            # 输入文本（逐字符输入，模拟真实用户）
+            await page.type(selector, text, delay=50)
 
             logger.info(f"输入成功: {selector} = '{text}'")
 
@@ -254,12 +255,6 @@ class KeywordEngine:
                 "message": f"已输入文本到 {selector}"
             }
 
-        except PlaywrightTimeoutError:
-            return {
-                "success": False,
-                "error": f"输入框未找到: {selector}",
-                "timeout": timeout
-            }
         except Exception as e:
             return {
                 "success": False,
@@ -278,6 +273,7 @@ class KeywordEngine:
         try:
             page = await self.browser_manager.get_page()
 
+            # 使用 Playwright 的 wait_for_selector
             await page.wait_for_selector(
                 selector,
                 state=state,
