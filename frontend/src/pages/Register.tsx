@@ -50,6 +50,7 @@ function RegisterPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
+              name="username"
               label="用户名"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -57,6 +58,7 @@ function RegisterPage() {
             />
 
             <Input
+              name="email"
               label="邮箱"
               type="email"
               value={email}
@@ -65,6 +67,7 @@ function RegisterPage() {
             />
 
             <Input
+              name="password"
               label="密码"
               type="password"
               value={password}
@@ -73,6 +76,7 @@ function RegisterPage() {
             />
 
             <Input
+              name="confirmPassword"
               label="确认密码"
               type="password"
               value={confirmPassword}

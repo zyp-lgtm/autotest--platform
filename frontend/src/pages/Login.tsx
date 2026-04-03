@@ -43,6 +43,7 @@ function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <Input
+              name="username"
               label="用户名"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -50,6 +51,7 @@ function LoginPage() {
             />
 
             <Input
+              name="password"
               label="密码"
               type="password"
               value={password}
