@@ -83,36 +83,50 @@ async def websocket_endpoint(websocket: WebSocket):
     agent_id = None
 
     try:
-        async for message in websocket:
-            data = json.loads(message)
+        # 持续监听消息
+        while True:
+            message = await websocket.receive()
 
-            if data.get("type") == "register":
-                # 注册 Agent
-                agent_id = data.get("agent_id") or str(uuid.uuid4())
-                manager.register_agent(agent_id, data.get("capabilities", {}))
-                manager.active_connections[agent_id] = websocket
+            # 处理文本消息
+            if "text" in message:
+                try:
+                    data = json.loads(message["text"])
 
-                # 发送确认
-                await websocket.send_json({
-                    "type": "registered",
-                    "agent_id": agent_id,
-                    "message": "Agent 已注册"
-                })
+                    if data.get("type") == "register":
+                        # 注册 Agent
+                        agent_id = data.get("agent_id") or str(uuid.uuid4())
+                        manager.register_agent(agent_id, data.get("capabilities", {}))
+                        manager.active_connections[agent_id] = websocket
 
-                logger.info(f"Agent 已注册: {agent_id}")
+                        # 发送确认
+                        await websocket.send_json({
+                            "type": "registered",
+                            "agent_id": agent_id,
+                            "message": "Agent 已注册"
+                        })
 
-            elif data.get("type") == "task_result":
-                # 接收任务结果
-                task_id = data.get("task_id")
-                result = data.get("result")
-                logger.info(f"收到任务结果: {task_id} - {result}")
+                        logger.info(f"Agent 已注册: {agent_id}")
 
-                # TODO: 保存到数据库
-                # 这里可以更新执行记录的状态
+                    elif data.get("type") == "task_result":
+                        # 接收任务结果
+                        task_id = data.get("task_id")
+                        result = data.get("result")
+                        logger.info(f"收到任务结果: {task_id} - {result}")
 
-            elif data.get("type") == "pong":
-                # 心跳响应
-                pass
+                        # TODO: 保存到数据库
+
+                    elif data.get("type") == "pong":
+                        # 心跳响应
+                        pass
+
+                except json.JSONDecodeError:
+                    logger.error(f"无效的 JSON 消息: {message}")
+                except Exception as e:
+                    logger.error(f"处理消息错误: {e}")
+
+            # 处理 WebSocket 关闭
+            elif message.get("type") == "websocket.disconnect":
+                break
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket 断开: {agent_id}")
