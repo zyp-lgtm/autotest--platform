@@ -5,6 +5,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import json
 
 from ...models.keyword import Keyword
 from ...core.database import get_db
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/ui/keywords", tags=["UI关键字"])
 @router.get("/", response_model=List[dict])
 async def list_keywords(
     category: Optional[str] = Query(None, description="按类别过滤"),
-    enabled_only: bool = Query(True, description="仅显示启用的关键字"),
+    enabled_only: bool = Query(False, description="仅显示有效的关键字"),
     db: Session = Depends(get_db)
 ):
     """获取关键字列表"""
@@ -25,7 +26,7 @@ async def list_keywords(
         query = query.filter(Keyword.category == category)
 
     if enabled_only:
-        query = query.filter(Keyword.enabled == True)
+        query = query.filter(Keyword.is_valid == True)
 
     keywords = query.order_by(Keyword.category, Keyword.name).all()
 
@@ -37,9 +38,9 @@ async def list_keywords(
             "name": kw.name,
             "category": kw.category,
             "description": kw.description,
-            "parameter_schema": kw.parameter_schema,
-            "enabled": kw.enabled,
-            "examples": kw.examples or []
+            "parameter_schema": dict(kw.parameter_schema) if kw.parameter_schema else {},
+            "enabled": kw.is_valid,
+            "examples": []  # TODO: 从其他来源获取示例
         })
 
     return result
@@ -64,7 +65,7 @@ async def get_keyword(keyword_id: str, db: Session = Depends(get_db)):
         "name": keyword.name,
         "category": keyword.category,
         "description": keyword.description,
-        "parameter_schema": keyword.parameter_schema,
-        "enabled": keyword.enabled,
-        "examples": keyword.examples or []
+        "parameter_schema": dict(keyword.parameter_schema) if keyword.parameter_schema else {},
+        "enabled": keyword.is_valid,
+        "examples": []
     }
