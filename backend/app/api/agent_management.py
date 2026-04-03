@@ -11,7 +11,7 @@ from ..api import agent
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/agents", tags=["agents"])
+router = APIRouter(prefix="/agents", tags=["agents"])
 
 
 class TaskRequest(BaseModel):
