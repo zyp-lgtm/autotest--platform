@@ -114,7 +114,9 @@ class KeywordEngine:
             }
 
         try:
-            if keyword_name == "NAVIGATE":
+            if keyword_name == "打开浏览器":
+                return await self._open_browser(parameters)
+            elif keyword_name == "NAVIGATE":
                 return await self._navigate(parameters)
             elif keyword_name == "CLICK":
                 return await self._click(parameters)
@@ -148,6 +150,61 @@ class KeywordEngine:
             }
 
     # ========== UI 关键字实现 ==========
+
+    async def _open_browser(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """打开浏览器或切换浏览器类型"""
+        browser_type = params.get("browser_type", "chromium")
+        headless = params.get("headless", True)
+
+        # 验证浏览器类型
+        valid_types = ["chromium", "firefox", "webkit"]
+        if browser_type not in valid_types:
+            return {
+                "success": False,
+                "error": f"无效的浏览器类型: {browser_type}，支持的类型: {', '.join(valid_types)}"
+            }
+
+        try:
+            # 如果浏览器已启动，检查是否需要切换
+            if self.browser_manager.is_started():
+                current_type = self.browser_manager.browser_type
+                current_headless = self.browser_manager.headless
+
+                # 如果配置相同，无需重启
+                if current_type == browser_type and current_headless == headless:
+                    logger.info(f"浏览器已运行: {browser_type} (headless={headless})")
+                    return {
+                        "success": True,
+                        "message": f"浏览器已在运行: {browser_type}",
+                        "browser_type": browser_type,
+                        "headless": headless
+                    }
+
+                # 配置不同，重启浏览器
+                logger.info(f"切换浏览器: {current_type} -> {browser_type}")
+                await self.browser_manager.restart_with_config({
+                    "browser_type": browser_type,
+                    "headless": headless
+                })
+            else:
+                # 浏览器未启动，启动新浏览器
+                await self.browser_manager.start_browser()
+
+            logger.info(f"浏览器已启动: {browser_type} (headless={headless})")
+
+            return {
+                "success": True,
+                "message": f"已启动浏览器: {browser_type}",
+                "browser_type": browser_type,
+                "headless": headless
+            }
+
+        except Exception as e:
+            logger.error(f"打开浏览器失败: {e}")
+            return {
+                "success": False,
+                "error": f"打开浏览器失败: {str(e)}"
+            }
 
     async def _navigate(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """导航到指定 URL"""

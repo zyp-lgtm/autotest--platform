@@ -21,6 +21,7 @@ class PlaywrightBrowser:
 
         Args:
             config: 浏览器配置
+                - browser_type: 浏览器类型（chromium/firefox/webkit，默认 chromium）
                 - headless: 是否无头模式（默认 True）
                 - timeout: 默认超时时间（毫秒，默认 30000）
                 - viewport: 视口大小（默认 {"width": 1920, "height": 1080}）
@@ -30,6 +31,7 @@ class PlaywrightBrowser:
                 - use_local: 使用本地浏览器（连接到 host.docker.internal）
         """
         self.config = config or {}
+        self.browser_type = self.config.get("browser_type", "chromium")
         self.headless = self.config.get("headless", True)
         self.timeout = self.config.get("timeout", 30000)
         self.viewport = self.config.get("viewport", {"width": 1920, "height": 1080})
@@ -58,29 +60,49 @@ class PlaywrightBrowser:
         try:
             self.playwright = await async_playwright().start()
 
+            # 获取浏览器对象（根据 browser_type）
+            browser_map = {
+                "chromium": self.playwright.chromium,
+                "firefox": self.playwright.firefox,
+                "webkit": self.playwright.webkit
+            }
+            browser_engine = browser_map.get(self.browser_type, self.playwright.chromium)
+
             # 支持连接到远程浏览器（本地或远程CDP）
             if self.remote_url:
-                # 连接到远程浏览器
+                # 连接到远程浏览器（仅支持 Chromium）
+                if self.browser_type != "chromium":
+                    logger.warning(f"远程连接仅支持 Chromium，当前类型: {self.browser_type}")
+                    browser_engine = self.playwright.chromium
                 logger.info(f"连接到远程浏览器: {self.remote_url}")
-                self.browser = await self.playwright.chromium.connect(self.remote_url)
+                self.browser = await browser_engine.connect(self.remote_url)
             elif self.use_local:
-                # 连接到本地浏览器（Docker访问宿主机）
+                # 连接到本地浏览器（Docker访问宿主机，仅支持 Chromium）
+                if self.browser_type != "chromium":
+                    logger.warning(f"本地连接仅支持 Chromium，当前类型: {self.browser_type}")
+                    browser_engine = self.playwright.chromium
                 local_url = "ws://host.docker.internal:9222"
                 logger.info(f"连接到本地浏览器: {local_url}")
                 try:
-                    self.browser = await self.playwright.chromium.connect(local_url)
+                    self.browser = await browser_engine.connect(local_url)
                 except Exception as e:
                     logger.warning(f"无法连接到本地浏览器 ({e})，将启动容器内浏览器")
-                    self.browser = await self.playwright.chromium.launch(
+                    self.browser = await browser_engine.launch(
                         headless=self.headless,
                         args=['--no-sandbox', '--disable-setuid-sandbox']
                     )
             else:
                 # 在容器内启动浏览器
-                self.browser = await self.playwright.chromium.launch(
-                    headless=self.headless,
-                    args=['--no-sandbox', '--disable-setuid-sandbox']
-                )
+                launch_args = {
+                    "headless": self.headless
+                }
+
+                # Firefox 和 Webkit 不支持 --no-sandbox 参数
+                if self.browser_type == "chromium":
+                    launch_args["args"] = ['--no-sandbox', '--disable-setuid-sandbox']
+
+                logger.info(f"启动 {self.browser_type} 浏览器 (headless={self.headless})")
+                self.browser = await browser_engine.launch(**launch_args)
 
             # 创建浏览器上下文
             context_options = {
@@ -212,6 +234,39 @@ class PlaywrightBrowser:
 
         except Exception as e:
             logger.error(f"关闭浏览器时出错: {e}")
+
+    async def restart_with_config(self, config: Dict[str, Any]) -> None:
+        """
+        使用新配置重启浏览器
+
+        Args:
+            config: 新的浏览器配置
+        """
+        # 如果浏览器已启动，先关闭
+        if self._is_started:
+            await self.close()
+
+        # 更新配置
+        self.config.update(config)
+        if "browser_type" in config:
+            self.browser_type = config["browser_type"]
+        if "headless" in config:
+            self.headless = config["headless"]
+        if "viewport" in config:
+            self.viewport = config["viewport"]
+        if "user_agent" in config:
+            self.user_agent = config["user_agent"]
+        if "timeout" in config:
+            self.timeout = config["timeout"]
+        if "screenshot_dir" in config:
+            self.screenshot_dir = config["screenshot_dir"]
+        if "remote_url" in config:
+            self.remote_url = config["remote_url"]
+        if "use_local" in config:
+            self.use_local = config["use_local"]
+
+        # 重新启动浏览器
+        await self.start_browser()
 
     def is_started(self) -> bool:
         """检查浏览器是否已启动"""
