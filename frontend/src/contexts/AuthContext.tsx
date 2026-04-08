@@ -20,11 +20,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 初始化：从 localStorage 读取 token
   useEffect(() => {
-    const storedToken = localStorage.getItem('access_token')
-    if (storedToken) {
-      setToken(storedToken)
-      fetchCurrentUser(storedToken)
-    } else {
+    console.log('[AuthContext] 初始化开始')
+    try {
+      const storedToken = localStorage.getItem('access_token')
+      console.log('[AuthContext] 存储的 token:', storedToken ? '存在' : '不存在')
+      if (storedToken) {
+        setToken(storedToken)
+        fetchCurrentUser(storedToken)
+      } else {
+        console.log('[AuthContext] 无 token，设置 loading=false')
+        setLoading(false)
+      }
+    } catch (error) {
+      console.error('[AuthContext] 初始化失败:', error)
       setLoading(false)
     }
   }, [])

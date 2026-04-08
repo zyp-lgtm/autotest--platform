@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>React 测试</title>
+    <script type="module">
+        import React from 'react';
+        import ReactDOM from 'react-dom/client';
+
+        console.log('React 版本:', React.version);
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement('div', null, 'React 测试成功！'));
+
+        console.log('✓ React 渲染完成');
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+    <p>如果看到 "React 测试成功！"，说明 React 工作正常。</p>
+</body>
+</html>

@@ -34,12 +34,25 @@ async def list_keywords(
     # 转换为字典格式
     result = []
     for kw in keywords:
+        # 处理 parameter_schema: 可能是字符串（SQLite）或字典（PostgreSQL）
+        param_schema = kw.parameter_schema
+        if param_schema:
+            if isinstance(param_schema, str):
+                try:
+                    param_schema = json.loads(param_schema)
+                except json.JSONDecodeError:
+                    param_schema = {}
+            elif not isinstance(param_schema, dict):
+                param_schema = dict(param_schema) if param_schema else {}
+        else:
+            param_schema = {}
+
         result.append({
             "id": str(kw.id),
             "name": kw.name,
             "category": kw.category,
             "description": kw.description,
-            "parameter_schema": dict(kw.parameter_schema) if kw.parameter_schema else {},
+            "parameter_schema": param_schema,
             "enabled": kw.is_valid,
             "examples": []  # TODO: 从其他来源获取示例
         })
@@ -66,12 +79,25 @@ async def get_keyword(keyword_id: str, db: Session = Depends(get_db)):
     if not keyword:
         raise HTTPException(status_code=404, detail="关键字不存在")
 
+    # 处理 parameter_schema: 可能是字符串（SQLite）或字典（PostgreSQL）
+    param_schema = keyword.parameter_schema
+    if param_schema:
+        if isinstance(param_schema, str):
+            try:
+                param_schema = json.loads(param_schema)
+            except json.JSONDecodeError:
+                param_schema = {}
+        elif not isinstance(param_schema, dict):
+            param_schema = dict(param_schema) if param_schema else {}
+    else:
+        param_schema = {}
+
     return {
         "id": str(keyword.id),
         "name": keyword.name,
         "category": keyword.category,
         "description": keyword.description,
-        "parameter_schema": dict(keyword.parameter_schema) if keyword.parameter_schema else {},
+        "parameter_schema": param_schema,
         "enabled": keyword.is_valid,
         "examples": []
     }

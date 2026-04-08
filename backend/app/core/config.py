@@ -1,11 +1,15 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 from typing import List
+import os
 
 
 class Settings(BaseSettings):
-    # 数据库
-    DATABASE_URL: str = "postgresql://admin:admin123@localhost:5432/test_platform"
+    # 数据库 - 开发环境使用SQLite
+    if os.getenv("USE_POSTGRES") == "true":
+        DATABASE_URL: str = "postgresql://admin:admin123@localhost:5432/test_platform"
+    else:
+        DATABASE_URL: str = "sqlite:///./test_platform.db"
 
     # Redis
     REDIS_URL: str = "redis://:redis123@localhost:6379/0"

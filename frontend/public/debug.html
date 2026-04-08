@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前端调试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 前端调试工具</h1>
+
+    <div class="section">
+        <h2>1. React 和相关库检查</h2>
+        <div id="react-check">检查中...</div>
+    </div>
+
+    <div class="section">
+        <h2>2. API 连接测试</h2>
+        <button onclick="testAPI()">测试 API 连接</button>
+        <div id="api-result"></div>
+    </div>
+
+    <div class="section">
+        <h2>3. 浏览器控制台</h2>
+        <div class="info">
+            <strong>请按 F12 打开开发者工具，查看 Console 标签页</strong>
+            <ul>
+                <li>查看是否有 JavaScript 错误</li>
+                <li>查看是否有 React 相关错误</li>
+                <li>查看网络请求是否成功</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>4. 本地存储检查</h2>
+        <button onclick="checkStorage()">检查存储</button>
+        <div id="storage-result"></div>
+    </div>
+
+    <script type="module">
+        // React 检查
+        import React from 'react';
+        import ReactDOM from 'react-dom/client';
+
+        document.getElementById('react-check').innerHTML = `
+            <span class="success">✓ React 已加载</span><br>
+            版本: ${React.version || '未知'}
+        `;
+
+        // API 测试
+        window.testAPI = async function() {
+            const resultDiv = document.getElementById('api-result');
+            resultDiv.innerHTML = '测试中...';
+
+            try {
+                // 测试健康检查
+                const response = await fetch('/api/v1/health');
+                const data = await response.json();
+
+                resultDiv.innerHTML = `
+                    <span class="success">✓ API 连接成功</span>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <span class="error">✗ API 连接失败</span>
+                    <pre>${error.message}</pre>
+                `;
+            }
+        };
+
+        // 存储检查
+        window.checkStorage = function() {
+            const resultDiv = document.getElementById('storage-result');
+            const token = localStorage.getItem('access_token');
+
+            resultDiv.innerHTML = `
+                <strong>access_token:</strong> ${token ? '存在 (' + token.substring(0, 20) + '...)' : '不存在'}
+            `;
+        };
+
+        // 自动运行测试
+        testAPI();
+        checkStorage();
+
+        // 监听全局错误
+        window.addEventListener('error', (e) => {
+            console.error('[全局错误]', e.message, e.filename, e.lineno);
+        });
+
+        // 监听未处理的 Promise 错误
+        window.addEventListener('unhandledrejection', (e) => {
+            console.error('[Promise 错误]', e.reason);
+        });
+
+        console.log('[调试] 页面已加载');
+        console.log('[调试] React 版本:', React.version);
+    </script>
+</body>
+</html>

@@ -11,7 +11,7 @@ class Keyword(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), unique=True, nullable=False, index=True)
-    keyword_type = Column(Enum("system", "business", name="keyword_types"), nullable=False)
+    keyword_type = Column(Enum("system", "action", "assertion", "extraction", "business", name="keyword_types"), nullable=False)
     category = Column(Enum("api", "ui", "assertion", "extract", "data", name="keyword_categories"), nullable=False)
     description = Column(Text)
     icon = Column(String(50))

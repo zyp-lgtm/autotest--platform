@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, UUID, ARRAY, Integer, Boolean, JSON
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, UUID, Integer, Boolean, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -13,11 +13,11 @@ class APITask(Base):
     name = Column(String(200), nullable=False)
     description = Column(Text)
     task_type = Column(String(10), default="api")
-    scenario_ids = Column(ARRAY(UUID), default=[])
+    scenario_ids = Column(JSON, default=[])
 
     execution_config = Column(JSON, default={})
     report_config = Column(JSON, default={})
-    tags = Column(ARRAY(String), default=[])
+    tags = Column(JSON, default=list)
 
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -36,9 +36,9 @@ class APIScenario(Base):
     name = Column(String(200), nullable=False)
     description = Column(Text)
     scenario_type = Column(String(10), default="api")
-    case_ids = Column(ARRAY(UUID), default=[])
+    case_ids = Column(JSON, default=[])
     execution_order = Column(Integer, default=0)
-    tags = Column(ARRAY(String), default=[])
+    tags = Column(JSON, default=list)
 
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -58,10 +58,10 @@ class APICase(Base):
     name = Column(String(200), nullable=False)
     description = Column(Text)
     case_type = Column(String(10), default="api")
-    step_ids = Column(ARRAY(UUID), default=[])
+    step_ids = Column(JSON, default=[])
 
     data_bindings = Column(JSON, default={})
-    tags = Column(ARRAY(String), default=[])
+    tags = Column(JSON, default=list)
     priority = Column(String(10), default="P2")
 
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))

@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth'
 import { tasksApi } from '../api/tasks'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
+import { HealthPanel } from '../components/HealthPanel'
 
 interface DashboardStats {
   totalTasks: number
@@ -89,6 +90,9 @@ function Dashboard() {
           <p className="text-sm text-gray-500 mt-2">测试用例</p>
         </Card>
       </div>
+
+      {/* 健康状态面板 */}
+      <HealthPanel />
 
       <Card className="p-6">
         <h2 className="text-xl font-bold mb-4">快捷操作</h2>

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, Boolean, DateTime, ForeignKey, Enum, ARRAY
+from sqlalchemy import Column, String, Text, Boolean, DateTime, ForeignKey, Enum, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -15,7 +15,7 @@ class TestData(Base):
     data_value = Column(Text, nullable=False)
     data_type = Column(Enum("string", "number", "boolean", "json", name="data_types"), default="string")
     description = Column(Text)
-    tags = Column(ARRAY(String), default=[])
+    tags = Column(JSON, default=list)  # SQLite兼容：使用JSON类型替代ARRAY
     is_sensitive = Column(Boolean, default=False)
 
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))

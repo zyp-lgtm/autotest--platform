@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ProjectProvider } from './contexts/ProjectContext'
 import { Layout } from './components/layout/Layout'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { lazy, Suspense } from 'react'
 
 // 懒加载页面组件
@@ -34,36 +35,38 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <AuthProvider>
-      <ProjectProvider>
-        <BrowserRouter>
-          <Suspense fallback={<LazyLoader />}>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route
-                path="/*"
-                element={
-                  <ProtectedRoute>
-                    <Layout>
-                      <Routes>
-                        <Route path="/" element={<Dashboard />} />
-                        <Route path="/tasks" element={<Tasks />} />
-                        <Route path="/tasks/new" element={<TaskForm mode="create" />} />
-                        <Route path="/tasks/:taskId/edit" element={<TaskForm mode="edit" />} />
-                        <Route path="/tasks/:taskId/scenarios" element={<Scenarios />} />
-                        <Route path="/executions/:executionId" element={<ExecutionReportPage />} />
-                        {/* 未来添加更多路由 */}
-                      </Routes>
-                    </Layout>
-                  </ProtectedRoute>
-                }
-              />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
-      </ProjectProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ProjectProvider>
+          <BrowserRouter>
+            <Suspense fallback={<LazyLoader />}>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                <Route
+                  path="/*"
+                  element={
+                    <ProtectedRoute>
+                      <Layout>
+                        <Routes>
+                          <Route path="/" element={<Dashboard />} />
+                          <Route path="/tasks" element={<Tasks />} />
+                          <Route path="/tasks/new" element={<TaskForm mode="create" />} />
+                          <Route path="/tasks/:taskId/edit" element={<TaskForm mode="edit" />} />
+                          <Route path="/tasks/:taskId/scenarios" element={<Scenarios />} />
+                          <Route path="/executions/:executionId" element={<ExecutionReportPage />} />
+                          {/* 未来添加更多路由 */}
+                        </Routes>
+                      </Layout>
+                    </ProtectedRoute>
+                  }
+                />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+        </ProjectProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }
 

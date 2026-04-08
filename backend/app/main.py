@@ -9,6 +9,8 @@ from .api.ui import scenarios as ui_scenarios_router
 from .api.ui import keywords as ui_keywords_router
 from .api import agent
 from .api import agent_management as agent_management_router
+from .api import health as health_router
+from .api import services as services_router
 
 # Configure logging
 logging.basicConfig(
@@ -56,3 +58,9 @@ app.include_router(ui_tasks_router.router, prefix="/api/v1")
 app.include_router(ui_scenarios_router.router, prefix="/api/v1")
 app.include_router(ui_keywords_router.router, prefix="/api/v1")
 app.include_router(agent_management_router.router, prefix="/api/v1")
+
+# 健康检查路由
+app.include_router(health_router.router, prefix="/api/v1", tags=["health"])
+
+# 服务管理路由
+app.include_router(services_router.router, prefix="/api/v1", tags=["services"])

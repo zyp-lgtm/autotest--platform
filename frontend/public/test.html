@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前端诊断测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-card {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .test-result {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #logs {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 前端诊断工具</h1>
+
+    <div class="test-card">
+        <div class="test-title">1. 连接测试</div>
+        <button onclick="testConnections()">测试所有连接</button>
+        <div id="connection-results"></div>
+    </div>
+
+    <div class="test-card">
+        <div class="test-title">2. 前端应用测试</div>
+        <button onclick="testReactApp()">测试 React 应用</button>
+        <div id="react-results"></div>
+    </div>
+
+    <div class="test-card">
+        <div class="test-title">3. 浏览器控制台</div>
+        <div class="info">
+            <strong>请按 F12 打开开发者工具，然后：</strong>
+            <ul>
+                <li>查看 Console 标签页，复制任何红色错误信息</li>
+                <li>查看 Network 标签页，确认哪些请求失败了</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-card">
+        <div class="test-title">4. 操作日志</div>
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        const logs = document.getElementById('logs');
+
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `test-result ${type}`;
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logs.appendChild(logEntry);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        async function testConnections() {
+            const results = document.getElementById('connection-results');
+            results.innerHTML = '';
+
+            // 测试前端服务器
+            addLog('测试前端服务器...');
+            results.innerHTML += '<div class="test-result success">✓ 前端服务器正在运行（您能看到此页面）</div>';
+
+            // 测试后端健康检查
+            try {
+                addLog('测试后端 API 健康检查...');
+                const response = await fetch('http://localhost:8000/health');
+                const data = await response.json();
+                results.innerHTML += `<div class="test-result success">✓ 后端健康检查: ${data.status}</div>`;
+                addLog('后端健康检查通过', 'success');
+            } catch (e) {
+                results.innerHTML += `<div class="test-result error">✗ 后端连接失败: ${e.message}</div>`;
+                addLog(`后端连接失败: ${e.message}`, 'error');
+            }
+
+            // 测试登录 API
+            try {
+                addLog('测试登录 API...');
+                const loginResponse = await fetch('http://localhost:8000/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: 'username=demo&password=demo123'
+                });
+                if (loginResponse.ok) {
+                    results.innerHTML += '<div class="test-result success">✓ 登录 API 可用</div>';
+                    addLog('登录 API 测试通过', 'success');
+                } else {
+                    results.innerHTML += `<div class="test-result error">✗ 登录失败: ${loginResponse.status}</div>`;
+                    addLog(`登录返回状态: ${loginResponse.status}`, 'error');
+                }
+            } catch (e) {
+                results.innerHTML += `<div class="test-result error">✗ 登录 API 错误: ${e.message}</div>`;
+                addLog(`登录 API 错误: ${e.message}`, 'error');
+            }
+        }
+
+        async function testReactApp() {
+            const results = document.getElementById('react-results');
+            results.innerHTML = '';
+
+            addLog('测试 React 应用路由...');
+
+            // 测试不同路由
+            const routes = ['/', '/login', '/register'];
+
+            for (const route of routes) {
+                try {
+                    addLog(`测试路由: ${route}`);
+                    const response = await fetch(route);
+                    if (response.ok) {
+                        const text = await response.text();
+                        if (text.includes('root')) {
+                            results.innerHTML += `<div class="test-result success">✓ 路由 ${route} 返回 HTML</div>`;
+                            addLog(`路由 ${route} 正常`, 'success');
+                        } else {
+                            results.innerHTML += `<div class="test-result error">✗ 路由 ${route} HTML 不包含 root 元素</div>`;
+                            addLog(`路由 ${route} HTML 异常`, 'error');
+                        }
+                    } else {
+                        results.innerHTML += `<div class="test-result error">✗ 路由 ${route} 返回 ${response.status}</div>`;
+                    }
+                } catch (e) {
+                    results.innerHTML += `<div class="test-result error">✗ 路由 ${route} 错误: ${e.message}</div>`;
+                    addLog(`路由 ${route} 错误: ${e.message}`, 'error');
+                }
+            }
+        }
+
+        // 页面加载时自动测试连接
+        window.addEventListener('load', () => {
+            addLog('诊断页面已加载');
+            addLog('点击上方按钮开始测试');
+        });
+
+        // 捕获全局错误
+        window.addEventListener('error', (e) => {
+            addLog(`全局错误: ${e.message} (${e.filename}:${e.lineno})`, 'error');
+        });
+
+        // 捕获未处理的 Promise 错误
+        window.addEventListener('unhandledrejection', (e) => {
+            addLog(`未处理的 Promise 错误: ${e.reason}`, 'error');
+        });
+    </script>
+</body>
+</html>
