@@ -102,17 +102,19 @@
 ---
 
 #### Day 5: 调试增强
-**状态**: ⏸️ 未开始
-**进度**: 0%
-**任务**:
-- [ ] 失败时自动截图
-- [ ] 记录页面快照
-- [ ] 记录控制台日志
-- [ ] 记录网络请求
+**状态**: ✅ 已完成
+**进度**: 100%
+**完成内容**:
+- [x] 失败时自动截图
+- [x] 记录页面快照（HTML）
+- [x] 记录控制台日志
+- [x] 记录网络请求
+- [x] 详细的执行日志
 
 **文件**:
-- `backend/app/services/executor.py`
-- `backend/app/services/playwright_browser.py`
+- `backend/app/services/debug_collector.py` (320行)
+- `backend/app/services/executor.py` (集成调试收集器)
+- `backend/test/test_debug_enhancements.py` (测试脚本)
 
 ---
 
@@ -128,12 +130,12 @@
 
 | 里程碑 | 当前 | 目标 | 预计完成 |
 |--------|------|------|----------|
-| 关键字丰富度 | ⭐ | ⭐⭐⭐⭐⭐ | Week 1 Day 2 |
+| 关键字丰富度 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ✅ Week 1 完成 |
 | 易用性 | ⭐⭐ | ⭐⭐⭐⭐ | Week 2 Day 2 |
-| 稳定性 | ⭐⭐ | ⭐⭐⭐⭐ | Week 1 Day 3 |
-| 可调试性 | ⭐ | ⭐⭐⭐⭐ | Week 1 Day 5 |
-| 报告质量 | ⭐ | ⭐⭐⭐⭐ | Week 2 Day 5 |
-| **总体** | **⭐⭐** | **⭐⭐⭐⭐** | **3 周** |
+| 稳定性 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ✅ Week 1 完成 |
+| 可调试性 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ✅ Week 1 完成 |
+| 报告质量 | ⭐⭐ | ⭐⭐⭐⭐ | Week 2 Day 5 |
+| **总体** | **⭐⭐⭐⭐** | **⭐⭐⭐⭐** | **3 周** |
 
 ---
 
@@ -153,9 +155,17 @@
 - ✅ 修复 keywords API 500 错误
 - ✅ 实现 Day 3: 智能等待机制
 - ✅ 实现 Day 4: 断言机制完善
-  - 增强ASSERT_TEXT 支持 4 种模式（contains/equals/regex/not_contains）
-  - 新增 ASSERT_VISIBLE、ASSERT_URL、ASSERT_TITLE、ASSERT_ELEMENT_COUNT
-  - 所有断言关键字测试通过
+- ✅ 实现 Day 5: 调试能力增强
+  - 创建 DebugInfoCollector 调试收集器
+  - 失败时自动截图和 HTML 快照
+  - 控制台日志和网络请求记录
+  - 详细的执行日志（DEBUG 级别）
+
+### 🎉 Week 1 完成！
+- Day 1-2: 关键字扩展 (15个) ✅
+- Day 3: 智能等待机制 ✅
+- Day 4: 断言机制完善 (6个断言) ✅
+- Day 5: 调试能力增强 ✅
 
 ### 2026-04-08 (上午)
 - ✅ 修复 case_execution 变量作用域错误
