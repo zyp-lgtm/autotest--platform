@@ -84,16 +84,20 @@
 ---
 
 #### Day 4: 断言机制
-**状态**: ⏸️ 未开始
-**进度**: 0/4 个断言关键字
-**任务**:
-- [ ] ASSERT_VISIBLE - 断言可见
-- [ ] ASSERT_TEXT - 断言文本
-- [ ] ASSERT_URL - 断言 URL
-- [ ] ASSERT_TITLE - 断言标题
+**状态**: ✅ 已完成
+**进度**: 6/6 个断言关键字
+**完成内容**:
+- [x] ASSERT_TEXT (增强版：regex/not_contains/case_sensitive)
+- [x] ASSERT_VISIBLE - 断言元素可见/不可见
+- [x] ASSERT_URL - 断言当前 URL
+- [x] ASSERT_TITLE - 断言页面标题
+- [x] ASSERT_ELEMENT_COUNT - 断言元素数量
+- [x] ASSERT_STATUS - HTTP 状态码断言（已存在）
 
 **文件**:
 - `backend/app/services/keyword_engine.py`
+- `backend/scripts/seed_assertion_keywords.py`
+- `backend/test/test_assertions.py`
 
 ---
 
@@ -148,10 +152,10 @@
 ### 2026-04-08 (下午)
 - ✅ 修复 keywords API 500 错误
 - ✅ 实现 Day 3: 智能等待机制
-  - 增强 wait_for_element() 支持 5 种状态
-  - 所有关键字自动等待元素就绪
-  - 智能点击降级策略（正常 → 强制 → JS）
-  - 测试验证通过（百度隐藏元素场景）
+- ✅ 实现 Day 4: 断言机制完善
+  - 增强ASSERT_TEXT 支持 4 种模式（contains/equals/regex/not_contains）
+  - 新增 ASSERT_VISIBLE、ASSERT_URL、ASSERT_TITLE、ASSERT_ELEMENT_COUNT
+  - 所有断言关键字测试通过
 
 ### 2026-04-08 (上午)
 - ✅ 修复 case_execution 变量作用域错误
