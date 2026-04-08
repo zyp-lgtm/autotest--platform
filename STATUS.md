@@ -2,7 +2,7 @@
 
 > **更新时间**: 2026-04-08
 > **当前分支**: test-platform-mvp
-> **最新提交**: f01cf09d - fix: 修复任务执行和浏览器显示问题
+> **最新提交**: ff60f549 - fix: 修复 keywords API 500 错误
 
 ---
 
@@ -40,23 +40,27 @@
 ### Week 1: 必须完成功能 🔴
 
 #### Day 1-2: 关键字扩展
-**状态**: ⏸️ 未开始
-**进度**: 0/10 个关键字
-**任务**:
-- [ ] CLICK - 点击元素
-- [ ] INPUT - 输入文本
-- [ ] WAIT_FOR - 等待元素
-- [ ] ASSERT_VISIBLE - 断言可见
-- [ ] ASSERT_TEXT - 断言文本
-- [ ] GET_TEXT - 提取文本
-- [ ] SCREENSHOT - 截图
-- [ ] SELECT - 下拉选择
-- [ ] HOVER - 鼠标悬停
-- [ ] EXTRACT_VAR - 提取变量
+**状态**: ✅ 已完成
+**进度**: 15/15 个关键字
+**完成内容**:
+- [x] API_GET, API_POST - HTTP 请求
+- [x] EXTRACT_VARIABLE - 变量提取
+- [x] ASSERT_STATUS, ASSERT_TEXT - 断言
+- [x] NAVIGATE - 导航
+- [x] CLICK - 点击元素
+- [x] INPUT - 输入文本
+- [x] WAIT_FOR_ELEMENT - 等待元素
+- [x] SCREENSHOT - 截图
+- [x] SELECT - 下拉选择
+- [x] CHECKBOX - 复选框
+- [x] HOVER - 鼠标悬停
+- [x] GET_TEXT - 提取文本
+- [x] SCROLL - 滚动页面
 
 **文件**:
 - `backend/app/services/keyword_engine.py`
-- `backend/scripts/seed_keywords.py`
+- `backend/app/api/ui/keywords.py` (已修复)
+- `backend/test/test_core_keywords.py` (已验证)
 
 ---
 
@@ -135,13 +139,21 @@
 
 ## 📝 开发日志
 
-### 2026-04-08
+### 2026-04-08 (下午)
+- ✅ 修复 keywords API 500 错误
+  - SQLite JSON 类型解析问题
+  - keyword_type 枚举值不匹配（添加 action/assertion/extraction）
+  - 所有 15 个关键字 API 正常返回
+- ✅ 验证核心关键字测试脚本（test_core_keywords.py）
+
+### 2026-04-08 (上午)
 - ✅ 修复 case_execution 变量作用域错误
 - ✅ 修复 UUID 类型转换错误（12处）
 - ✅ 修复浏览器配置问题
 - ✅ 添加浏览器生命周期管理
 - ✅ 浏览器窗口正常显示
-- ✅ 创建开发计划文档
+- ✅ 创建开发计划文档（DEVELOPMENT_PLAN.md）
+- ✅ 创建项目宪法（CLAUDE.md）
 
 ### 2026-04-03 ~ 2026-04-07
 - ✅ 前后端架构搭建
@@ -155,16 +167,28 @@
 
 ## 🎯 下一步行动
 
-### 立即开始（今天）
-1. 实现 CLICK 和 INPUT 关键字
-2. 添加基本的等待机制
-3. 实现 ASSERT_VISIBLE 断言
+### 立即开始（今天 - Day 3）
+1. ⏸️ 实现智能等待机制
+   - 所有关键字自动等待元素可交互
+   - 支持多种等待状态（visible/attached/editable）
+   - 超时处理和重试逻辑
 
-### 本周目标
-- 完成 10 个核心关键字
-- 实现智能等待机制
-- 完成基础断言功能
-- 增强调试能力
+2. ⏸️ 完善断言机制
+   - ASSERT_VISIBLE - 断言可见
+   - ASSERT_URL - 断言 URL
+   - ASSERT_TITLE - 断言标题
+   - ASSERT_ELEMENT_COUNT - 断言元素数量
+
+3. ⏸️ 增强调试能力
+   - 失败时自动截图
+   - 记录页面快照
+   - 记录控制台日志
+
+### 本周剩余目标
+- 完成智能等待机制
+- 完成所有断言关键字
+- 失败自动截图和详细日志
+- 测试稳定性达到 95%+
 
 ### 本月目标
 - 平台达到 ⭐⭐⭐ 成熟度
