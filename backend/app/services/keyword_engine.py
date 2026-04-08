@@ -1,6 +1,7 @@
 from typing import Dict, Any, Union
 import httpx
 import logging
+import re
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 logger = logging.getLogger(__name__)
@@ -147,6 +148,14 @@ class KeywordEngine:
                 return await self._hover(parameters)
             elif keyword_name == "ASSERT_TEXT":
                 return await self._assert_text(parameters)
+            elif keyword_name == "ASSERT_VISIBLE":
+                return await self._assert_visible(parameters)
+            elif keyword_name == "ASSERT_URL":
+                return await self._assert_url(parameters)
+            elif keyword_name == "ASSERT_TITLE":
+                return await self._assert_title(parameters)
+            elif keyword_name == "ASSERT_ELEMENT_COUNT":
+                return await self._assert_element_count(parameters)
             elif keyword_name == "GET_TEXT":
                 return await self._get_text(parameters)
             elif keyword_name == "SCROLL":
@@ -635,55 +644,276 @@ class KeywordEngine:
             }
 
     async def _assert_text(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """断言文本存在"""
+        """断言文本存在（增强版：支持正则表达式）"""
         text = params.get("text")
         if not text:
             return {"success": False, "error": "缺少必需参数: text"}
 
         selector = params.get("selector")
-        mode = params.get("mode", "contains")  # contains, equals
+        mode = params.get("mode", "contains")  # contains, equals, regex, not_contains
         timeout = params.get("timeout", 10000)
+        case_sensitive = params.get("case_sensitive", False)
 
         try:
             page = await self.browser_manager.get_page()
             page.set_default_timeout(timeout)
 
+            # 获取内容
             if selector:
-                # 在元素内查找文本
+                # 等待元素存在
+                wait_result = await self.browser_manager.wait_for_element(
+                    selector=selector,
+                    state="attached",
+                    timeout=timeout
+                )
+                if not wait_result["success"]:
+                    return wait_result
+
                 element = page.locator(selector)
                 content = await element.inner_text()
-
-                if mode == "equals":
-                    passed = content.strip() == text.strip()
-                else:  # contains
-                    passed = text in content
             else:
                 # 在整个页面中查找文本
                 content = await page.inner_text("body")
-                if mode == "equals":
-                    passed = text.strip() in content.strip()
-                else:  # contains
-                    passed = text in content
 
+            # 根据模式判断
+            if mode == "regex":
+                # 正则表达式匹配
+                flags = 0 if case_sensitive else re.IGNORECASE
+                passed = bool(re.search(text, content, flags))
+                match_desc = f"正则: {text}"
+            elif mode == "equals":
+                # 完全匹配
+                if case_sensitive:
+                    passed = content.strip() == text.strip()
+                else:
+                    passed = content.strip().lower() == text.strip().lower()
+                match_desc = f"等于: '{text}'"
+            elif mode == "not_contains":
+                # 不包含
+                if case_sensitive:
+                    passed = text not in content
+                else:
+                    passed = text.lower() not in content.lower()
+                match_desc = f"不包含: '{text}'"
+            else:  # contains (default)
+                # 包含
+                if case_sensitive:
+                    passed = text in content
+                else:
+                    passed = text.lower() in content.lower()
+                match_desc = f"包含: '{text}'"
+
+            # 返回结果
             if passed:
-                logger.info(f"ASSERT_TEXT 通过: '{text}'")
+                logger.info(f"ASSERT_TEXT 通过: {match_desc}")
                 return {
                     "success": True,
                     "passed": True,
-                    "message": f"文本断言通过: '{text}'"
+                    "message": f"文本断言通过: {match_desc}"
                 }
             else:
-                logger.warning(f"ASSERT_TEXT 失败: 未找到文本 '{text}'")
+                logger.warning(f"ASSERT_TEXT 失败: {match_desc}")
                 return {
                     "success": True,
                     "passed": False,
-                    "message": f"文本断言失败: 未找到 '{text}'"
+                    "message": f"文本断言失败: {match_desc}"
                 }
 
         except Exception as e:
             return {
                 "success": False,
                 "error": f"文本断言失败: {str(e)}"
+            }
+
+    async def _assert_visible(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """断言元素可见"""
+        selector = params.get("selector")
+        if not selector:
+            return {"success": False, "error": "缺少必需参数: selector"}
+
+        visible = params.get("visible", True)  # True=断言可见, False=断言不可见
+        timeout = params.get("timeout", 10000)
+
+        try:
+            page = await self.browser_manager.get_page()
+
+            # 等待元素达到指定状态
+            state = "visible" if visible else "hidden"
+            wait_result = await self.browser_manager.wait_for_element(
+                selector=selector,
+                state=state,
+                timeout=timeout
+            )
+
+            passed = wait_result["success"]
+
+            if passed:
+                logger.info(f"ASSERT_VISIBLE 通过: {selector} 是 {state}")
+                return {
+                    "success": True,
+                    "passed": True,
+                    "message": f"元素可见性断言通过: {selector} 是 {state}"
+                }
+            else:
+                logger.warning(f"ASSERT_VISIBLE 失败: {selector} 不是 {state}")
+                return {
+                    "success": True,
+                    "passed": False,
+                    "message": f"元素可见性断言失败: {selector} 不是 {state}"
+                }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"可见性断言失败: {str(e)}"
+            }
+
+    async def _assert_url(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """断言当前 URL"""
+        url = params.get("url")
+        if not url:
+            return {"success": False, "error": "缺少必需参数: url"}
+
+        mode = params.get("mode", "contains")  # contains, equals, regex
+        timeout = params.get("timeout", 10000)
+
+        try:
+            page = await self.browser_manager.get_page()
+
+            # 立即检查当前 URL
+            current_url = page.url
+            passed = False
+
+            if mode == "equals":
+                passed = current_url == url
+            elif mode == "regex":
+                passed = bool(re.search(url, current_url))
+            else:  # contains
+                passed = url in current_url
+
+            if passed:
+                logger.info(f"ASSERT_URL 通过: {url}")
+                return {
+                    "success": True,
+                    "passed": True,
+                    "message": f"URL 断言通过: {url}"
+                }
+            else:
+                logger.warning(f"ASSERT_URL 失败: 期望 '{url}', 实际 '{current_url}'")
+                return {
+                    "success": True,
+                    "passed": False,
+                    "message": f"URL 断言失败: 期望 '{url}', 实际 '{current_url}'"
+                }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"URL 断言失败: {str(e)}"
+            }
+
+    async def _assert_title(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """断言页面标题"""
+        title = params.get("title")
+        if not title:
+            return {"success": False, "error": "缺少必需参数: title"}
+
+        mode = params.get("mode", "contains")  # contains, equals, regex
+        timeout = params.get("timeout", 10000)
+
+        try:
+            page = await self.browser_manager.get_page()
+
+            # 立即检查当前标题
+            current_title = await page.title()
+            passed = False
+
+            if mode == "equals":
+                passed = current_title == title
+            elif mode == "regex":
+                passed = bool(re.search(title, current_title))
+            else:  # contains
+                passed = title in current_title
+
+            if passed:
+                logger.info(f"ASSERT_TITLE 通过: {title}")
+                return {
+                    "success": True,
+                    "passed": True,
+                    "message": f"标题断言通过: {title}"
+                }
+            else:
+                logger.warning(f"ASSERT_TITLE 失败: 期望 '{title}', 实际 '{current_title}'")
+                return {
+                    "success": True,
+                    "passed": False,
+                    "message": f"标题断言失败: 期望 '{title}', 实际 '{current_title}'"
+                }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"标题断言失败: {str(e)}"
+            }
+
+    async def _assert_element_count(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """断言元素数量"""
+        selector = params.get("selector")
+        if not selector:
+            return {"success": False, "error": "缺少必需参数: selector"}
+
+        operator = params.get("operator", "==")  # ==, !=, >, <, >=, <=
+        expected_count = params.get("count")
+        if expected_count is None:
+            return {"success": False, "error": "缺少必需参数: count"}
+
+        timeout = params.get("timeout", 10000)
+
+        try:
+            page = await self.browser_manager.get_page()
+
+            # 立即计算元素数量
+            elements = await page.query_selector_all(selector)
+            actual_count = len(elements)
+
+            # 比较数量
+            if operator == "==":
+                passed = actual_count == expected_count
+            elif operator == "!=":
+                passed = actual_count != expected_count
+            elif operator == ">":
+                passed = actual_count > expected_count
+            elif operator == "<":
+                passed = actual_count < expected_count
+            elif operator == ">=":
+                passed = actual_count >= expected_count
+            elif operator == "<=":
+                passed = actual_count <= expected_count
+            else:
+                return {
+                    "success": False,
+                    "error": f"不支持的比较符: {operator}"
+                }
+
+            if passed:
+                logger.info(f"ASSERT_ELEMENT_COUNT 通过: {selector} 数量 {operator} {expected_count}")
+                return {
+                    "success": True,
+                    "passed": True,
+                    "message": f"元素数量断言通过: {selector} 数量 {operator} {expected_count} (实际: {actual_count})"
+                }
+            else:
+                logger.warning(f"ASSERT_ELEMENT_COUNT 失败: {selector} 数量 {operator} {expected_count} (实际: {actual_count})")
+                return {
+                    "success": True,
+                    "passed": False,
+                    "message": f"元素数量断言失败: {selector} 数量 {operator} {expected_count} (实际: {actual_count})"
+                }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"元素数量断言失败: {str(e)}"
             }
 
     async def _get_text(self, params: Dict[str, Any]) -> Dict[str, Any]:
