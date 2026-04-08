@@ -336,7 +336,7 @@ class KeywordEngine:
             }
 
     async def _click(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """点击页面元素"""
+        """点击页面元素（自动等待元素存在，智能处理不可见元素）"""
         selector = params.get("selector")
         if not selector:
             return {"success": False, "error": "缺少必需参数: selector"}
@@ -348,12 +348,35 @@ class KeywordEngine:
         try:
             page = await self.browser_manager.get_page()
 
-            # 设置超时
-            page.set_default_timeout(timeout)
+            # 自动等待元素存在（attached）
+            wait_result = await self.browser_manager.wait_for_element(
+                selector=selector,
+                state="attached",
+                timeout=timeout
+            )
+            if not wait_result["success"]:
+                return wait_result
 
-            # 点击元素（Playwright 自动等待）
-            for _ in range(click_count):
-                await page.click(selector, force=force)
+            # 尝试点击元素（多次尝试）
+            for attempt in range(click_count):
+                try:
+                    # 第一次尝试：正常点击
+                    await page.click(selector, force=force, timeout=timeout)
+                except Exception as click_error:
+                    error_str = str(click_error)
+
+                    # 如果是元素不可见错误，尝试强制点击
+                    if "not visible" in error_str:
+                        logger.warning(f"元素不可见，尝试强制点击: {selector}")
+                        try:
+                            await page.click(selector, force=True, timeout=timeout)
+                        except Exception:
+                            # 强制点击也失败，使用 JavaScript 点击
+                            logger.warning(f"强制点击失败，使用 JavaScript 点击: {selector}")
+                            await page.evaluate(f'document.querySelector("{selector}").click()')
+                    else:
+                        # 其他错误直接抛出
+                        raise
 
             logger.info(f"点击成功: {selector}")
 
@@ -369,7 +392,7 @@ class KeywordEngine:
             }
 
     async def _input(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """在输入框中输入文本"""
+        """在输入框中输入文本（自动等待输入框存在）"""
         selector = params.get("selector")
         text = params.get("text", "")
         if not selector:
@@ -381,9 +404,14 @@ class KeywordEngine:
         try:
             page = await self.browser_manager.get_page()
 
-            # 使用 type() 方法模拟真实用户输入
-            # 设置超时
-            page.set_default_timeout(timeout)
+            # 自动等待输入框存在（attached），让 Playwright 处理可编辑性检查
+            wait_result = await self.browser_manager.wait_for_element(
+                selector=selector,
+                state="attached",
+                timeout=timeout
+            )
+            if not wait_result["success"]:
+                return wait_result
 
             # 点击输入框激活它
             try:
@@ -480,7 +508,7 @@ class KeywordEngine:
     # ========== 扩展 UI 关键字 ==========
 
     async def _select(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """选择下拉框选项"""
+        """选择下拉框选项（自动等待下拉框存在）"""
         selector = params.get("selector")
         value = params.get("value")
         text = params.get("text")
@@ -494,7 +522,15 @@ class KeywordEngine:
 
         try:
             page = await self.browser_manager.get_page()
-            page.set_default_timeout(timeout)
+
+            # 自动等待下拉框存在（attached）
+            wait_result = await self.browser_manager.wait_for_element(
+                selector=selector,
+                state="attached",
+                timeout=timeout
+            )
+            if not wait_result["success"]:
+                return wait_result
 
             # 获取 select 元素
             select_element = page.locator(f"select{selector}")
@@ -519,7 +555,7 @@ class KeywordEngine:
             }
 
     async def _checkbox(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """勾选/取消勾选复选框"""
+        """勾选/取消勾选复选框（自动等待复选框存在）"""
         selector = params.get("selector")
         checked = params.get("checked")
         timeout = params.get("timeout", 5000)
@@ -532,7 +568,15 @@ class KeywordEngine:
 
         try:
             page = await self.browser_manager.get_page()
-            page.set_default_timeout(timeout)
+
+            # 自动等待复选框存在（attached）
+            wait_result = await self.browser_manager.wait_for_element(
+                selector=selector,
+                state="attached",
+                timeout=timeout
+            )
+            if not wait_result["success"]:
+                return wait_result
 
             checkbox = page.locator(f"input[type=\"checkbox\"]{selector}")
 
@@ -556,7 +600,7 @@ class KeywordEngine:
             }
 
     async def _hover(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """鼠标悬停"""
+        """鼠标悬停（自动等待元素存在）"""
         selector = params.get("selector")
         if not selector:
             return {"success": False, "error": "缺少必需参数: selector"}
@@ -565,7 +609,15 @@ class KeywordEngine:
 
         try:
             page = await self.browser_manager.get_page()
-            page.set_default_timeout(timeout)
+
+            # 自动等待元素存在（attached）
+            wait_result = await self.browser_manager.wait_for_element(
+                selector=selector,
+                state="attached",
+                timeout=timeout
+            )
+            if not wait_result["success"]:
+                return wait_result
 
             await page.hover(selector)
 

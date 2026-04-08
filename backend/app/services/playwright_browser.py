@@ -282,6 +282,98 @@ class PlaywrightBrowser:
         """检查浏览器是否已启动"""
         return self._is_started
 
+    async def wait_for_element(
+        self,
+        selector: str,
+        state: str = "visible",
+        timeout: Optional[int] = None,
+        page: Optional[Page] = None
+    ) -> Dict[str, Any]:
+        """
+        等待元素达到指定状态
+
+        Args:
+            selector: CSS 选择器
+            state: 等待状态，支持：
+                - attached: 元素已附加到 DOM
+                - detached: 元素已从 DOM 分离
+                - visible: 元素可见
+                - hidden: 元素隐藏
+                - editable: 元素可编辑
+            timeout: 超时时间（毫秒），默认使用配置的 timeout
+            page: 目标页面，默认使用当前页面
+
+        Returns:
+            Dict: {"success": bool, "message": str, "element": ElementHandle}
+
+        Raises:
+            TimeoutError: 元素在超时时间内未达到指定状态
+        """
+        target_page = page or await self.get_page()
+        timeout = timeout or self.timeout
+
+        try:
+            logger.debug(f"等待元素: {selector}, 状态: {state}, 超时: {timeout}ms")
+
+            # 状态映射
+            state_map = {
+                "attached": "attached",
+                "detached": "detached",
+                "visible": "visible",
+                "hidden": "hidden",
+            }
+
+            # editable 需要特殊处理
+            if state == "editable":
+                # 等待元素可见且可编辑
+                await target_page.wait_for_selector(
+                    selector,
+                    state="visible",
+                    timeout=timeout
+                )
+                # 额外检查元素是否可编辑
+                element = await target_page.query_selector(selector)
+                if element:
+                    is_editable = await element.is_editable()
+                    if not is_editable:
+                        return {
+                            "success": False,
+                            "message": f"元素可见但不可编辑: {selector}",
+                            "element": None
+                        }
+            elif state in state_map:
+                # 标准状态
+                await target_page.wait_for_selector(
+                    selector,
+                    state=state_map[state],
+                    timeout=timeout
+                )
+            else:
+                return {
+                    "success": False,
+                    "message": f"不支持的等待状态: {state}",
+                    "element": None
+                }
+
+            # 获取元素
+            element = await target_page.query_selector(selector)
+
+            logger.info(f"元素已就绪: {selector} (状态: {state})")
+            return {
+                "success": True,
+                "message": f"元素已就绪: {selector}",
+                "element": element
+            }
+
+        except Exception as e:
+            error_msg = f"等待元素超时: {selector} (状态: {state}, 超时: {timeout}ms) - {str(e)}"
+            logger.error(error_msg)
+            return {
+                "success": False,
+                "message": error_msg,
+                "element": None
+            }
+
     async def __aenter__(self):
         """异步上下文管理器入口"""
         await self.start_browser()
