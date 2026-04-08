@@ -120,7 +120,7 @@ async def execute_ui_task(
         raise HTTPException(status_code=404, detail="任务不存在")
 
     # 合并浏览器配置（优先级：API参数 > 任务配置 > 默认值）
-    final_browser_config = {"headless": True}
+    final_browser_config = {"headless": False}  # 默认显示浏览器
 
     # 1. 先应用任务的默认配置
     if task.execution_config and "browser_config" in task.execution_config:
@@ -129,7 +129,7 @@ async def execute_ui_task(
     # 2. 再用 API 参数覆盖（如果提供）
     if browser_config:
         # 如果 browser_config 中嵌套了 browser_config 键，提取内部配置
-        if "browser_config" in browser_config and len(browser_config) == 1:
+        if "browser_config" in browser_config:
             final_browser_config.update(browser_config["browser_config"])
         else:
             final_browser_config.update(browser_config)

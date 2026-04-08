@@ -27,6 +27,15 @@ from ..api import agent as agent_manager
 logger = logging.getLogger(__name__)
 
 
+def _ensure_datetime_aware(dt):
+    """确保 datetime 对象带有时区信息（SQLite 兼容）"""
+    if dt is None:
+        return datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 class TaskExecutor:
     """任务执行器"""
 
@@ -99,7 +108,8 @@ class TaskExecutor:
 
                 # 更新执行结果
                 execution.completed_at = datetime.now(timezone.utc)
-                execution.duration = (execution.completed_at - execution.started_at).total_seconds()
+                started_at_aware = _ensure_datetime_aware(execution.started_at)
+                execution.duration = (execution.completed_at - started_at_aware).total_seconds()
 
                 if result.get("success"):
                     execution.status = "completed"
@@ -155,9 +165,11 @@ class TaskExecutor:
             # 4. 加载场景
             scenarios = []
             for scenario_id in task.scenario_ids:
+                # 将字符串 ID 转换为 UUID 对象
+                scenario_id_uuid = uuid.UUID(scenario_id) if isinstance(scenario_id, str) else scenario_id
                 scenario = self.db.query(UIScenario).filter(
                     and_(
-                        UIScenario.id == scenario_id,
+                        UIScenario.id == scenario_id_uuid,
                         UIScenario.task_id == task.id
                     )
                 ).first()
@@ -182,7 +194,8 @@ class TaskExecutor:
 
             # 6. 更新执行结果
             execution.completed_at = datetime.now(timezone.utc)
-            execution.duration = (execution.completed_at - execution.started_at).total_seconds()
+            started_at_aware = _ensure_datetime_aware(execution.started_at)
+            execution.duration = (execution.completed_at - started_at_aware).total_seconds()
             execution.total_scenarios = len(scenarios)
             execution.total_steps = total_steps
             execution.passed_steps = passed_steps
@@ -208,7 +221,8 @@ class TaskExecutor:
             execution.completed_at = datetime.now(timezone.utc)
 
             if execution.started_at:
-                execution.duration = (execution.completed_at - execution.started_at).total_seconds()
+                started_at_aware = _ensure_datetime_aware(execution.started_at)
+                execution.duration = (execution.completed_at - started_at_aware).total_seconds()
 
             self.db.commit()
             self.db.refresh(execution)
@@ -268,7 +282,8 @@ class TaskExecutor:
 
             # 更新场景执行结果
             scenario_execution.completed_at = datetime.now(timezone.utc)
-            scenario_execution.duration = (scenario_execution.completed_at - scenario_execution.started_at).total_seconds()
+            started_at_aware = _ensure_datetime_aware(scenario_execution.started_at)
+            scenario_execution.duration = (scenario_execution.completed_at - started_at_aware).total_seconds()
             scenario_execution.total_cases = len(cases)
             scenario_execution.total_steps = total_steps
             scenario_execution.passed_steps = passed_steps
@@ -305,6 +320,8 @@ class TaskExecutor:
     ) -> Dict[str, int]:
         """执行用例"""
         logger.info(f"Executing case: {case.name}")
+
+        case_execution = None  # 初始化变量
 
         # 创建用例执行记录
         case_execution = CaseExecution(
@@ -361,7 +378,8 @@ class TaskExecutor:
 
             # 更新用例执行结果
             case_execution.completed_at = datetime.now(timezone.utc)
-            case_execution.duration = (case_execution.completed_at - case_execution.started_at).total_seconds()
+            started_at_aware = _ensure_datetime_aware(case_execution.started_at)
+            case_execution.duration = (case_execution.completed_at - started_at_aware).total_seconds()
             case_execution.total_steps = total_steps
             case_execution.passed_steps = passed_steps
             case_execution.failed_steps = failed_steps
@@ -383,11 +401,16 @@ class TaskExecutor:
 
         except Exception as e:
             logger.error(f"Case execution failed: {e}", exc_info=True)
-            case_execution.status = "failed"
-            case_execution.result = "error"
-            case_execution.error_message = str(e)
-            case_execution.completed_at = datetime.now(timezone.utc)
-            self.db.commit()
+            # 只有在 case_execution 成功创建并提交后才更新其状态
+            if case_execution is not None:
+                try:
+                    case_execution.status = "failed"
+                    case_execution.result = "error"
+                    case_execution.error_message = str(e)
+                    case_execution.completed_at = datetime.now(timezone.utc)
+                    self.db.commit()
+                except Exception as commit_error:
+                    logger.error(f"Failed to update case_execution status: {commit_error}")
             raise
 
     async def _execute_step(
@@ -475,7 +498,8 @@ class TaskExecutor:
 
             # 更新执行结果
             step_execution.completed_at = datetime.now(timezone.utc)
-            step_execution.duration = (step_execution.completed_at - step_execution.started_at).total_seconds()
+            started_at_aware = _ensure_datetime_aware(step_execution.started_at)
+            step_execution.duration = (step_execution.completed_at - started_at_aware).total_seconds()
             step_execution.status = "completed"
             step_execution.result = "pass" if result.get("success") else "fail"
             step_execution.output = result
@@ -493,7 +517,8 @@ class TaskExecutor:
             logger.error(f"Step execution failed: {e}", exc_info=True)
 
             step_execution.completed_at = datetime.now(timezone.utc)
-            step_execution.duration = (step_execution.completed_at - step_execution.started_at).total_seconds()
+            started_at_aware = _ensure_datetime_aware(step_execution.started_at)
+            step_execution.duration = (step_execution.completed_at - started_at_aware).total_seconds()
             step_execution.status = "completed"
             step_execution.result = "fail"
             step_execution.error_message = str(e)
@@ -535,8 +560,10 @@ class TaskExecutor:
         all_step_results = []
 
         for scenario_id in task.scenario_ids:
+            # 将字符串 ID 转换为 UUID 对象
+            scenario_id_uuid = uuid.UUID(scenario_id) if isinstance(scenario_id, str) else scenario_id
             scenario = self.db.query(UIScenario).filter(
-                and_(UIScenario.id == scenario_id, UIScenario.task_id == task.id)
+                and_(UIScenario.id == scenario_id_uuid, UIScenario.task_id == task.id)
             ).first()
 
             if not scenario:
@@ -555,8 +582,12 @@ class TaskExecutor:
             self.db.refresh(scenario_execution)
 
             for case_id in scenario.case_ids:
+                case_execution = None  # 初始化变量
+
+                # 将字符串 ID 转换为 UUID 对象
+                case_id_uuid = uuid.UUID(case_id) if isinstance(case_id, str) else case_id
                 case = self.db.query(UICase).filter(
-                    and_(UICase.id == case_id, UICase.scenario_id == scenario.id)
+                    and_(UICase.id == case_id_uuid, UICase.scenario_id == scenario.id)
                 ).first()
 
                 if not case:
@@ -578,8 +609,10 @@ class TaskExecutor:
                 step_mappings = []  # 保存步骤ID映射
 
                 for step_id in case.step_ids:
+                    # 将字符串 ID 转换为 UUID 对象
+                    step_id_uuid = uuid.UUID(step_id) if isinstance(step_id, str) else step_id
                     step = self.db.query(UIStep).filter(
-                        and_(UIStep.id == step_id, UIStep.case_id == case.id)
+                        and_(UIStep.id == step_id_uuid, UIStep.case_id == case.id)
                     ).first()
 
                     if not step or not step.enabled:
@@ -712,34 +745,31 @@ class TaskExecutor:
 
                 # 更新用例执行结果
                 case_execution.completed_at = datetime.now(timezone.utc)
-                case_execution.duration = (case_execution.completed_at - case_execution.started_at).total_seconds()
+                started_at_aware = _ensure_datetime_aware(case_execution.started_at)
+                case_execution.duration = (case_execution.completed_at - started_at_aware).total_seconds()
                 case_execution.total_steps = len(step_mappings)
                 case_execution.passed_steps = passed_steps
                 case_execution.failed_steps = failed_steps
                 case_execution.status = "completed"
                 case_execution.result = "pass" if failed_steps == 0 else "fail"
-
                 self.db.commit()
-
-            # 更新场景执行结果
+                            # 更新场景执行结果
             scenario_execution.completed_at = datetime.now(timezone.utc)
-            scenario_execution.duration = (scenario_execution.completed_at - scenario_execution.started_at).total_seconds()
+            started_at_aware = _ensure_datetime_aware(scenario_execution.started_at)
+            scenario_execution.duration = (scenario_execution.completed_at - started_at_aware).total_seconds()
             scenario_execution.total_cases = 1
             scenario_execution.total_steps = total_steps
             scenario_execution.passed_steps = passed_steps
             scenario_execution.failed_steps = failed_steps
             scenario_execution.status = "completed"
             scenario_execution.result = "pass" if failed_steps == 0 else "fail"
-
             self.db.commit()
-
         return {
             "success": True,
             "total_steps": total_steps,
             "passed_steps": passed_steps,
             "failed_steps": failed_steps
         }
-
     def _create_step_execution_record(
         self,
         case_execution_id: uuid.UUID,

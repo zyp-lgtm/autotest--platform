@@ -11,9 +11,88 @@ import logging
 import sys
 import os
 import uuid
+import atexit
 from datetime import datetime
 from typing import Dict, Any, Optional
+from pathlib import Path
 from playwright.async_api import async_playwright, Browser, Page
+
+# 禁用代理，避免 SOCKS 代理错误
+os.environ['NO_PROXY'] = 'localhost,127.0.0.1'
+os.environ['NO_PROXY_LOCAL'] = '1'
+
+# PID 文件路径
+PID_FILE = Path(__file__).parent / ".agent.pid"
+
+
+class PIDFile:
+    """PID 文件锁，确保只有一个 Agent 实例运行"""
+
+    def __init__(self, pid_file: Path):
+        self.pid_file = pid_file
+        self.acquired = False
+
+    def acquire(self) -> bool:
+        """尝试获取锁"""
+        if self.pid_file.exists():
+            try:
+                old_pid = int(self.pid_file.read_text().strip())
+                # 检查旧进程是否还在运行
+                try:
+                    os.kill(old_pid, 0)  # 发送信号 0 检查进程是否存在
+                    logging.error(f"Agent 已在运行 (PID: {old_pid})")
+                    logging.error("如需重启，请先执行: python agent.py --stop")
+                    return False
+                except OSError:
+                    # 旧进程不存在，清理 PID 文件
+                    logging.warning(f"清理 stale PID 文件: {old_pid}")
+                    self.pid_file.unlink()
+            except (ValueError, IOError) as e:
+                logging.warning(f"读取 PID 文件失败: {e}")
+                self.pid_file.unlink()
+
+        # 写入当前进程 PID
+        self.pid_file.write_text(str(os.getpid()))
+        self.acquired = True
+        atexit.register(self.release)
+        logging.info(f"PID 锁已创建: {os.getpid()}")
+        return True
+
+    def release(self):
+        """释放锁"""
+        if self.acquired and self.pid_file.exists():
+            self.pid_file.unlink()
+            logging.info("PID 锁已释放")
+
+    @classmethod
+    def stop_running_agent(cls) -> bool:
+        """停止正在运行的 Agent"""
+        pid_file = Path(__file__).parent / ".agent.pid"
+        if not pid_file.exists():
+            print("未找到运行中的 Agent")
+            return False
+
+        try:
+            pid = int(pid_file.read_text().strip())
+            print(f"正在停止 Agent (PID: {pid})...")
+            os.kill(pid, 15)  # SIGTERM
+            import time
+            time.sleep(1)
+
+            # 检查是否已停止
+            try:
+                os.kill(pid, 0)
+                print("Agent 未响应 SIGTERM，使用 SIGKILL...")
+                os.kill(pid, 9)  # SIGKILL
+            except OSError:
+                pass
+
+            pid_file.unlink()
+            print("✓ Agent 已停止")
+            return True
+        except (ValueError, OSError, ProcessLookupError) as e:
+            print(f"停止 Agent 失败: {e}")
+            return False
 
 # 配置日志
 logging.basicConfig(
@@ -43,28 +122,43 @@ class LocalAgent:
         logger.info(f"初始化 Agent: {self.agent_id}")
 
     async def start(self):
-        """启动 Agent"""
-        logger.info(f"正在连接到服务器: {self.server_url}")
+        """启动 Agent（支持自动重连）"""
+        retry_count = 0
+        max_retries = 5
 
-        try:
-            async with websockets.connect(self.server_url) as websocket:
-                self.connected = True
-                logger.info("✓ 已连接到服务器")
+        while retry_count < max_retries:
+            try:
+                logger.info(f"正在连接到服务器: {self.server_url}")
+                if retry_count > 0:
+                    logger.info(f"重连尝试 {retry_count + 1}/{max_retries}")
 
-                # 发送注册消息
-                await self._register(websocket)
+                async with websockets.connect(self.server_url) as websocket:
+                    self.connected = True
+                    logger.info("✓ 已连接到服务器")
+                    retry_count = 0  # 连接成功，重置重试计数
 
-                # 监听服务器消息
-                await self._listen(websocket)
+                    # 发送注册消息
+                    await self._register(websocket)
 
-        except websockets.exceptions.WebSocketException as e:
-            logger.error(f"WebSocket 连接错误: {e}")
-        except Exception as e:
-            logger.error(f"Agent 错误: {e}")
-        finally:
-            self.connected = False
-            logger.info("与服务器断开连接")
-            await self._cleanup()
+                    # 监听服务器消息
+                    await self._listen(websocket)
+
+            except websockets.exceptions.WebSocketException as e:
+                logger.error(f"WebSocket 连接错误: {e}")
+                retry_count += 1
+                if retry_count < max_retries:
+                    logger.info(f"等待 5 秒后重连...")
+                    await asyncio.sleep(5)
+            except Exception as e:
+                logger.error(f"Agent 错误: {e}")
+                retry_count += 1
+                if retry_count < max_retries:
+                    logger.info(f"等待 5 秒后重连...")
+                    await asyncio.sleep(5)
+
+        logger.error("达到最大重试次数，Agent 退出")
+        self.connected = False
+        await self._cleanup()
 
     async def _register(self, websocket):
         """向服务器注册"""
@@ -84,14 +178,20 @@ class LocalAgent:
 
     async def _listen(self, websocket):
         """监听服务器消息"""
-        async for message in websocket:
-            try:
-                data = json.loads(message)
-                await self._handle_message(websocket, data)
-            except json.JSONDecodeError:
-                logger.error(f"无效的 JSON 消息: {message}")
-            except Exception as e:
-                logger.error(f"处理消息错误: {e}")
+        try:
+            async for message in websocket:
+                try:
+                    data = json.loads(message)
+                    await self._handle_message(websocket, data)
+                except json.JSONDecodeError:
+                    logger.error(f"无效的 JSON 消息: {message}")
+                except Exception as e:
+                    logger.error(f"处理消息错误: {e}")
+        except websockets.exceptions.ConnectionClosed:
+            logger.warning("WebSocket 连接已关闭")
+        except Exception as e:
+            logger.error(f"监听循环异常: {e}")
+            raise
 
     async def _handle_message(self, websocket, data: Dict[str, Any]):
         """处理服务器消息"""
@@ -171,8 +271,25 @@ class LocalAgent:
                 }
                 browser_engine = browser_map.get(browser_type, self.playwright.chromium)
 
-                self.browser = await browser_engine.launch(headless=headless)
-                logger.info(f"✓ 浏览器已启动: {browser_type}")
+                # 配置浏览器启动选项
+                launch_options = {
+                    "headless": headless,
+                    "slow_mo": 50  # 减慢操作速度，便于观察
+                }
+
+                # macOS 特殊处理：添加一些参数帮助窗口显示
+                import platform
+                if platform.system() == "Darwin":
+                    # 在 macOS 上，确保窗口在前台显示
+                    if not headless:
+                        launch_options["args"] = [
+                            "--start-maximized",  # 最大化窗口
+                            "--disable-infobars",  # 禁用信息栏
+                        ]
+
+                logger.info(f"浏览器启动选项: {launch_options}")
+                self.browser = await browser_engine.launch(**launch_options)
+                logger.info(f"✓ 浏览器已启动: {browser_type} (headless={headless})")
 
             # 创建页面
             page = await self.browser.new_page()
@@ -191,9 +308,6 @@ class LocalAgent:
                     fail_count += 1
                     break  # 失败则停止
 
-            # 任务完成后关闭浏览器
-            await self._close_browser()
-
             # 输出执行摘要
             logger.info("")
             logger.info("=" * 60)
@@ -204,6 +318,15 @@ class LocalAgent:
             logger.info(f"失败: {fail_count}")
             logger.info(f"结果: {'✓ 通过' if fail_count == 0 else '✗ 失败'}")
             logger.info("=" * 60)
+
+            # 如果是非 headless 模式，保持浏览器窗口打开一段时间，便于查看
+            if not headless and self.browser:
+                logger.info("浏览器窗口将保持 5 秒，便于查看...")
+                import asyncio
+                await asyncio.sleep(5)
+
+            # 关闭浏览器，释放资源
+            await self._close_browser()
 
             return {
                 "success": fail_count == 0,
@@ -330,8 +453,23 @@ def main():
         default=None,
         help="Agent ID（可选，默认自动生成）"
     )
+    parser.add_argument(
+        "--stop",
+        action="store_true",
+        help="停止正在运行的 Agent"
+    )
 
     args = parser.parse_args()
+
+    # 处理停止命令
+    if args.stop:
+        PIDFile.stop_running_agent()
+        return
+
+    # 检查单例
+    pid_lock = PIDFile(PID_FILE)
+    if not pid_lock.acquire():
+        sys.exit(1)
 
     print("""
 ╔════════════════════════════════════════╗
@@ -340,6 +478,7 @@ def main():
     """)
     print(f"服务器: {args.server}")
     print(f"Agent ID: {args.agent_id or '自动生成'}")
+    print(f"进程 PID: {os.getpid()}")
     print("")
 
     agent = LocalAgent(args.server, args.agent_id)
@@ -351,6 +490,8 @@ def main():
     except Exception as e:
         print(f"错误: {e}")
         sys.exit(1)
+    finally:
+        pid_lock.release()
 
 
 if __name__ == "__main__":

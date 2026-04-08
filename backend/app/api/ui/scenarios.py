@@ -52,10 +52,10 @@ async def create_scenario(
     db.commit()
     db.refresh(new_scenario)
 
-    # 更新任务的场景列表
+    # 更新任务的场景列表（将 UUID 转换为字符串以支持 JSON 序列化）
     if not task.scenario_ids:
         task.scenario_ids = []
-    task.scenario_ids.append(new_scenario.id)
+    task.scenario_ids.append(str(new_scenario.id))
     db.commit()
 
     # 手动序列化
@@ -193,10 +193,10 @@ async def delete_scenario(scenario_id: str, db: Session = Depends(get_db)):
     db.delete(scenario)
     db.commit()
 
-    # 更新任务的场景列表
+    # 更新任务的场景列表（将 UUID 转换为字符串以支持 JSON 序列化）
     task = db.query(UITask).filter(UITask.id == task_id).first()
     if task and task.scenario_ids:
-        task.scenario_ids = [sid for sid in task.scenario_ids if sid != scenario_id_uuid]
+        task.scenario_ids = [sid for sid in task.scenario_ids if sid != str(scenario_id_uuid)]
         db.commit()
 
     return {"message": "场景已删除"}
@@ -229,10 +229,10 @@ async def create_case(
     db.commit()
     db.refresh(new_case)
 
-    # 更新场景的用例列表
+    # 更新场景的用例列表（将 UUID 转换为字符串以支持 JSON 序列化）
     if not scenario.case_ids:
         scenario.case_ids = []
-    scenario.case_ids.append(new_case.id)
+    scenario.case_ids.append(str(new_case.id))
     db.commit()
 
     # 手动序列化
@@ -342,10 +342,10 @@ async def delete_case(case_id: str, db: Session = Depends(get_db)):
     db.delete(case_item)
     db.commit()
 
-    # 更新场景的用例列表
+    # 更新场景的用例列表（将 UUID 转换为字符串以支持 JSON 序列化）
     scenario = db.query(UIScenario).filter(UIScenario.id == scenario_id).first()
     if scenario and scenario.case_ids:
-        scenario.case_ids = [cid for cid in scenario.case_ids if cid != case_id_uuid]
+        scenario.case_ids = [cid for cid in scenario.case_ids if cid != str(case_id_uuid)]
         db.commit()
 
     return {"message": "用例已删除"}
@@ -395,10 +395,10 @@ async def create_step(
     db.commit()
     db.refresh(new_step)
 
-    # 更新用例的步骤列表
+    # 更新用例的步骤列表（将 UUID 转换为字符串以支持 JSON 序列化）
     if not case_item.step_ids:
         case_item.step_ids = []
-    case_item.step_ids.append(new_step.id)
+    case_item.step_ids.append(str(new_step.id))
     db.commit()
 
     # 手动序列化
@@ -518,10 +518,10 @@ async def delete_step(step_id: str, db: Session = Depends(get_db)):
     db.delete(step_item)
     db.commit()
 
-    # 更新用例的步骤列表
+    # 更新用例的步骤列表（将 UUID 转换为字符串以支持 JSON 序列化）
     case_item = db.query(UICase).filter(UICase.id == case_id).first()
     if case_item and case_item.step_ids:
-        case_item.step_ids = [sid for sid in case_item.step_ids if sid != step_id_uuid]
+        case_item.step_ids = [sid for sid in case_item.step_ids if sid != str(step_id_uuid)]
         db.commit()
 
     return {"message": "步骤已删除"}
