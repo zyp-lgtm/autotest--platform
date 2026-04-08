@@ -21,6 +21,7 @@ from ..models.execution import TestExecution, ScenarioExecution, CaseExecution, 
 from ..models.keyword import Keyword
 from ..services.keyword_engine import KeywordEngine
 from ..services.playwright_browser import PlaywrightBrowser
+from ..services.debug_collector import DebugInfoCollector
 from ..schemas.execution import ExecutionRequest
 from ..api import agent as agent_manager
 
@@ -44,6 +45,25 @@ class TaskExecutor:
         self.keyword_engine = None
         self.browser_manager: Optional[PlaywrightBrowser] = None
         self.current_execution: Optional[TestExecution] = None
+        self.debug_collector = DebugInfoCollector()  # 调试信息收集器
+
+    async def _setup_debug_collector(self) -> None:
+        """设置调试信息收集器"""
+        try:
+            # 启动调试会话
+            session_id = str(self.current_execution.id)
+            self.debug_collector.start_session(session_id)
+            logger.info(f"✅ 已启动调试会话: {session_id}")
+
+            # 设置页面监听器
+            if self.browser_manager:
+                page = await self.browser_manager.get_page()
+                await self.debug_collector.setup_page_listeners(page)
+                logger.info("✅ 已设置页面监听器: 控制台 + 网络")
+
+        except Exception as e:
+            logger.error(f"设置调试收集器失败: {e}")
+            # 不阻断执行，只是日志记录
 
     async def execute_task(self, request: ExecutionRequest) -> TestExecution:
         """
@@ -146,6 +166,9 @@ class TaskExecutor:
                     })
                     await self.browser_manager.start_browser()
                     logger.info("✓ 检测到本地浏览器可用，将使用本地浏览器")
+
+                    # 设置调试收集器
+                    await self._setup_debug_collector()
                 except Exception as e:
                     logger.info(f"本地浏览器不可用 ({e})，将使用容器内浏览器")
                     # 本地浏览器不可用，创建容器内浏览器
@@ -155,10 +178,16 @@ class TaskExecutor:
                         "use_local": False
                     })
                     await self.browser_manager.start_browser()
+
+                    # 设置调试收集器
+                    await self._setup_debug_collector()
             else:
                 # 使用用户提供的配置
                 self.browser_manager = PlaywrightBrowser(config=browser_config)
                 await self.browser_manager.start_browser()
+
+                # 设置调试收集器
+                await self._setup_debug_collector()
 
             self.keyword_engine = KeywordEngine(browser_manager=self.browser_manager)
 
@@ -418,8 +447,18 @@ class TaskExecutor:
         case_execution: CaseExecution,
         step: UIStep
     ) -> Dict[str, Any]:
-        """执行单个步骤"""
+        """执行单个步骤（集成调试信息收集）"""
+        import time
+        start_time = time.time()
+
         logger.info(f"Executing step: {step.step_name}")
+
+        # 记录步骤开始（调试收集器）
+        self.debug_collector.log_step_start(
+            step_name=step.step_name,
+            keyword=step.keyword_id,
+            parameters=step.parameters or {}
+        )
 
         # 创建步骤执行记录
         step_execution = StepExecution(
@@ -449,43 +488,75 @@ class TaskExecutor:
             step_execution.keyword_name = keyword.name
             step_execution.category = keyword.category
 
-            # 记录开始执行日志
+            # 记录开始执行日志（详细）
             execution_logs = []
             execution_logs.append({
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "level": "info",
-                "message": f"开始执行步骤: {step.step_name} (关键字: {keyword.name})"
+                "message": f"开始执行步骤: {step.step_name}"
+            })
+            execution_logs.append({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "level": "debug",
+                "message": f"关键字: {keyword.name} ({keyword.category})"
+            })
+            execution_logs.append({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "level": "debug",
+                "message": f"关键字ID: {step.keyword_id}"
             })
 
-            # 记录参数日志
+            # 记录参数日志（详细）
             if step.parameters:
-                params_str = ", ".join([f"{k}={v}" for k, v in step.parameters.items()])
                 execution_logs.append({
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "level": "info",
-                    "message": f"参数: {params_str}"
+                    "message": f"参数: {json.dumps(step.parameters, ensure_ascii=False)}"
                 })
+                # 记录每个参数的解析
+                for param_name, param_value in (step.parameters or {}).items():
+                    self.debug_collector.log_parameter_resolution(
+                        param_name=param_name,
+                        raw_value=str(param_value),
+                        resolved_value=param_value
+                    )
 
             # 执行关键字
             result = await self.keyword_engine.execute(
                 keyword_def=keyword,
-                parameters=step.parameters,
+                parameters=step.parameters or {},
                 context={}
             )
 
-            # 记录执行结果日志
+            # 记录执行结果日志（详细）
+            duration = time.time() - start_time
+
             if result.get("success"):
                 execution_logs.append({
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "level": "info",
-                    "message": f"✓ 步骤执行成功: {step.step_name}"
+                    "message": f"✓ 步骤执行成功: {step.step_name} (耗时: {duration:.2f}s)"
+                })
+                execution_logs.append({
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "level": "debug",
+                    "message": f"返回值: {json.dumps(result, ensure_ascii=False)}"
                 })
             else:
+                error_msg = result.get('error', '未知错误')
                 execution_logs.append({
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "level": "error",
-                    "message": f"✗ 步骤执行失败: {result.get('error', '未知错误')}"
+                    "message": f"✗ 步骤执行失败: {error_msg}"
                 })
+
+                # 记录详细的错误堆栈
+                if "traceback" in result:
+                    execution_logs.append({
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "level": "error",
+                        "message": f"错误堆栈: {result['traceback']}"
+                    })
 
             # 添加关键字引擎返回的日志
             if "logs" in result:
@@ -505,6 +576,13 @@ class TaskExecutor:
             step_execution.output = result
             step_execution.logs = execution_logs
 
+            # 记录步骤完成（调试收集器）
+            self.debug_collector.log_step_complete(
+                step_name=step.step_name,
+                result=result,
+                duration=duration
+            )
+
             self.db.commit()
 
             return {
@@ -516,6 +594,27 @@ class TaskExecutor:
         except Exception as e:
             logger.error(f"Step execution failed: {e}", exc_info=True)
 
+            # 捕获失败时的调试信息
+            if self.browser_manager:
+                try:
+                    page = await self.browser_manager.get_page()
+
+                    # 捕获完整的调试信息
+                    debug_info = await self.debug_collector.capture_failure_info(
+                        page=page,
+                        step_name=step.step_name,
+                        error=str(e),
+                        selector=step.parameters.get("selector") if step.parameters else None
+                    )
+
+                    # 更新执行记录
+                    step_execution.screenshot_path = debug_info.get("screenshot")
+                    step_execution.debug_info = debug_info
+
+                    logger.info(f"已捕获失败调试信息: {debug_info.get('report_path')}")
+                except Exception as debug_error:
+                    logger.error(f"捕获调试信息失败: {debug_error}")
+
             step_execution.completed_at = datetime.now(timezone.utc)
             started_at_aware = _ensure_datetime_aware(step_execution.started_at)
             step_execution.duration = (step_execution.completed_at - started_at_aware).total_seconds()
@@ -523,13 +622,14 @@ class TaskExecutor:
             step_execution.result = "fail"
             step_execution.error_message = str(e)
 
-            # 失败时截图
-            try:
-                screenshot_path = await self.browser_manager.take_screenshot()
-                step_execution.screenshot_path = screenshot_path
-                logger.info(f"Screenshot saved: {screenshot_path}")
-            except Exception as screenshot_error:
-                logger.warning(f"Failed to take screenshot: {screenshot_error}")
+            # 失败时尝试截图（备用方案）
+            if not step_execution.screenshot_path:
+                try:
+                    screenshot_path = await self.browser_manager.take_screenshot()
+                    step_execution.screenshot_path = screenshot_path
+                    logger.info(f"Screenshot saved: {screenshot_path}")
+                except Exception as screenshot_error:
+                    logger.warning(f"Failed to take screenshot: {screenshot_error}")
 
             self.db.commit()
 
