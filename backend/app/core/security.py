@@ -1,6 +1,11 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
+try:
+    from jose import ExpiredSignatureError
+except ImportError:
+    # 旧版本可能没有这个异常
+    ExpiredSignatureError = JWTError
 import bcrypt
 import base64
 import secrets
@@ -32,10 +37,10 @@ def verify_token(token: str) -> Optional[dict]:
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         return payload
-    except jwt.ExpiredSignatureError:
+    except ExpiredSignatureError:
         logger.warning("Token has expired")
         return None
-    except jwt.InvalidTokenError as e:
+    except JWTError as e:
         logger.warning(f"Invalid token: {e}")
         return None
 
