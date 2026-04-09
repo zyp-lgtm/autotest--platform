@@ -195,8 +195,10 @@ class ServiceManager:
                     start_new_session=True
                 )
 
-            # Agent 需要更长的启动时间
-            wait_time = 5 if service_id == "agent" else 2
+            # 等待服务启动
+            wait_time = 5 if service_id == "agent" else 3
+            if service_id == "frontend":
+                wait_time = 5  # 前端需要更长的启动时间
             await asyncio.sleep(wait_time)
 
             # Agent 使用后台进程，无法通过 process.poll() 检查
@@ -217,6 +219,28 @@ class ServiceManager:
                     return {
                         "success": False,
                         "message": f"{config['name']} 启动后退出，请检查日志: {config['log_file']}"
+                    }
+            elif service_id == "frontend":
+                # 前端服务：通过端口查找实际的 vite 进程 PID
+                if config.get("port") and self._is_port_in_use(config["port"]):
+                    actual_pid = self._find_process_by_port(config["port"])
+                    if actual_pid:
+                        # 写入实际的 PID
+                        Path(config["pid_file"]).write_text(str(actual_pid))
+                        return {
+                            "success": True,
+                            "message": f"{config['name']} 启动成功",
+                            "pid": actual_pid
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "message": f"{config['name']} 启动后未在端口 {config['port']} 检测到进程"
+                        }
+                else:
+                    return {
+                        "success": False,
+                        "message": f"{config['name']} 启动后端口 {config['port']} 未被占用"
                     }
             else:
                 # 其他服务正常检查
@@ -268,22 +292,41 @@ class ServiceManager:
             }
 
         try:
-            os.killpg(os.getpgid(pid), signal.SIGTERM)
+            # 尝试杀死进程组
+            try:
+                pgid = os.getpgid(pid)
+                os.killpg(pgid, signal.SIGTERM)
+            except ProcessLookupError:
+                # 进程组不存在，尝试杀死单个进程
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
 
+            # 等待进程退出
             for _ in range(10):
                 await asyncio.sleep(0.5)
                 try:
                     os.kill(pid, 0)
                 except OSError:
+                    # 进程已退出
                     Path(config["pid_file"]).unlink(missing_ok=True)
                     return {
                         "success": True,
                         "message": f"{config['name']} 已停止"
                     }
 
-            os.killpg(os.getpgid(pid), signal.SIGKILL)
-            Path(config["pid_file"]).unlink(missing_ok=True)
+            # 如果进程还在运行，强制杀死
+            try:
+                pgid = os.getpgid(pid)
+                os.killpg(pgid, signal.SIGKILL)
+            except ProcessLookupError:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
 
+            Path(config["pid_file"]).unlink(missing_ok=True)
             return {
                 "success": True,
                 "message": f"{config['name']} 已停止"
@@ -359,8 +402,18 @@ class ServiceManager:
                 "async": True
             }
         else:
-            await self.stop_service(service_id)
-            await asyncio.sleep(2)
+            # 对于其他服务，先尝试停止
+            # 如果服务未运行，stop_service 会返回 success: False，但我们应该继续
+            pid = self._get_pid(service_id)
+            if pid:
+                # 服务在运行，先停止
+                try:
+                    await self.stop_service(service_id)
+                    await asyncio.sleep(2)
+                except Exception as e:
+                    print(f"[重启] 停止服务时出错: {e}，继续启动...")
+
+            # 无论停止是否成功，都尝试启动服务
             return await self.start_service(service_id)
 
     async def _restart_backend_async(self):
