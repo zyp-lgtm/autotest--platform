@@ -212,6 +212,7 @@ async def execute_ui_task(
             "passed_steps": execution.passed_steps,
             "failed_steps": execution.failed_steps,
             "error_message": execution.error_message,
+            "execution_mode": execution.execution_mode,
             "scenarios": scenarios_data
         }
 
@@ -355,6 +356,15 @@ async def get_execution(
 
             steps_data = []
             for step_exec in step_executions:
+                # 解析 debug_info JSON 字符串
+                debug_info = None
+                if step_exec.debug_info:
+                    import json
+                    try:
+                        debug_info = json.loads(step_exec.debug_info) if isinstance(step_exec.debug_info, str) else step_exec.debug_info
+                    except:
+                        debug_info = step_exec.debug_info
+
                 steps_data.append({
                     "id": str(step_exec.id),
                     "step_id": str(step_exec.step_id),
@@ -370,6 +380,7 @@ async def get_execution(
                     "continue_on_failure": step_exec.continue_on_failure,
                     "logs": step_exec.logs or [],
                     "output": step_exec.output,
+                    "debug_info": debug_info,
                     "created_at": step_exec.created_at.isoformat() if step_exec.created_at else None
                 })
 
@@ -411,5 +422,6 @@ async def get_execution(
         "failed_steps": execution.failed_steps,
         "skipped_steps": execution.skipped_steps,
         "error_message": execution.error_message,
+        "execution_mode": execution.execution_mode,
         "scenario_executions": scenarios_data
     }

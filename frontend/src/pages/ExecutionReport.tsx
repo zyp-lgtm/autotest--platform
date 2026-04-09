@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { tasksApi } from '../api/tasks'
 import type { TestExecution } from '../types'
+import DebugPanel from '../components/debug/DebugPanel'
+import StepDetail from '../components/execution/StepDetail'
 
 export default function ExecutionReport() {
   const { executionId } = useParams<{ executionId: string }>()
@@ -35,6 +37,21 @@ export default function ExecutionReport() {
     const mins = Math.floor(seconds / 60)
     const secs = Math.floor(seconds % 60)
     return mins > 0 ? `${mins}分${secs}秒` : `${secs}秒`
+  }
+
+  const formatBeijingTime = (dateString?: string) => {
+    if (!dateString) return '-'
+    const date = new Date(dateString)
+    return date.toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    })
   }
 
   const getStatusColor = (status: string) => {
@@ -113,7 +130,7 @@ export default function ExecutionReport() {
           <div>
             <p className="text-sm text-gray-500">开始时间</p>
             <p className="text-sm font-medium">
-              {execution.started_at ? new Date(execution.started_at).toLocaleString('zh-CN') : '-'}
+              {formatBeijingTime(execution.started_at)}
             </p>
           </div>
           <div>
@@ -130,7 +147,11 @@ export default function ExecutionReport() {
 
         {/* 统计信息 */}
         <div className="mt-4 pt-4 border-t">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <span className="text-gray-500">场景数: </span>
+              <span className="font-medium ml-2">{execution.total_scenarios}</span>
+            </div>
             <div>
               <span className="text-gray-500">场景数: </span>
               <span className="font-medium ml-2">{execution.total_scenarios}</span>
@@ -157,6 +178,27 @@ export default function ExecutionReport() {
             </div>
           </div>
         </div>
+
+        {/* 执行模式 */}
+        {execution.execution_mode && (
+          <div className="mt-4 pt-4 border-t">
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-gray-500">执行模式:</span>
+              <span className={`px-2 py-1 text-xs rounded ${
+                execution.execution_mode === 'agent'
+                  ? 'bg-purple-100 text-purple-700'
+                  : 'bg-blue-100 text-blue-700'
+              }`}>
+                {execution.execution_mode === 'agent' ? '🤖 Agent执行' : '⚙️ 服务器执行'}
+              </span>
+              {execution.execution_mode === 'direct' && (
+                <span className="text-xs text-gray-500">
+                  (Agent离线，使用服务器执行模式)
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {execution.error_message && (
           <div className="mt-4 p-3 bg-red-50 text-red-700 rounded">
@@ -205,43 +247,20 @@ export default function ExecutionReport() {
 
                 <div className="mt-2 space-y-2">
                   {caseExec.step_executions.map((stepExec) => (
-                    <div key={stepExec.id} className="bg-gray-50 rounded p-2 text-sm">
-                      <div className="flex justify-between items-start">
-                        <span className="font-mono text-xs">
-                          {stepExec.step_order}. {stepExec.keyword_name}
-                        </span>
-                        <span className={`px-2 py-0.5 text-xs rounded ${
-                          stepExec.result === 'pass' ? 'bg-green-100 text-green-700' :
-                          stepExec.result === 'fail' ? 'bg-red-100 text-red-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {stepExec.result?.toUpperCase() || stepExec.status}
-                        </span>
-                      </div>
-
-                      {stepExec.error_message && (
-                        <div className="mt-1 text-red-600 text-xs">
-                          错误: {stepExec.error_message}
-                        </div>
-                      )}
-
-                      {stepExec.screenshot_path && (
-                        <div className="mt-2">
-                          <button
-                            onClick={() => setScreenshotModal({
-                              url: stepExec.screenshot_path!,
-                              title: `${stepExec.step_name} - 失败截图`
-                            })}
-                            className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            查看截图
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    <StepDetail
+                      key={stepExec.id}
+                      step={{
+                        step_name: stepExec.step_name,
+                        keyword_name: stepExec.keyword_name,
+                        parameters: stepExec.parameters,
+                        status: stepExec.status,
+                        result: stepExec.result,
+                        duration: stepExec.duration,
+                        error_message: stepExec.error_message,
+                        logs: stepExec.logs,
+                        output: stepExec.output
+                      }}
+                    />
                   ))}
                 </div>
               </details>

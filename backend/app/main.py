@@ -11,6 +11,7 @@ from .api import agent
 from .api import agent_management as agent_management_router
 from .api import health as health_router
 from .api import services as services_router
+from .api import debug as debug_router
 
 # Configure logging
 logging.basicConfig(
@@ -64,3 +65,6 @@ app.include_router(health_router.router, prefix="/api/v1", tags=["health"])
 
 # 服务管理路由
 app.include_router(services_router.router, prefix="/api/v1", tags=["services"])
+
+# 调试文件路由
+app.include_router(debug_router.router, prefix="/api/v1", tags=["debug"])

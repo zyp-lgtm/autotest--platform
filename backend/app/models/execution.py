@@ -35,6 +35,7 @@ class TestExecution(Base):
     execution_config = Column(JSON, default={})
     browser_config = Column(JSON, default={})
     environment = Column(String(50), default="development")
+    execution_mode = Column(String(20), default="direct")  # direct, agent
 
     # 结果
     result = Column(String(20))  # pass, fail, error
@@ -137,6 +138,14 @@ class StepExecution(Base):
     output = Column(JSON)  # 关键字执行输出
     error_message = Column(Text)
     screenshot_path = Column(String(500))  # 失败截图路径
+
+    # 调试信息（失败时自动收集）
+    debug_info = Column(JSON)  # 调试信息收集器捕获的完整数据
+    # 包含：screenshot, html_snapshot, console_logs, network_requests, execution_steps
+
+    # 重试信息
+    retry_attempt = Column(Integer, default=0)  # 第几次尝试（0表示原始尝试）
+    retry_of = Column(UUID(as_uuid=True), ForeignKey("step_executions.id"))  # 指向原始步骤ID（如果是重试）
 
     # 日志
     logs = Column(JSON, default=[])  # 详细日志列表

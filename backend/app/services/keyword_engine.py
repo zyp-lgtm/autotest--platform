@@ -158,6 +158,16 @@ class KeywordEngine:
                 return await self._assert_element_count(parameters)
             elif keyword_name == "GET_TEXT":
                 return await self._get_text(parameters)
+            elif keyword_name == "CLOSE_BROWSER":
+                return await self._close_browser(parameters)
+            elif keyword_name == "SWITCH_TAB":
+                return await self._switch_tab(parameters)
+            elif keyword_name == "GO_BACK":
+                return await self._go_back(parameters)
+            elif keyword_name == "REFRESH":
+                return await self._refresh(parameters)
+            elif keyword_name == "DOUBLE_CLICK":
+                return await self._double_click(parameters)
             elif keyword_name == "SCROLL":
                 return await self._scroll(parameters)
             else:
@@ -1000,4 +1010,154 @@ class KeywordEngine:
             return {
                 "success": False,
                 "error": f"滚动失败: {str(e)}"
+            }
+
+    async def _close_browser(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """关闭浏览器"""
+        try:
+            if not self.browser_manager:
+                return {
+                    "success": False,
+                    "error": "浏览器管理器未初始化"
+                }
+
+            await self.browser_manager.close()
+            logger.info("CLOSE_BROWSER 成功: 浏览器已关闭")
+
+            return {
+                "success": True,
+                "message": "浏览器已关闭"
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"关闭浏览器失败: {str(e)}"
+            }
+
+    async def _switch_tab(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """切换到指定的标签页"""
+        index = params.get("index", 1)  # 默认切换到第二个标签页
+        timeout = params.get("timeout", 5000)
+
+        try:
+            page = await self.browser_manager.get_page()
+            page.set_default_timeout(timeout)
+
+            # 获取所有页面上下文
+            context = page.context
+            pages = context.pages
+
+            if index < 0 or index >= len(pages):
+                return {
+                    "success": False,
+                    "error": f"标签页索引超出范围: {index} (共 {len(pages)} 个标签页)"
+                }
+
+            # 切换到指定页面
+            target_page = pages[index]
+            await target_page.bring_to_front()
+
+            logger.info(f"SWITCH_TAB 成功: 切换到标签页 {index}")
+
+            return {
+                "success": True,
+                "message": f"已切换到标签页 {index}",
+                "page_count": len(pages),
+                "current_index": index
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"切换标签页失败: {str(e)}"
+            }
+
+    async def _go_back(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """浏览器后退"""
+        wait_until = params.get("wait_until", "load")  # load, domcontentloaded, networkidle
+        timeout = params.get("timeout", 30000)
+
+        try:
+            page = await self.browser_manager.get_page()
+            page.set_default_timeout(timeout)
+
+            await page.go_back(wait_until=wait_until)
+
+            logger.info("GO_BACK 成功: 后退一页")
+
+            return {
+                "success": True,
+                "message": "已后退到上一页",
+                "url": page.url
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"后退失败: {str(e)}"
+            }
+
+    async def _refresh(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """刷新当前页面"""
+        wait_until = params.get("wait_until", "load")
+        timeout = params.get("timeout", 30000)
+
+        try:
+            page = await self.browser_manager.get_page()
+            page.set_default_timeout(timeout)
+
+            await page.reload(wait_until=wait_until)
+
+            logger.info("REFRESH 成功: 页面已刷新")
+
+            return {
+                "success": True,
+                "message": "页面已刷新",
+                "url": page.url
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"刷新页面失败: {str(e)}"
+            }
+
+    async def _double_click(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """双击元素"""
+        selector = params.get("selector")
+        timeout = params.get("timeout", 5000)
+        force = params.get("force", False)
+
+        if not selector:
+            return {"success": False, "error": "缺少必需参数: selector"}
+
+        try:
+            page = await self.browser_manager.get_page()
+            page.set_default_timeout(timeout)
+
+            # 等待元素可见
+            wait_result = await self.browser_manager.wait_for_element(
+                selector=selector,
+                state="visible",
+                timeout=timeout
+            )
+            if not wait_result["success"]:
+                return wait_result
+
+            # 双击元素
+            element = page.locator(selector)
+            await element.dblclick(force=force)
+
+            logger.info(f"DOUBLE_CLICK 成功: {selector}")
+
+            return {
+                "success": True,
+                "message": f"已双击元素: {selector}"
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"双击失败: {str(e)}"
             }

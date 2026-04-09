@@ -9,6 +9,7 @@
 """
 
 import asyncio
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -22,6 +23,7 @@ from ..models.keyword import Keyword
 from ..services.keyword_engine import KeywordEngine
 from ..services.playwright_browser import PlaywrightBrowser
 from ..services.debug_collector import DebugInfoCollector
+from ..services.error_classifier import ErrorClassifier
 from ..schemas.execution import ExecutionRequest
 from ..api import agent as agent_manager
 
@@ -111,6 +113,8 @@ class TaskExecutor:
 
             if available_agents and browser_config.get("use_agent", True):
                 # 使用本地 Agent 执行
+                execution.execution_mode = "agent"
+                self.db.flush()
                 logger.info(f"发现 {len(available_agents)} 个可用 Agent，使用 Agent 执行任务")
 
                 # 获取第一个可用的 Agent
@@ -151,6 +155,8 @@ class TaskExecutor:
                 return execution
 
             # 5. 没有 Agent 或不使用 Agent，在容器内执行
+            execution.execution_mode = "direct"
+            self.db.flush()
             logger.info("在容器内执行任务")
 
             # 自动尝试连接本地浏览器（如果未配置）
@@ -286,10 +292,21 @@ class TaskExecutor:
         try:
             # 加载用例
             cases = []
-            for case_id in scenario.case_ids:
+
+            # 处理 case_ids（可能是 JSON 字符串或列表）
+            case_ids_list = scenario.case_ids
+            if isinstance(case_ids_list, str):
+                try:
+                    case_ids_list = json.loads(case_ids_list)
+                except:
+                    case_ids_list = []
+
+            for case_id in case_ids_list:
+                # 将字符串 ID 转换为 UUID 对象
+                case_id_uuid = uuid.UUID(case_id) if isinstance(case_id, str) else case_id
                 case = self.db.query(UICase).filter(
                     and_(
-                        UICase.id == case_id,
+                        UICase.id == case_id_uuid,
                         UICase.scenario_id == scenario.id
                     )
                 ).first()
@@ -367,10 +384,21 @@ class TaskExecutor:
         try:
             # 加载步骤
             steps = []
-            for step_id in case.step_ids:
+
+            # 处理 step_ids（可能是 JSON 字符串或列表）
+            step_ids_list = case.step_ids
+            if isinstance(step_ids_list, str):
+                try:
+                    step_ids_list = json.loads(step_ids_list)
+                except:
+                    step_ids_list = []
+
+            for step_id in step_ids_list:
+                # 将字符串 ID 转换为 UUID 对象
+                step_id_uuid = uuid.UUID(step_id) if isinstance(step_id, str) else step_id
                 step = self.db.query(UIStep).filter(
                     and_(
-                        UIStep.id == step_id,
+                        UIStep.id == step_id_uuid,
                         UIStep.case_id == case.id
                     )
                 ).first()
@@ -445,7 +473,9 @@ class TaskExecutor:
     async def _execute_step(
         self,
         case_execution: CaseExecution,
-        step: UIStep
+        step: UIStep,
+        step_execution: StepExecution = None,
+        is_retry: bool = False
     ) -> Dict[str, Any]:
         """执行单个步骤（集成调试信息收集）"""
         import time
@@ -460,23 +490,25 @@ class TaskExecutor:
             parameters=step.parameters or {}
         )
 
-        # 创建步骤执行记录
-        step_execution = StepExecution(
-            case_execution_id=case_execution.id,
-            step_id=step.id,
-            keyword_id=step.keyword_id,
-            status="running",
-            started_at=datetime.now(timezone.utc),
-            step_name=step.step_name,
-            step_order=step.step_order,
-            keyword_name="",
-            category=step.step_type,
-            parameters=step.parameters,
-            continue_on_failure=step.continue_on_failure,
-            logs=[]
-        )
-        self.db.add(step_execution)
-        self.db.commit()
+        # 创建步骤执行记录（如果不是重试的话）
+        if step_execution is None:
+            step_execution = StepExecution(
+                case_execution_id=case_execution.id,
+                step_id=step.id,
+                keyword_id=step.keyword_id,
+                status="running",
+                started_at=datetime.now(timezone.utc),
+                step_name=step.step_name,
+                step_order=step.step_order,
+                keyword_name="",
+                category=step.step_type,
+                parameters=step.parameters,
+                continue_on_failure=step.continue_on_failure,
+                retry_attempt=0,
+                logs=[]
+            )
+            self.db.add(step_execution)
+            self.db.commit()
         self.db.refresh(step_execution)
 
         try:
@@ -576,6 +608,77 @@ class TaskExecutor:
             step_execution.output = result
             step_execution.logs = execution_logs
 
+            # 设置错误消息（如果失败）
+            if not result.get("success"):
+                error_msg = result.get('error') or result.get('message', '未知错误')
+                step_execution.error_message = error_msg
+
+                # 使用错误分类器丰富错误信息
+                error_info = ErrorClassifier.enrich_error_info(error_msg)
+                logger.info(f"步骤失败: {error_msg}")
+                logger.info(f"错误分类: {error_info['category']}, 严重程度: {error_info['severity']}")
+
+                # 将错误分类信息添加到output中
+                if not step_execution.output:
+                    step_execution.output = {}
+                step_execution.output['error_category'] = error_info['category']
+                step_execution.output['error_severity'] = error_info['severity']
+                step_execution.output['error_suggestion'] = error_info['suggestion']
+
+                # 在日志中记录错误建议
+                suggestion = error_info['suggestion']
+                execution_logs.append({
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "level": "info",
+                    "message": f"💡 建议: {suggestion['title']} - {suggestion['description']}"
+                })
+                for solution in suggestion['solutions'][:2]:  # 只显示前2个建议
+                    execution_logs.append({
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "level": "info",
+                        "message": f"   • {solution}"
+                    })
+
+                # 强制刷新到数据库
+                self.db.flush()
+
+                # 检查是否应该重试
+                should_retry = self._should_retry_step(step, error_msg, step_execution.retry_attempt)
+
+                if should_retry:
+                    # 执行重试
+                    retry_attempt = step_execution.retry_attempt + 1
+                    max_retries = step.execution_config.get('max_retries', 3) if step.execution_config else 3
+
+                    logger.info(f"步骤失败，执行第 {retry_attempt}/{max_retries} 次重试")
+
+                    # 创建重试记录
+                    retry_step_execution = StepExecution(
+                        case_execution_id=step_execution.case_execution_id,
+                        step_id=step.step_id,
+                        keyword_id=step.keyword_id,
+                        status="running",
+                        started_at=datetime.now(timezone.utc),
+                        step_name=step.step_name,
+                        step_order=step.step_order,
+                        keyword_name=step_execution.keyword_name,
+                        category=step_execution.category,
+                        parameters=step.parameters,
+                        continue_on_failure=step.continue_on_failure,
+                        retry_attempt=retry_attempt,
+                        retry_of=step_execution.id,
+                        logs=[]
+                    )
+                    self.db.add(retry_step_execution)
+                    self.db.commit()
+
+                    # 递归调用自己执行重试
+                    return await self._execute_step(case_execution, step, retry_step_execution, is_retry=True)
+
+                # 记录失败不需要重试或重试次数已用尽
+                if step_execution.retry_attempt > 0:
+                    logger.info(f"步骤在 {step_execution.retry_attempt} 次尝试后仍然失败，放弃重试")
+
             # 记录步骤完成（调试收集器）
             self.debug_collector.log_step_complete(
                 step_name=step.step_name,
@@ -609,7 +712,8 @@ class TaskExecutor:
 
                     # 更新执行记录
                     step_execution.screenshot_path = debug_info.get("screenshot")
-                    step_execution.debug_info = debug_info
+                    # 将 debug_info 转换为 JSON 字符串以便存储
+                    step_execution.debug_info = json.dumps(debug_info, ensure_ascii=False)
 
                     logger.info(f"已捕获失败调试信息: {debug_info.get('report_path')}")
                 except Exception as debug_error:
@@ -621,6 +725,21 @@ class TaskExecutor:
             step_execution.status = "completed"
             step_execution.result = "fail"
             step_execution.error_message = str(e)
+
+            # 使用错误分类器丰富异常信息
+            error_info = ErrorClassifier.enrich_error_info(str(e))
+            logger.info(f"异常分类: {error_info['category']}, 严重程度: {error_info['severity']}")
+
+            # 将错误分类信息添加到output中
+            if not step_execution.output:
+                step_execution.output = {}
+            step_execution.output['error_category'] = error_info['category']
+            step_execution.output['error_severity'] = error_info['severity']
+            step_execution.output['error_suggestion'] = error_info['suggestion']
+
+            # 在日志中记录错误建议
+            suggestion = error_info['suggestion']
+            logger.info(f"💡 异常建议: {suggestion['title']} - {suggestion['description']}")
 
             # 失败时尝试截图（备用方案）
             if not step_execution.screenshot_path:
@@ -681,7 +800,15 @@ class TaskExecutor:
             self.db.commit()
             self.db.refresh(scenario_execution)
 
-            for case_id in scenario.case_ids:
+            # 处理 case_ids（可能是 JSON 字符串或列表）
+            case_ids_list = scenario.case_ids
+            if isinstance(case_ids_list, str):
+                try:
+                    case_ids_list = json.loads(case_ids_list)
+                except:
+                    case_ids_list = []
+
+            for case_id in case_ids_list:
                 case_execution = None  # 初始化变量
 
                 # 将字符串 ID 转换为 UUID 对象
@@ -708,7 +835,15 @@ class TaskExecutor:
                 agent_steps = []
                 step_mappings = []  # 保存步骤ID映射
 
-                for step_id in case.step_ids:
+                # 处理 step_ids（可能是 JSON 字符串或列表）
+                step_ids_list = case.step_ids
+                if isinstance(step_ids_list, str):
+                    try:
+                        step_ids_list = json.loads(step_ids_list)
+                    except:
+                        step_ids_list = []
+
+                for step_id in step_ids_list:
                     # 将字符串 ID 转换为 UUID 对象
                     step_id_uuid = uuid.UUID(step_id) if isinstance(step_id, str) else step_id
                     step = self.db.query(UIStep).filter(
@@ -773,7 +908,7 @@ class TaskExecutor:
                 agent_results = []
                 if task_result_data and task_result_data.get("result"):
                     agent_result = task_result_data["result"]
-                    if agent_result.get("success") and "results" in agent_result:
+                    if "results" in agent_result:
                         agent_results = agent_result["results"]
                         logger.info(f"收到 Agent 执行结果: {len(agent_results)} 个步骤")
 
@@ -870,6 +1005,58 @@ class TaskExecutor:
             "passed_steps": passed_steps,
             "failed_steps": failed_steps
         }
+
+    def _should_retry_step(
+        self,
+        step: UIStep,
+        error_msg: str,
+        current_attempt: int
+    ) -> bool:
+        """判断步骤是否应该重试
+
+        Args:
+            step: 步骤定义
+            error_msg: 错误消息
+            current_attempt: 当前尝试次数
+
+        Returns:
+            bool: True表示应该重试
+        """
+        # 检查步骤配置是否允许重试
+        if step.execution_config and not step.execution_config.get('retry_on_failure', True):
+            return False
+
+        # 检查最大重试次数
+        max_retries = step.execution_config.get('max_retries', 3) if step.execution_config else 3
+
+        if current_attempt >= max_retries:
+            return False
+
+        # 检查错误类型是否可以重试
+        # 可以重试的错误：超时、连接失败、临时网络问题
+        # 不应重试的错误：断言失败、元素不存在（非超时原因）、脚本错误
+
+        retryable_errors = [
+            'timeout',
+            '超时',
+            'Timeout',
+            'network',
+            'network error',
+            'connection',
+            'connection refused',
+            'Temporary',
+            'temporary'
+        ]
+
+        # 检查错误消息是否包含可重试的关键词
+        should_retry = any(keyword in error_msg for keyword in retryable_errors)
+
+        # 特殊情况：元素找不到如果是超时导致的，可以重试
+        if not should_retry and 'Timeout' in error_msg:
+            should_retry = True
+
+        return should_retry
+
     def _create_step_execution_record(
         self,
         case_execution_id: uuid.UUID,
@@ -900,6 +1087,7 @@ class TaskExecutor:
             result=result or ("pass" if status == "completed" and not error else "fail")
         )
         self.db.add(step_execution)
+        self.db.flush()  # 先 flush 确保 error_message 保存
         self.db.commit()
 
     def _convert_step_to_agent_format(self, keyword: Keyword, parameters: dict) -> Optional[dict]:

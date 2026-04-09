@@ -146,6 +146,7 @@ export interface TestExecution {
   skipped_steps: number
 
   error_message?: string
+  execution_mode?: string  // 'direct' | 'agent'
   scenario_executions: ScenarioExecution[]
   created_at: string
 }
