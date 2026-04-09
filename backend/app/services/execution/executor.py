@@ -17,16 +17,17 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
-from ..models.ui_task import UITask, UIScenario
-from ..models.execution import TestExecution
-from ..services.playwright_browser import PlaywrightBrowser
-from ..services.debug_collector import DebugInfoCollector
-from ..services.keyword_engine import KeywordEngine
-from ..schemas.execution import ExecutionRequest
-from ..api import agent as agent_manager
+from ...models.ui_task import UITask, UIScenario, UICase, UIStep
+from ...models.execution import TestExecution
+from ...models.keyword import Keyword
+from ...services.playwright_browser import PlaywrightBrowser
+from ...services.debug_collector import DebugInfoCollector
+from ...services.keyword_engine import KeywordEngine
+from ...schemas.execution import ExecutionRequest
+from ...api import agent as agent_manager
 from .task_orchestrator import TaskOrchestrator
 from .step_executor import StepExecutor
-from ..core.interfaces import (
+from ...core.interfaces import (
     IKeywordEngine,
     IBrowserManager,
     IDebugCollector,

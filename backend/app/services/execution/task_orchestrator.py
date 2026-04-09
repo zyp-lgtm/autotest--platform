@@ -8,7 +8,7 @@ from typing import Dict, Any, List
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
-from ...models.ui_task import UITask, UIScenario, UICase
+from ...models.ui_task import UITask, UIScenario, UICase, UIStep
 from ...models.execution import TestExecution, ScenarioExecution, CaseExecution
 from .step_executor import StepExecutor
 from ...core.interfaces import IStepExecutor

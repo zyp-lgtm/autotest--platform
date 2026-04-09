@@ -5,7 +5,7 @@ import bcrypt
 import base64
 import secrets
 from fastapi.security.oauth2 import OAuth2PasswordBearer
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Depends
 from .config import get_settings
 import logging
 
