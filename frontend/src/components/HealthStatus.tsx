@@ -23,7 +23,6 @@ export function HealthStatusIndicator() {
         const serviceIndex = ['backend', 'frontend', 'agent'].indexOf(manualOperation.serviceId)
         if (serviceIndex >= 0 && status.services[serviceIndex]?.status === 'healthy') {
           // 服务实际已经启动，清除手动操作标记
-          console.log('检测到服务已启动，清除手动操作标记')
           setManualOperation(null)
           setShowBackendTip(false)
         }
@@ -33,13 +32,10 @@ export function HealthStatusIndicator() {
       // 如果有手动停止操作，保持显示的"已停止"状态
       if (!manualOperation || manualOperation.action !== 'stop') {
         setHealth(status)
-      } else {
-        console.log('有手动停止操作，跳过健康状态更新以保持停止状态')
       }
     } catch (err) {
       // 如果是后端停止导致的错误，不要覆盖手动停止状态
       if (manualOperation && manualOperation.action === 'stop' && manualOperation.serviceId === 'backend') {
-        console.log('后端停止期间健康检查失败，保持停止状态')
         // 不更新状态，保持显示的停止状态
         return
       }
@@ -50,16 +46,13 @@ export function HealthStatusIndicator() {
   }
 
   const handleServiceAction = async (serviceId: string, action: 'start' | 'stop' | 'restart') => {
-    console.log('[ServiceAction] 开始操作:', serviceId, action)
     setOperatingService(serviceId)
 
     try {
       let result
       switch (action) {
         case 'start':
-          console.log('[ServiceAction] 调用启动API')
           result = await servicesApi.startService(serviceId)
-          console.log('[ServiceAction] 启动响应:', result)
           if (result.success) {
             setManualOperation(null)
             setShowBackendTip(false)
@@ -73,21 +66,15 @@ export function HealthStatusIndicator() {
           break
 
         case 'stop':
-          console.log('[ServiceAction] 调用停止API')
           result = await servicesApi.stopService(serviceId)
-          console.log('[ServiceAction] 停止响应:', result)
           if (result.success) {
-            console.log('[ServiceAction] 停止成功，准备更新状态')
-
             // 立即显示提示
             if (serviceId === 'backend') {
-              console.log('[ServiceAction] 显示后端提示')
               setShowBackendTip(true)
             }
 
             // 设置手动操作标记
             setManualOperation({ serviceId, action: 'stop', timestamp: Date.now() })
-            console.log('[ServiceAction] 已设置手动操作标记')
 
             // 更新健康状态
             if (health) {
@@ -99,21 +86,15 @@ export function HealthStatusIndicator() {
                     : s
                 )
               }
-              console.log('[ServiceAction] 新的健康状态:', newHealth.services[0])
               setHealth(newHealth)
-            } else {
-              console.warn('[ServiceAction] health 为 null')
             }
           } else {
-            console.warn('[ServiceAction] 停止失败:', result.message)
             alert(result.message)
           }
           break
 
         case 'restart':
-          console.log('[ServiceAction] 调用重启API')
           result = await servicesApi.restartService(serviceId)
-          console.log('[ServiceAction] 重启响应:', result)
           if (result.success) {
             setManualOperation(null)
             if (serviceId === 'backend') {
@@ -144,7 +125,6 @@ export function HealthStatusIndicator() {
         fetchHealth()
       }
     } finally {
-      console.log('[ServiceAction] 操作完成，清除操作状态')
       setOperatingService(null)
     }
   }
@@ -158,16 +138,13 @@ export function HealthStatusIndicator() {
         const timeSinceOperation = Date.now() - manualOperation.timestamp
         if (timeSinceOperation < 60000) {
           // 跳过自动刷新，保持手动停止的状态
-          console.log('[AutoRefresh] 跳过刷新，保持手动停止状态')
           return
         } else {
           // 超过60秒，清除手动操作标记
-          console.log('[AutoRefresh] 超过60秒，清除手动操作标记')
           setManualOperation(null)
         }
       }
 
-      console.log('[AutoRefresh] 执行健康检查')
       fetchHealth()
     }, 5000)
 

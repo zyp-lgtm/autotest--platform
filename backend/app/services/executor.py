@@ -197,19 +197,18 @@ class TaskExecutor:
 
             self.keyword_engine = KeywordEngine(browser_manager=self.browser_manager)
 
-            # 4. 加载场景
-            scenarios = []
+            # 4. 加载场景（优化：使用 IN 子句避免 N+1 查询）
+            scenario_id_uuids = []
             for scenario_id in task.scenario_ids:
-                # 将字符串 ID 转换为 UUID 对象
                 scenario_id_uuid = uuid.UUID(scenario_id) if isinstance(scenario_id, str) else scenario_id
-                scenario = self.db.query(UIScenario).filter(
-                    and_(
-                        UIScenario.id == scenario_id_uuid,
-                        UIScenario.task_id == task.id
-                    )
-                ).first()
-                if scenario:
-                    scenarios.append(scenario)
+                scenario_id_uuids.append(scenario_id_uuid)
+
+            scenarios = self.db.query(UIScenario).filter(
+                and_(
+                    UIScenario.id.in_(scenario_id_uuids),
+                    UIScenario.task_id == task.id
+                )
+            ).all()
 
             # 按执行顺序排序
             scenarios.sort(key=lambda s: s.execution_order)
@@ -290,28 +289,27 @@ class TaskExecutor:
         self.db.refresh(scenario_execution)
 
         try:
-            # 加载用例
-            cases = []
-
+            # 加载用例（优化：使用 IN 子句避免 N+1 查询）
             # 处理 case_ids（可能是 JSON 字符串或列表）
             case_ids_list = scenario.case_ids
             if isinstance(case_ids_list, str):
                 try:
                     case_ids_list = json.loads(case_ids_list)
-                except:
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"Failed to parse case_ids JSON: {e}, using empty list")
                     case_ids_list = []
 
+            case_id_uuids = []
             for case_id in case_ids_list:
-                # 将字符串 ID 转换为 UUID 对象
                 case_id_uuid = uuid.UUID(case_id) if isinstance(case_id, str) else case_id
-                case = self.db.query(UICase).filter(
-                    and_(
-                        UICase.id == case_id_uuid,
-                        UICase.scenario_id == scenario.id
-                    )
-                ).first()
-                if case:
-                    cases.append(case)
+                case_id_uuids.append(case_id_uuid)
+
+            cases = self.db.query(UICase).filter(
+                and_(
+                    UICase.id.in_(case_id_uuids),
+                    UICase.scenario_id == scenario.id
+                )
+            ).all()
 
             logger.info(f"Loaded {len(cases)} cases for scenario")
 
@@ -390,7 +388,8 @@ class TaskExecutor:
             if isinstance(step_ids_list, str):
                 try:
                     step_ids_list = json.loads(step_ids_list)
-                except:
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"Failed to parse step_ids JSON: {e}, using empty list")
                     step_ids_list = []
 
             for step_id in step_ids_list:
@@ -772,21 +771,25 @@ class TaskExecutor:
         logger.info(f"通过 Agent {agent_id} 执行任务 {task.id}")
         logger.info(f"浏览器配置: {browser_config}")
 
-        # 加载场景和步骤，同时创建执行记录
+        # 加载场景和步骤，同时创建执行记录（优化：使用 IN 子句避免 N+1 查询）
         total_steps = 0
         passed_steps = 0
         failed_steps = 0
         all_step_results = []
 
+        scenario_id_uuids = []
         for scenario_id in task.scenario_ids:
-            # 将字符串 ID 转换为 UUID 对象
             scenario_id_uuid = uuid.UUID(scenario_id) if isinstance(scenario_id, str) else scenario_id
-            scenario = self.db.query(UIScenario).filter(
-                and_(UIScenario.id == scenario_id_uuid, UIScenario.task_id == task.id)
-            ).first()
+            scenario_id_uuids.append(scenario_id_uuid)
 
-            if not scenario:
-                continue
+        scenarios = self.db.query(UIScenario).filter(
+            and_(
+                UIScenario.id.in_(scenario_id_uuids),
+                UIScenario.task_id == task.id
+            )
+        ).all()
+
+        for scenario in scenarios:
 
             # 创建场景执行记录
             scenario_execution = ScenarioExecution(
@@ -805,20 +808,24 @@ class TaskExecutor:
             if isinstance(case_ids_list, str):
                 try:
                     case_ids_list = json.loads(case_ids_list)
-                except:
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning(f"Failed to parse case_ids JSON: {e}, using empty list")
                     case_ids_list = []
 
+            # 优化：使用 IN 子句避免 N+1 查询
+            case_id_uuids = []
             for case_id in case_ids_list:
-                case_execution = None  # 初始化变量
-
-                # 将字符串 ID 转换为 UUID 对象
                 case_id_uuid = uuid.UUID(case_id) if isinstance(case_id, str) else case_id
-                case = self.db.query(UICase).filter(
-                    and_(UICase.id == case_id_uuid, UICase.scenario_id == scenario.id)
-                ).first()
+                case_id_uuids.append(case_id_uuid)
 
-                if not case:
-                    continue
+            cases = self.db.query(UICase).filter(
+                and_(
+                    UICase.id.in_(case_id_uuids),
+                    UICase.scenario_id == scenario.id
+                )
+            ).all()
+
+            for case in cases:
 
                 # 创建用例执行记录
                 case_execution = CaseExecution(
@@ -840,7 +847,8 @@ class TaskExecutor:
                 if isinstance(step_ids_list, str):
                     try:
                         step_ids_list = json.loads(step_ids_list)
-                    except:
+                    except (json.JSONDecodeError, TypeError) as e:
+                        logger.warning(f"Failed to parse step_ids JSON: {e}, using empty list")
                         step_ids_list = []
 
                 for step_id in step_ids_list:
