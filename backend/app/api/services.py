@@ -8,11 +8,10 @@ import signal
 import asyncio
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.security import OAuth2PasswordBearer
 from pathlib import Path
 import socket
 
-from ..core.security import verify_token
+from ..core.security import verify_token, oauth2_scheme
 
 router = APIRouter()
 
@@ -409,7 +408,7 @@ service_manager = ServiceManager()
 @router.post("/services/{service_id}/start")
 async def start_service(
     service_id: str,
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    token: str = Depends(oauth2_scheme)
 ):
     """启动服务"""
     # 验证用户身份
@@ -422,7 +421,7 @@ async def start_service(
 @router.post("/services/{service_id}/stop")
 async def stop_service(
     service_id: str,
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    token: str = Depends(oauth2_scheme)
 ):
     """停止服务"""
     # 验证用户身份
@@ -435,7 +434,7 @@ async def stop_service(
 @router.post("/services/{service_id}/restart")
 async def restart_service(
     service_id: str,
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    token: str = Depends(oauth2_scheme)
 ):
     """重启服务"""
     # 验证用户身份

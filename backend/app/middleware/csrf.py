@@ -44,6 +44,12 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             if "/auth/" in request.url.path:
                 return await call_next(request)
 
+            # 豁免带有 Bearer token 的请求（API 调用）
+            # Bearer token 本身已提供强认证，不受 CSRF 攻击影响
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                return await call_next(request)
+
             try:
                 # 验证 CSRF Token
                 csrf_protect.validate_request(request)
