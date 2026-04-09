@@ -13,6 +13,7 @@ from .api import health as health_router
 from .api import services as services_router
 from .api import debug as debug_router
 from .middleware import setup_rate_limit_middleware
+from .middleware.performance import PerformanceMonitorMiddleware, get_performance_monitor
 
 # Configure logging
 logging.basicConfig(
@@ -37,6 +38,9 @@ app.add_middleware(
 # 速率限制中间件
 setup_rate_limit_middleware(app)
 
+# 性能监控中间件
+app.add_middleware(PerformanceMonitorMiddleware)
+
 
 @app.get("/")
 async def root():
@@ -46,6 +50,17 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+
+@app.get("/api/v1/performance/stats")
+async def get_performance_stats():
+    """获取性能统计信息"""
+    monitor = get_performance_monitor()
+    if monitor:
+        return monitor.get_stats()
+    return {
+        "message": "Performance monitoring not yet initialized"
+    }
 
 
 @app.websocket("/agent")
