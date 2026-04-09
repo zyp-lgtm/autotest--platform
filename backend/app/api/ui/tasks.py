@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Body
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 from typing import List, Optional, Dict, Any
 import uuid
 
@@ -169,30 +169,24 @@ async def execute_ui_task(
     try:
         execution = await executor.execute_task(request)
 
-        # 重新加载执行记录以获取完整的步骤日志
-        db.refresh(execution)
-
-        # 加载步骤执行详情
+        # 重新加载执行记录以获取完整的步骤日志（使用 eager loading 优化 N+1 查询）
         from ...models.execution import ScenarioExecution, CaseExecution, StepExecution
 
-        scenario_executions = db.query(ScenarioExecution).filter(
-            ScenarioExecution.test_execution_id == execution.id
-        ).all()
+        # 使用 selectinload 预加载所有关联数据，将 61+ 次查询减少到 3 次
+        execution = db.query(TestExecution).options(
+            selectinload(TestExecution.scenario_executions).selectinload(ScenarioExecution.case_executions).selectinload(CaseExecution.step_executions)
+        ).filter(TestExecution.id == execution.id).first()
 
+        if not execution:
+            raise HTTPException(status_code=404, detail="执行记录不存在")
+
+        # 构建响应数据（所有数据已预加载，无需额外查询）
         scenarios_data = []
-        for scenario_exec in scenario_executions:
-            case_executions = db.query(CaseExecution).filter(
-                CaseExecution.scenario_execution_id == scenario_exec.id
-            ).all()
-
+        for scenario_exec in execution.scenario_executions:
             cases_data = []
-            for case_exec in case_executions:
-                step_executions = db.query(StepExecution).filter(
-                    StepExecution.case_execution_id == case_exec.id
-                ).order_by(StepExecution.step_order).all()
-
+            for case_exec in scenario_exec.case_executions:
                 steps_data = []
-                for step_exec in step_executions:
+                for step_exec in case_exec.step_executions:
                     steps_data.append({
                         "step_name": step_exec.step_name,
                         "step_order": step_exec.step_order,
@@ -369,34 +363,22 @@ async def get_execution(
     except ValueError:
         raise HTTPException(status_code=400, detail="无效的执行ID格式")
 
-    execution = db.query(TestExecution).filter(
-        TestExecution.id == execution_id_uuid
-    ).first()
+    # 使用 eager loading 优化 N+1 查询（将 61+ 次查询减少到 3 次）
+    execution = db.query(TestExecution).options(
+        selectinload(TestExecution.scenario_executions).selectinload(ScenarioExecution.case_executions).selectinload(CaseExecution.step_executions)
+    ).filter(TestExecution.id == execution_id_uuid).first()
 
     if not execution:
         raise HTTPException(status_code=404, detail="执行记录不存在")
 
-    # 加载关联数据
-    scenario_executions = db.query(ScenarioExecution).filter(
-        ScenarioExecution.test_execution_id == execution.id
-    ).order_by(ScenarioExecution.execution_order).all()
-
+    # 构建响应数据（所有数据已预加载，无需额外查询）
+    import json
     scenarios_data = []
-    for scenario_exec in scenario_executions:
-        # 加载用例
-        case_executions = db.query(CaseExecution).filter(
-            CaseExecution.scenario_execution_id == scenario_exec.id
-        ).all()
-
+    for scenario_exec in execution.scenario_executions:
         cases_data = []
-        for case_exec in case_executions:
-            # 加载步骤
-            step_executions = db.query(StepExecution).filter(
-                StepExecution.case_execution_id == case_exec.id
-            ).order_by(StepExecution.step_order).all()
-
+        for case_exec in scenario_exec.case_executions:
             steps_data = []
-            for step_exec in step_executions:
+            for step_exec in case_exec.step_executions:
                 # 解析 debug_info JSON 字符串
                 debug_info = None
                 if step_exec.debug_info:
