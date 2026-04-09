@@ -7,9 +7,12 @@ import os
 import signal
 import asyncio
 from typing import Dict, Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.security import OAuth2PasswordBearer
 from pathlib import Path
 import socket
+
+from ..core.security import verify_token
 
 router = APIRouter()
 
@@ -404,18 +407,39 @@ service_manager = ServiceManager()
 
 
 @router.post("/services/{service_id}/start")
-async def start_service(service_id: str):
+async def start_service(
+    service_id: str,
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+):
     """启动服务"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     return await service_manager.start_service(service_id)
 
 
 @router.post("/services/{service_id}/stop")
-async def stop_service(service_id: str):
+async def stop_service(
+    service_id: str,
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+):
     """停止服务"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     return await service_manager.stop_service(service_id)
 
 
 @router.post("/services/{service_id}/restart")
-async def restart_service(service_id: str):
+async def restart_service(
+    service_id: str,
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+):
     """重启服务"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     return await service_manager.restart_service(service_id)

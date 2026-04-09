@@ -10,6 +10,7 @@ import json
 
 from ...models.keyword import Keyword
 from ...core.database import get_db
+from ...core.security import oauth2_scheme, verify_token
 from ...utils.cache import cache_response, invalidate_pattern
 
 router = APIRouter(prefix="/ui/keywords", tags=["UI关键字"])
@@ -20,9 +21,14 @@ router = APIRouter(prefix="/ui/keywords", tags=["UI关键字"])
 async def list_keywords(
     category: Optional[str] = Query(None, description="按类别过滤"),
     enabled_only: bool = Query(False, description="仅显示有效的关键字"),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """获取关键字列表"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     query = db.query(Keyword)
 
     if category:
@@ -63,15 +69,30 @@ async def list_keywords(
 
 
 @router.get("/categories")
-async def get_categories(db: Session = Depends(get_db)):
+async def get_categories(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
     """获取所有关键字类别"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     categories = db.query(Keyword.category).distinct().all()
     return [cat[0] for cat in categories]
 
 
 @router.get("/{keyword_id}")
-async def get_keyword(keyword_id: str, db: Session = Depends(get_db)):
+async def get_keyword(
+    keyword_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
     """获取单个关键字详情"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         keyword_id_uuid = uuid.UUID(keyword_id)
     except ValueError:

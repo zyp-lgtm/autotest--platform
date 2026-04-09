@@ -54,9 +54,14 @@ async def create_ui_task(
 @router.get("/")
 async def list_ui_tasks(
     project_id: str = Query(..., description="项目ID"),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """获取任务列表"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         project_id_uuid = uuid.UUID(project_id)
     except ValueError:
@@ -84,9 +89,14 @@ async def list_ui_tasks(
 @router.get("/{task_id}")
 async def get_ui_task(
     task_id: str,
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """获取任务详情"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         task_id_uuid = uuid.UUID(task_id)
     except ValueError:
@@ -112,9 +122,14 @@ async def get_ui_task(
 async def execute_ui_task(
     task_id: str,
     browser_config: Optional[Dict[str, Any]] = Body(None),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """执行 UI 任务"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         task_id_uuid = uuid.UUID(task_id)
     except ValueError:
@@ -233,9 +248,14 @@ async def execute_ui_task(
 async def update_ui_task(
     task_id: str,
     task_update: TaskUpdate,
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """更新任务"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         task_id_uuid = uuid.UUID(task_id)
     except ValueError:
@@ -268,9 +288,14 @@ async def update_ui_task(
 @router.delete("/{task_id}")
 async def delete_ui_task(
     task_id: str,
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """删除任务"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         task_id_uuid = uuid.UUID(task_id)
     except ValueError:
@@ -289,9 +314,14 @@ async def delete_ui_task(
 async def get_task_executions(
     task_id: str,
     limit: int = Query(10, ge=1, le=100),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """获取任务的执行记录"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         task_id_uuid = uuid.UUID(task_id)
     except ValueError:
@@ -326,9 +356,14 @@ async def get_task_executions(
 @router.get("/executions/{execution_id}")
 async def get_execution(
     execution_id: str,
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """获取单个执行记录详情"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         execution_id_uuid = uuid.UUID(execution_id)
     except ValueError:

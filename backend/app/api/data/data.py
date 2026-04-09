@@ -10,6 +10,7 @@ import uuid
 from ...models.test_data import TestData
 from ...schemas.data import TestDataCreate
 from ...core.database import get_db
+from ...core.security import oauth2_scheme, verify_token
 
 router = APIRouter(prefix="/data", tags=["测试数据"])
 
@@ -18,9 +19,14 @@ router = APIRouter(prefix="/data", tags=["测试数据"])
 async def create_data(
     data: TestDataCreate,
     project_id: str = Query(..., description="项目ID"),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """创建测试数据"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         project_id_uuid = uuid.UUID(project_id)
     except ValueError:
@@ -48,9 +54,14 @@ async def create_data(
 @router.get("/")
 async def list_data(
     project_id: str = Query(..., description="项目ID"),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """获取项目的所有测试数据"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         project_id_uuid = uuid.UUID(project_id)
     except ValueError:
@@ -78,8 +89,16 @@ async def list_data(
 
 
 @router.get("/{data_id}")
-async def get_data(data_id: str, db: Session = Depends(get_db)):
+async def get_data(
+    data_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
     """获取单个测试数据详情"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         data_id_uuid = uuid.UUID(data_id)
     except ValueError:
@@ -107,9 +126,14 @@ async def get_data(data_id: str, db: Session = Depends(get_db)):
 async def update_data(
     data_id: str,
     data_update: TestDataCreate,
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """更新测试数据"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         data_id_uuid = uuid.UUID(data_id)
     except ValueError:
@@ -142,8 +166,16 @@ async def update_data(
 
 
 @router.delete("/{data_id}")
-async def delete_data(data_id: str, db: Session = Depends(get_db)):
+async def delete_data(
+    data_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
     """删除测试数据"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         data_id_uuid = uuid.UUID(data_id)
     except ValueError:

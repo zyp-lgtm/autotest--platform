@@ -13,6 +13,7 @@ from ...schemas.scenario import ScenarioCreate, ScenarioUpdate, ScenarioResponse
 from ...schemas.case import CaseCreate, CaseUpdate, CaseResponse
 from ...schemas.step import StepCreate, StepUpdate, StepResponse
 from ...core.database import get_db
+from ...core.security import oauth2_scheme, verify_token
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,9 +25,14 @@ router = APIRouter(prefix="/ui/scenarios", tags=["场景管理"])
 async def create_scenario(
     scenario: ScenarioCreate,
     task_id: str = Query(..., description="任务ID"),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """创建场景"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         task_id_uuid = uuid.UUID(task_id)
     except ValueError:
@@ -77,9 +83,14 @@ async def create_scenario(
 @router.get("/")
 async def list_scenarios(
     task_id: str = Query(..., description="任务ID"),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """获取任务的所有场景"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         task_id_uuid = uuid.UUID(task_id)
     except ValueError:
@@ -109,8 +120,16 @@ async def list_scenarios(
 
 
 @router.get("/{scenario_id}")
-async def get_scenario(scenario_id: str, db: Session = Depends(get_db)):
+async def get_scenario(
+    scenario_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
     """获取场景详情"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         scenario_id_uuid = uuid.UUID(scenario_id)
     except ValueError:
@@ -140,9 +159,14 @@ async def get_scenario(scenario_id: str, db: Session = Depends(get_db)):
 async def update_scenario(
     scenario_id: str,
     scenario_update: ScenarioUpdate,
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """更新场景"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         scenario_id_uuid = uuid.UUID(scenario_id)
     except ValueError:
@@ -176,8 +200,16 @@ async def update_scenario(
 
 
 @router.delete("/{scenario_id}")
-async def delete_scenario(scenario_id: str, db: Session = Depends(get_db)):
+async def delete_scenario(
+    scenario_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
     """删除场景"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         scenario_id_uuid = uuid.UUID(scenario_id)
     except ValueError:
@@ -208,9 +240,14 @@ async def delete_scenario(scenario_id: str, db: Session = Depends(get_db)):
 async def create_case(
     scenario_id: str,
     case: CaseCreate,
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """创建用例"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         scenario_id_uuid = uuid.UUID(scenario_id)
     except ValueError:
@@ -254,8 +291,16 @@ async def create_case(
 
 
 @router.get("/{scenario_id}/cases")
-async def list_cases(scenario_id: str, db: Session = Depends(get_db)):
+async def list_cases(
+    scenario_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
     """获取场景的所有用例"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         scenario_id_uuid = uuid.UUID(scenario_id)
     except ValueError:
@@ -288,9 +333,14 @@ async def list_cases(scenario_id: str, db: Session = Depends(get_db)):
 async def update_case(
     case_id: str,
     case_update: CaseUpdate,
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """更新用例"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         case_id_uuid = uuid.UUID(case_id)
     except ValueError:
@@ -326,8 +376,16 @@ async def update_case(
 
 
 @router.delete("/cases/{case_id}")
-async def delete_case(case_id: str, db: Session = Depends(get_db)):
+async def delete_case(
+    case_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
     """删除用例"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         case_id_uuid = uuid.UUID(case_id)
     except ValueError:
@@ -357,9 +415,14 @@ async def delete_case(case_id: str, db: Session = Depends(get_db)):
 async def create_step(
     case_id: str,
     step: StepCreate,
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """创建步骤"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         case_id_uuid = uuid.UUID(case_id)
     except ValueError:
@@ -421,8 +484,16 @@ async def create_step(
 
 
 @router.get("/cases/{case_id}/steps")
-async def list_steps(case_id: str, db: Session = Depends(get_db)):
+async def list_steps(
+    case_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
     """获取用例的所有步骤"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         case_id_uuid = uuid.UUID(case_id)
     except ValueError:
@@ -456,9 +527,14 @@ async def list_steps(case_id: str, db: Session = Depends(get_db)):
 async def update_step(
     step_id: str,
     step_update: StepUpdate,
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """更新步骤"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         step_id_uuid = uuid.UUID(step_id)
     except ValueError:
@@ -502,8 +578,16 @@ async def update_step(
 
 
 @router.delete("/steps/{step_id}")
-async def delete_step(step_id: str, db: Session = Depends(get_db)):
+async def delete_step(
+    step_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
     """删除步骤"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         step_id_uuid = uuid.UUID(step_id)
     except ValueError:

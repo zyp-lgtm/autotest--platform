@@ -6,8 +6,11 @@ import os
 import mimetypes
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import FileResponse, Response
+
+from ..core.security import verify_token
 
 router = APIRouter()
 
@@ -45,7 +48,10 @@ def sanitize_path(file_path: str) -> Path:
 
 
 @router.get("/files/debug")
-async def get_debug_file(path: str):
+async def get_debug_file(
+    path: str,
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+):
     """
     获取调试文件（截图、HTML快照、JSON报告等）
 
@@ -55,6 +61,10 @@ async def get_debug_file(path: str):
     返回:
         文件内容或 404 错误
     """
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         file_path = sanitize_path(path)
 
@@ -107,7 +117,10 @@ async def get_debug_file(path: str):
 
 
 @router.get("/files/debug/list")
-async def list_debug_files(path: Optional[str] = None):
+async def list_debug_files(
+    path: Optional[str] = None,
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+):
     """
     列出调试目录中的文件
 
@@ -117,6 +130,10 @@ async def list_debug_files(path: Optional[str] = None):
     返回:
         文件和目录列表
     """
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         base_path = get_debug_base_path()
 
@@ -174,7 +191,10 @@ async def list_debug_files(path: Optional[str] = None):
 
 
 @router.delete("/files/debug")
-async def delete_debug_file(path: str):
+async def delete_debug_file(
+    path: str,
+    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+):
     """
     删除调试文件
 
@@ -184,6 +204,10 @@ async def delete_debug_file(path: str):
     返回:
         删除结果
     """
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         file_path = sanitize_path(path)
 
