@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { tasksApi } from '../api/tasks'
 import type { TestExecution } from '../types'
-import DebugPanel from '../components/debug/DebugPanel'
 import StepDetail from '../components/execution/StepDetail'
 
 export default function ExecutionReport() {
@@ -252,7 +251,7 @@ export default function ExecutionReport() {
                       step={{
                         step_name: stepExec.step_name,
                         keyword_name: stepExec.keyword_name,
-                        parameters: stepExec.parameters,
+                        parameters: stepExec.output?.parameters || {},
                         status: stepExec.status,
                         result: stepExec.result,
                         duration: stepExec.duration,

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, XCircle, Clock, ChevronDown, ChevronRight, FileText } from 'lucide-react'
+import { CheckCircle2, Clock, ChevronDown, ChevronRight, FileText } from 'lucide-react'
 import type { ExecutionStep } from '../../types/debug'
 
 interface ExecutionStepsProps {

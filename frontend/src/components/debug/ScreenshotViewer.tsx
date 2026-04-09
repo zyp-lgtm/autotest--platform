@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ZoomIn, ZoomOut, Download, Maximize2 } from 'lucide-react'
+import { ZoomIn, ZoomOut, Download } from 'lucide-react'
 
 interface ScreenshotViewerProps {
   screenshotPath?: string

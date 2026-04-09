@@ -21,9 +21,9 @@ export default function NetworkRequests({ requests }: NetworkRequestsProps) {
   })
 
   const getStatusIcon = (status?: number) => {
-    if (!status) return <CheckCircle className="w-4 h-4 text-gray-400" />
+    if (!status) return <CheckCircle2 className="w-4 h-4 text-gray-400" />
     if (status >= 400) return <AlertCircle className="w-4 h-4 text-red-600" />
-    return <CheckCircle className="w-4 h-4 text-green-600" />
+    return <CheckCircle2 className="w-4 h-4 text-green-600" />
   }
 
   const getStatusColor = (status?: number) => {
