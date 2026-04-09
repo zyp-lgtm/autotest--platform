@@ -2,7 +2,9 @@
 import { useEffect, useState } from 'react'
 import { healthApi } from '../api/health'
 import { servicesApi } from '../api/services'
-import type { HealthStatus, ServiceHealth, ServiceStatus } from '../types/health'
+import type { HealthStatus, ServiceStatus } from '../types/health'
+import { ServiceCard } from './health/ServiceCard'
+import { BackendTipBanner } from './health/BackendTipBanner'
 
 export function HealthStatusIndicator() {
   const [health, setHealth] = useState<HealthStatus | null>(null)
@@ -205,28 +207,10 @@ export function HealthStatusIndicator() {
 
       {/* 后端启动命令提示 */}
       {showBackendTip && (
-        <div className="mt-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3 shadow-lg max-w-sm">
-          <div className="flex items-start gap-2">
-            <span className="text-yellow-600 text-lg">💡</span>
-            <div className="flex-1">
-              <div className="text-sm font-semibold text-yellow-800 mb-1">后端服务已停止</div>
-              <div className="text-xs text-yellow-700 mb-2">在任意终端执行以下命令启动后端：</div>
-              <code className="block bg-gray-800 text-green-400 text-xs p-2 rounded overflow-x-auto">
-                bash /Users/apple/aicode/.worktrees/test-platform/backend/start_backend.sh
-              </code>
-              <button
-                onClick={() => {
-                  setShowBackendTip(false)
-                  // 如果后端已经启动，也清除手动操作标记
-                  fetchHealth()
-                }}
-                className="mt-2 text-xs text-yellow-800 underline hover:text-yellow-900"
-              >
-                知道了
-              </button>
-            </div>
-          </div>
-        </div>
+        <BackendTipBanner
+          onDismiss={() => setShowBackendTip(false)}
+          onRefresh={fetchHealth}
+        />
       )}
 
       {isOpen && (
@@ -300,82 +284,6 @@ export function HealthStatusIndicator() {
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-interface ServiceCardProps {
-  service: ServiceHealth & { id?: string | null; manageable?: boolean }
-  onAction: (serviceId: string, action: 'start' | 'stop' | 'restart') => Promise<void>
-  operating?: boolean
-}
-
-function ServiceCard({ service, onAction, operating }: ServiceCardProps) {
-  const getStatusColor = (status: ServiceStatus): string => {
-    switch (status) {
-      case 'healthy':
-        return 'bg-green-100 text-green-800 border-green-200'
-      case 'degraded':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      case 'down':
-        return 'bg-red-100 text-red-800 border-red-200'
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200'
-    }
-  }
-
-  const isOperating = operating && service.manageable !== false
-
-  return (
-    <div className={`p-3 rounded-lg border ${getStatusColor(service.status)}`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-medium">{service.name}</span>
-            {service.response_time && (
-              <span className="text-xs text-gray-500">
-                {(service.response_time * 1000).toFixed(0)}ms
-              </span>
-            )}
-          </div>
-          <div className="text-xs opacity-75">{service.message}</div>
-        </div>
-
-        {/* 服务管理按钮 */}
-        {service.manageable && service.id && (
-          <div className="flex items-center gap-1">
-            {service.status === 'down' ? (
-              <button
-                onClick={() => onAction(service.id!, 'start')}
-                disabled={isOperating}
-                className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="启动服务"
-              >
-                {isOperating ? '启动中...' : '启动'}
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => onAction(service.id!, 'restart')}
-                  disabled={isOperating}
-                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="重启服务"
-                >
-                  {isOperating ? '重启中...' : '重启'}
-                </button>
-                <button
-                  onClick={() => onAction(service.id!, 'stop')}
-                  disabled={isOperating}
-                  className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="停止服务"
-                >
-                  停止
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   )
 }
