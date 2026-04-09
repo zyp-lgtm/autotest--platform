@@ -24,3 +24,20 @@ Thumbs.db
 *.swp
 *.swo
 screenshots/
+
+# 测试输出和数据库
+test_platform.db
+test_platform.db-shm
+test_platform.db-wal
+backend/debug_screenshots/
+backend/test_debug_output/
+*.log
+
+# Agent PID
+agent/.agent.pid
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
