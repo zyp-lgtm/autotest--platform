@@ -9,7 +9,7 @@ from ...schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from ...schemas.execution import ExecutionRequest
 from ...core.database import get_db
 from ...core.security import oauth2_scheme, verify_token
-from ...services.executor import TaskExecutor
+from ...services.execution import TaskExecutor
 import logging
 
 logger = logging.getLogger(__name__)
