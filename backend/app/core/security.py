@@ -3,6 +3,9 @@ from typing import Optional
 from jose import JWTError, jwt
 import bcrypt
 import base64
+import secrets
+from fastapi.security.oauth2 import OAuth2PasswordBearer
+from fastapi import HTTPException, status
 from .config import get_settings
 import logging
 
@@ -12,6 +15,9 @@ logger = logging.getLogger(__name__)
 # pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 settings = get_settings()
+
+# OAuth2 scheme for token authentication
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
 
 
 def create_access_token(data: dict) -> str:
@@ -66,3 +72,74 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     password_bytes = plain_password.encode('utf-8')[:72]
     hashed_bytes = hashed_password.encode('utf-8')
     return bcrypt.checkpw(password_bytes, hashed_bytes)
+
+
+def validate_password_strength(password: str) -> tuple[bool, list[str]]:
+    """
+    验证密码强度
+
+    Args:
+        password: 待验证的密码
+
+    Returns:
+        (是否通过强度要求, 错误信息列表)
+    """
+    errors = []
+
+    if len(password) < 8:
+        errors.append("密码长度至少为 8 位")
+
+    if not any(c.isupper() for c in password):
+        errors.append("密码必须包含至少一个大写字母")
+
+    if not any(c.islower() for c in password):
+        errors.append("密码必须包含至少一个小写字母")
+
+    if not any(c.isdigit() for c in password):
+        errors.append("密码必须包含至少一个数字")
+
+    # 检查常见弱密码
+    common_passwords = ["password", "12345678", "qwerty123", "abc12345"]
+    if password.lower() in common_passwords:
+        errors.append("密码不能是常见弱密码")
+
+    return len(errors) == 0, errors
+
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    """
+    获取当前认证用户
+
+    Args:
+        token: JWT token
+
+    Returns:
+        用户 payload
+
+    Raises:
+        HTTPException: 如果 token 无效
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="无法验证凭证",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    payload = verify_token(token)
+    if payload is None:
+        raise credentials_exception
+
+    return payload
+
+
+def generate_secure_secret(length: int = 32) -> str:
+    """
+    生成安全的随机密钥
+
+    Args:
+        length: 密钥长度（字节）
+
+    Returns:
+        URL 安全的随机密钥
+    """
+    return secrets.token_urlsafe(length)

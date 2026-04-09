@@ -3,52 +3,30 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...models.user import User
-from ...core.security import create_access_token, verify_token, hash_password, verify_password
+from ...core.security import (
+    create_access_token,
+    verify_token,
+    hash_password,
+    verify_password,
+    validate_password_strength,
+    oauth2_scheme
+)
 from ...schemas.user import UserCreate, UserResponse
 import logging
-import re
 
 logger = logging.getLogger(__name__)
 
-
-def validate_password_strength(password: str) -> tuple[bool, str]:
-    """
-    验证密码强度
-
-    Args:
-        password: 密码
-
-    Returns:
-        (是否有效, 错误消息)
-    """
-    if len(password) < 6:
-        return False, "密码长度至少为 6 位"
-
-    if len(password) > 128:
-        return False, "密码长度不能超过 128 位"
-
-    # 检查是否包含至少一个字母
-    if not re.search(r'[A-Za-z]', password):
-        return False, "密码必须包含至少一个字母"
-
-    # 检查是否包含至少一个数字
-    if not re.search(r'\d', password):
-        return False, "密码必须包含至少一个数字"
-
-    return True, ""
-
 router = APIRouter(prefix="/auth", tags=["认证"])
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
 
 
 @router.post("/register", response_model=UserResponse)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    # 验证密码强度
-    is_valid, error_msg = validate_password_strength(user_data.password)
+    # 验证密码强度（使用安全模块中的增强版）
+    is_valid, error_msgs = validate_password_strength(user_data.password)
     if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_msg
+            detail="; ".join(error_msgs)
         )
 
     # 检查用户是否存在
@@ -64,7 +42,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
     # 哈希密码
     hashed_pwd = hash_password(user_data.password)
-    logger.info(f"Creating user {user_data.username} with hashed password")
+    logger.info(f"Creating user {user_data.username}")  # 移除敏感信息
 
     # 创建用户
     new_user = User(

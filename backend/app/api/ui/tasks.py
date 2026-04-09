@@ -8,6 +8,7 @@ from ...models.execution import TestExecution, ScenarioExecution, CaseExecution,
 from ...schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from ...schemas.execution import ExecutionRequest
 from ...core.database import get_db
+from ...core.security import oauth2_scheme, verify_token
 from ...services.executor import TaskExecutor
 import logging
 
@@ -20,9 +21,14 @@ router = APIRouter(prefix="/ui/tasks", tags=["UI任务"])
 async def create_ui_task(
     task: TaskCreate,
     project_id: str = Query(..., description="项目ID"),
+    token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ):
     """创建UI任务"""
+    # 验证用户身份
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         project_id_uuid = uuid.UUID(project_id)
     except ValueError:

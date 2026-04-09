@@ -15,6 +15,7 @@ from .api import debug as debug_router
 from .api import cache as cache_router
 from .middleware import setup_rate_limit_middleware
 from .middleware.performance import PerformanceMonitorMiddleware, get_performance_monitor
+from .middleware.security import SecurityHeadersMiddleware
 
 # Configure logging
 logging.basicConfig(
@@ -35,6 +36,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 安全头中间件
+app.add_middleware(SecurityHeadersMiddleware)
 
 # 速率限制中间件
 setup_rate_limit_middleware(app)
