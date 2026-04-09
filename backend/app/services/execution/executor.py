@@ -26,6 +26,13 @@ from ..schemas.execution import ExecutionRequest
 from ..api import agent as agent_manager
 from .task_orchestrator import TaskOrchestrator
 from .step_executor import StepExecutor
+from ..core.interfaces import (
+    IKeywordEngine,
+    IBrowserManager,
+    IDebugCollector,
+    IStepExecutor,
+    ITaskOrchestrator
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,14 +65,15 @@ class TaskExecutor:
             db: 数据库会话
         """
         self.db = db
-        self.browser_manager: Optional[PlaywrightBrowser] = None
-        self.keyword_engine: Optional[KeywordEngine] = None
+        # 使用接口类型注解，解耦具体实现
+        self.browser_manager: Optional[IBrowserManager] = None
+        self.keyword_engine: Optional[IKeywordEngine] = None
         self.current_execution: Optional[TestExecution] = None
-        self.debug_collector = DebugInfoCollector()
+        self.debug_collector: IDebugCollector = DebugInfoCollector()
 
-        # 延迟初始化的组件
-        self.step_executor: Optional[StepExecutor] = None
-        self.task_orchestrator: Optional[TaskOrchestrator] = None
+        # 延迟初始化的组件（使用接口）
+        self.step_executor: Optional[IStepExecutor] = None
+        self.task_orchestrator: Optional[ITaskOrchestrator] = None
 
     async def _setup_debug_collector(self) -> None:
         """设置调试信息收集器"""

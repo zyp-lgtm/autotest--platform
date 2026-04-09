@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ...models.ui_task import UITask, UIScenario, UICase
 from ...models.execution import TestExecution, ScenarioExecution, CaseExecution
 from .step_executor import StepExecutor
+from ...core.interfaces import IStepExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +22,14 @@ class TaskOrchestrator:
     def __init__(
         self,
         db: Session,
-        step_executor: StepExecutor
+        step_executor: IStepExecutor  # 使用接口而非具体实现
     ):
         """
         初始化任务编排器
 
         Args:
             db: 数据库会话
-            step_executor: 步骤执行器
+            step_executor: 步骤执行器（接口）
         """
         self.db = db
         self.step_executor = step_executor

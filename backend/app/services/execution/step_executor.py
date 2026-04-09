@@ -15,6 +15,7 @@ from ...services.keyword_engine import KeywordEngine
 from ...services.playwright_browser import PlaywrightBrowser
 from ...services.debug_collector import DebugInfoCollector
 from ...services.error_classifier import ErrorClassifier
+from ...core.interfaces import IKeywordEngine, IBrowserManager, IDebugCollector
 
 logger = logging.getLogger(__name__)
 
@@ -25,18 +26,18 @@ class StepExecutor:
     def __init__(
         self,
         db: Session,
-        keyword_engine: KeywordEngine,
-        browser_manager: PlaywrightBrowser,
-        debug_collector: DebugInfoCollector
+        keyword_engine: IKeywordEngine,  # 使用接口而非具体实现
+        browser_manager: IBrowserManager,  # 使用接口而非具体实现
+        debug_collector: IDebugCollector  # 使用接口而非具体实现
     ):
         """
         初始化步骤执行器
 
         Args:
             db: 数据库会话
-            keyword_engine: 关键字引擎
-            browser_manager: 浏览器管理器
-            debug_collector: 调试收集器
+            keyword_engine: 关键字引擎（接口）
+            browser_manager: 浏览器管理器（接口）
+            debug_collector: 调试收集器（接口）
         """
         self.db = db
         self.keyword_engine = keyword_engine
