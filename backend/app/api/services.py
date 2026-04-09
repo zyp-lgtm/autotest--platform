@@ -143,6 +143,42 @@ class ServiceManager:
                 except (ValueError, IOError):
                     pid_file.unlink()
 
+        # 前端服务特殊处理：清理所有残留进程
+        if service_id == "frontend":
+            # 先尝试通过端口查找进程
+            if config.get("port") and self._find_process_by_port(config["port"]):
+                existing_pid = self._find_process_by_port(config["port"])
+                if existing_pid:
+                    Path(config["pid_file"]).write_text(str(existing_pid))
+                    return {
+                        "success": True,
+                        "message": f"{config['name']} 已在运行 (PID: {existing_pid})",
+                        "already_running": True
+                    }
+
+            # 端口没有被占用，但可能有残留的 vite/npm 进程
+            # 清理所有可能残留的前端进程
+            import subprocess
+            try:
+                # 查找所有 vite 进程
+                result = subprocess.run(
+                    ["pgrep", "-f", "vite.*frontend"],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    old_pids = result.stdout.strip().split('\n')
+                    for old_pid in old_pids:
+                        if old_pid:
+                            try:
+                                os.kill(int(old_pid), signal.SIGTERM)
+                                print(f"[前端] 清理残留进程: {old_pid}")
+                            except (ProcessLookupError, ValueError):
+                                pass
+            except FileNotFoundError:
+                # pgrep 不可用，跳过
+                pass
+
         # 重新检查运行状态
         if self._is_running(service_id):
             # 尝试找到现有进程并更新PID文件
