@@ -16,6 +16,7 @@ from .api import cache as cache_router
 from .middleware import setup_rate_limit_middleware
 from .middleware.performance import PerformanceMonitorMiddleware, get_performance_monitor
 from .middleware.security import SecurityHeadersMiddleware
+from .middleware.csrf import CSRFMiddleware
 
 # Configure logging
 logging.basicConfig(
@@ -36,6 +37,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# CSRF 保护中间件（在 CORS 之后）
+app.add_middleware(CSRFMiddleware)
 
 # 安全头中间件
 app.add_middleware(SecurityHeadersMiddleware)

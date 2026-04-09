@@ -11,6 +11,7 @@ from ...core.security import (
     validate_password_strength,
     oauth2_scheme
 )
+from ...core.csrf import get_csrf_token
 from ...schemas.user import UserCreate, UserResponse
 import logging
 
@@ -80,8 +81,18 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
         )
 
     logger.info(f"User {form_data.username} logged in successfully")
+
+    # 创建访问令牌
     access_token = create_access_token({"sub": user.username})
-    return {"access_token": access_token, "token_type": "bearer"}
+
+    # 生成 CSRF Token（使用用户 ID 作为 session_id）
+    csrf_token = get_csrf_token(str(user.id))
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "csrf_token": csrf_token
+    }
 
 
 @router.get("/me", response_model=UserResponse)
@@ -95,3 +106,26 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         raise HTTPException(status_code=404, detail="用户不存在")
 
     return user
+
+
+@router.get("/csrf-token")
+async def get_csrf(token: str = Depends(oauth2_scheme)):
+    """
+    获取 CSRF Token
+
+    返回一个新的 CSRF Token，用于后续的修改操作
+    """
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的令牌")
+
+    # 从 payload 中获取用户信息
+    username = payload.get("sub")
+
+    # 这里简化处理，使用 username 作为 session_id
+    # 在实际应用中，应该使用用户 ID 或会话 ID
+    csrf_token = get_csrf_token(username)
+
+    return {
+        "csrf_token": csrf_token
+    }
