@@ -12,6 +12,7 @@ from .api import agent_management as agent_management_router
 from .api import health as health_router
 from .api import services as services_router
 from .api import debug as debug_router
+from .middleware import setup_rate_limit_middleware
 
 # Configure logging
 logging.basicConfig(
@@ -32,6 +33,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 速率限制中间件
+setup_rate_limit_middleware(app)
 
 
 @app.get("/")
