@@ -442,25 +442,39 @@ class TaskExecutor:
 
         # 生成任务 ID
         task_execution_id = str(uuid.uuid4())
+        logger.info(f"生成的任务执行 ID: {task_execution_id}")
 
-        # 构建任务消息
+        # 扁平化步骤为 Agent 期望的格式
+        agent_steps = []
+        for scenario in task_structure["scenarios"]:
+            for case in scenario["cases"]:
+                for step in case["steps"]:
+                    agent_steps.append(step)
+
+        # 构建 Agent 期望的任务消息格式
         task_message = {
-            "type": "execute_task",
+            "type": "task",  # Agent 期望 "task" 而不是 "execute_task"
             "task_id": task_execution_id,
-            "task_data": task_structure,
-            "browser_config": browser_config
+            "browser_type": browser_config.get("browser_type", "chromium"),
+            "headless": browser_config.get("headless", False),
+            "url": "",  # Agent 会从第一步 NAVIGATE 获取 URL
+            "steps": agent_steps
         }
+        logger.info(f"准备发送任务消息给 Agent {agent_id} (包含 {len(agent_steps)} 个步骤)")
 
         # 发送任务给 Agent
         sent = await agent_manager.manager.send_to_agent(agent_id, task_message)
+        logger.info(f"发送任务结果: {sent}")
         if not sent:
             raise Exception(f"发送任务给 Agent {agent_id} 失败")
 
+        logger.info(f"开始等待任务执行结果 (超时: 180秒)...")
         # 等待任务执行结果（使用任务 ID）
         result = await agent_manager.manager.wait_for_task_result(
             task_execution_id,
             timeout=180.0  # 3分钟超时
         )
+        logger.info(f"收到任务执行结果: {result}")
 
         if result is None:
             raise Exception(f"Agent {agent_id} 执行任务超时")
