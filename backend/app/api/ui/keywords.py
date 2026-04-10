@@ -17,6 +17,7 @@ router = APIRouter(prefix="/ui/keywords", tags=["UI关键字"])
 
 
 @router.get("/")
+@router.get("")
 @cache_response(ttl=300)  # 缓存 5 分钟
 async def list_keywords(
     category: Optional[str] = Query(None, description="按类别过滤"),

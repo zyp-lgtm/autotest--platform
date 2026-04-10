@@ -22,6 +22,7 @@ router = APIRouter(prefix="/ui/scenarios", tags=["场景管理"])
 
 
 @router.post("/")
+@router.post("")
 async def create_scenario(
     scenario: ScenarioCreate,
     task_id: str = Query(..., description="任务ID"),
@@ -81,6 +82,7 @@ async def create_scenario(
 
 
 @router.get("/")
+@router.get("")
 async def list_scenarios(
     task_id: str = Query(..., description="任务ID"),
     token: str = Depends(oauth2_scheme),
