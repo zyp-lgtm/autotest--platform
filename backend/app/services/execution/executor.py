@@ -150,25 +150,30 @@ class TaskExecutor:
 
             # 4. 检查是否有可用的本地 Agent
             # 通过 HTTP API 查询，确保获取实时状态
-            import aiohttp
+            import urllib.request
             import json
 
-            async def check_agents_via_api():
-                """通过 API 查询已注册的 Agent"""
+            def check_agents_via_api():
+                """通过 API 查询已注册的 Agent（同步）"""
                 try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(
-                            "http://localhost:8000/api/v1/agents",
-                            headers={"Authorization": "Bearer dummy"}  # 这个端点不验证token
-                        ) as response:
-                            if response.status == 200:
-                                data = await response.json()
-                                return data.get("agents", {})
+                    req = urllib.request.Request(
+                        "http://localhost:8000/api/v1/agents",
+                        headers={"Authorization": "Bearer dummy"}
+                    )
+                    with urllib.request.urlopen(req, timeout=2) as response:
+                        if response.status == 200:
+                            data = json.loads(response.read())
+                            return data.get("agents", {})
                 except Exception as e:
                     logger.warning(f"通过 API 查询 Agent 失败: {e}")
                 return {}
 
-            available_agents = await check_agents_via_api()
+            # 在线程池中执行同步 HTTP 请求
+            import concurrent.futures
+            import asyncio
+
+            loop = asyncio.get_event_loop()
+            available_agents = await loop.run_in_executor(None, check_agents_via_api)
 
             logger.info(f"当前可用 Agent 数量 (通过 API): {len(available_agents)}")
             logger.info(f"browser_config: {browser_config}")
