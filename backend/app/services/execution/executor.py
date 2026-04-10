@@ -149,18 +149,17 @@ class TaskExecutor:
             browser_config = request.browser_config or {}
 
             # 4. 检查是否有可用的本地 Agent
-            # 使用函数调用来获取最新的 manager 状态
-            import importlib
-            from importlib import reload
+            # 直接访问全局 manager 实例（绕过模块导入缓存）
+            import sys
+            if "app.api.agent" in sys.modules:
+                # 删除缓存，强制重新导入
+                del sys.modules["app.api.agent"]
 
-            def get_available_agents():
-                """获取当前可用的 Agent"""
-                # 动态导入确保使用最新的模块实例
-                module = reload(importlib.import_module("app.api.agent"))
-                return module.manager.get_all_agents()
+            from app.api import agent as agent_module
+            available_agents = agent_module.manager.get_all_agents()
 
-            available_agents = get_available_agents()
             logger.info(f"当前可用 Agent 数量: {len(available_agents)}")
+            logger.info(f"Agent 列表: {list(available_agents.keys()) if available_agents else []}")
             logger.info(f"browser_config: {browser_config}")
             logger.info(f"use_agent 配置: {browser_config.get('use_agent', True)}")
 
@@ -180,8 +179,7 @@ class TaskExecutor:
                     agent_browser_config["headless"] = False
                     logger.info("Agent 执行模式：显示浏览器")
 
-                # 获取最新的 manager 实例
-                agent_module = reload(importlib.import_module("app.api.agent"))
+                # 使用当前模块的 manager
                 agent_mgr = agent_module.manager
 
                 # 转换任务为 Agent 格式并下发
@@ -321,6 +319,8 @@ class TaskExecutor:
 
         # 加载场景和用例
         scenarios = []
+        logger.info(f"开始加载场景，task.scenario_ids = {task.scenario_ids}")
+
         for idx, scenario_id in enumerate(task.scenario_ids or []):
             logger.info(f"处理 scenario_id #{idx}: {repr(scenario_id)} (type: {type(scenario_id)})")
 
@@ -339,11 +339,16 @@ class TaskExecutor:
                 logger.warning(f"跳过无效的 UUID 格式: {scenario_id}")
                 continue
 
+            logger.info(f"查询场景，UUID: {scenario_id_uuid}")
             scenario = self.db.query(UIScenario).filter(
                 UIScenario.id == scenario_id_uuid
             ).first()
+
             if scenario:
+                logger.info(f"✓ 找到场景: {scenario.name}")
                 scenarios.append(scenario)
+            else:
+                logger.warning(f"✗ 场景不存在: {scenario_id_uuid}")
 
         # 构建任务结构
         task_structure = {
