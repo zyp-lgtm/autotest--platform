@@ -149,7 +149,9 @@ class TaskExecutor:
             browser_config = request.browser_config or {}
 
             # 4. 检查是否有可用的本地 Agent
-            available_agents = agent_manager.manager.get_all_agents()
+            # 直接查询 manager，而不是通过导入的模块
+            from ...api.agent import manager as agent_mgr
+            available_agents = agent_mgr.get_all_agents()
             logger.info(f"当前可用 Agent 数量: {len(available_agents)}")
             logger.info(f"browser_config: {browser_config}")
             logger.info(f"use_agent 配置: {browser_config.get('use_agent', True)}")
@@ -172,7 +174,7 @@ class TaskExecutor:
 
                 # 转换任务为 Agent 格式并下发
                 logger.info(f"开始通过 Agent {agent_id} 执行任务...")
-                result = await self._execute_via_agent(agent_id, task, agent_browser_config)
+                result = await self._execute_via_agent(agent_id, task, agent_browser_config, agent_mgr)
                 logger.info(f"Agent 执行完成，result: {result}")
 
                 # 更新执行结果
@@ -288,7 +290,8 @@ class TaskExecutor:
         self,
         agent_id: str,
         task: UITask,
-        browser_config: dict
+        browser_config: dict,
+        agent_mgr
     ) -> Dict[str, Any]:
         """
         通过 Agent 执行任务
@@ -465,14 +468,14 @@ class TaskExecutor:
         logger.info(f"准备发送任务消息给 Agent {agent_id} (包含 {len(agent_steps)} 个步骤)")
 
         # 发送任务给 Agent
-        sent = await agent_manager.manager.send_to_agent(agent_id, task_message)
+        sent = await agent_mgr.send_to_agent(agent_id, task_message)
         logger.info(f"发送任务结果: {sent}")
         if not sent:
             raise Exception(f"发送任务给 Agent {agent_id} 失败")
 
         logger.info(f"开始等待任务执行结果 (超时: 180秒)...")
         # 等待任务执行结果（使用任务 ID）
-        wrapper = await agent_manager.manager.wait_for_task_result(
+        wrapper = await agent_mgr.wait_for_task_result(
             task_execution_id,
             timeout=180.0  # 3分钟超时
         )
