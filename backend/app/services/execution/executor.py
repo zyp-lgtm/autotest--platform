@@ -335,17 +335,34 @@ class TaskExecutor:
         total_steps = 0
         for scenario in scenarios:
             # 解析用例ID
-            case_ids = scenario.case_ids
+            case_ids = scenario.case_ids or []
             if isinstance(case_ids, str):
                 try:
                     case_ids = json.loads(case_ids)
                 except json.JSONDecodeError:
                     case_ids = []
 
+            # 过滤无效的 case_id（空字典、空字符串等）
+            valid_case_ids = []
+            for cid in case_ids:
+                if cid and isinstance(cid, (str, uuid.UUID)) and str(cid).strip():
+                    # 验证 UUID 格式
+                    try:
+                        uuid.UUID(str(cid))
+                        valid_case_ids.append(str(cid))
+                    except ValueError:
+                        logger.warning(f"跳过无效的 case_id UUID: {cid}")
+                else:
+                    logger.warning(f"跳过无效的 case_id: {cid} (类型: {type(cid)})")
+
+            if not valid_case_ids:
+                logger.warning(f"场景 {scenario.name} 没有有效的用例 ID")
+                continue
+
             # 加载用例
             from ..models.ui_task import UICase
             cases = self.db.query(UICase).filter(
-                UICase.id.in_(case_ids)
+                UICase.id.in_(valid_case_ids)
             ).all()
 
             scenario_data = {
@@ -357,14 +374,31 @@ class TaskExecutor:
 
             for case in cases:
                 # 解析步骤ID
-                step_ids = case.step_ids
+                step_ids = case.step_ids or []
                 if isinstance(step_ids, str):
                     try:
                         step_ids = json.loads(step_ids)
                     except json.JSONDecodeError:
                         step_ids = []
 
-                total_steps += len(step_ids)
+                # 过滤无效的 step_id
+                valid_step_ids = []
+                for sid in step_ids:
+                    if sid and isinstance(sid, (str, uuid.UUID)) and str(sid).strip():
+                        try:
+                            uuid.UUID(str(sid))
+                            valid_step_ids.append(str(sid))
+                        except ValueError:
+                            logger.warning(f"跳过无效的 step_id UUID: {sid}")
+                    else:
+                        logger.warning(f"跳过无效的 step_id: {sid} (类型: {type(sid)})")
+
+                if not valid_step_ids:
+                    logger.warning(f"用例 {case.name} 没有有效的步骤 ID")
+                    # 仍然添加这个用例，只是没有步骤
+                    total_steps += 0
+                else:
+                    total_steps += len(valid_step_ids)
 
                 case_data = {
                     "case_id": str(case.id),
@@ -377,9 +411,12 @@ class TaskExecutor:
                 from ..models.ui_task import UIStep
                 from ..models.keyword import Keyword
 
-                steps = self.db.query(UIStep).filter(
-                    UIStep.id.in_(step_ids)
-                ).order_by(UIStep.step_order).all()
+                if valid_step_ids:
+                    steps = self.db.query(UIStep).filter(
+                        UIStep.id.in_(valid_step_ids)
+                    ).order_by(UIStep.step_order).all()
+                else:
+                    steps = []
 
                 for step in steps:
                     keyword = self.db.query(Keyword).filter(
