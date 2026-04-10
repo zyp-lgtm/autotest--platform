@@ -300,27 +300,30 @@ class TaskExecutor:
             执行结果
         """
         logger.info(f"Executing via agent: {agent_id}")
+        logger.info(f"task.scenario_ids = {task.scenario_ids} (type: {type(task.scenario_ids)})")
 
         # 加载场景和用例
         scenarios = []
-        for scenario_id in task.scenario_ids or []:
+        for idx, scenario_id in enumerate(task.scenario_ids or []):
+            logger.info(f"处理 scenario_id #{idx}: {repr(scenario_id)} (type: {type(scenario_id)})")
+
             # 跳过无效的 scenario_id（空字典、空字符串等）
             if not scenario_id or not isinstance(scenario_id, (str, uuid.UUID)):
                 logger.warning(f"跳过无效的 scenario_id: {scenario_id} (类型: {type(scenario_id)})")
                 continue
 
-            # 确保 scenario_id 是字符串
-            scenario_id_str = str(scenario_id) if isinstance(scenario_id, uuid.UUID) else scenario_id
-
-            # 验证 UUID 格式
+            # 转换为 UUID 对象（SQLite + UUID 需要 Python UUID 对象）
             try:
-                uuid.UUID(scenario_id_str)
+                if isinstance(scenario_id, uuid.UUID):
+                    scenario_id_uuid = scenario_id
+                else:
+                    scenario_id_uuid = uuid.UUID(str(scenario_id))
             except ValueError:
-                logger.warning(f"跳过无效的 UUID 格式: {scenario_id_str}")
+                logger.warning(f"跳过无效的 UUID 格式: {scenario_id}")
                 continue
 
             scenario = self.db.query(UIScenario).filter(
-                UIScenario.id == scenario_id_str
+                UIScenario.id == scenario_id_uuid
             ).first()
             if scenario:
                 scenarios.append(scenario)
@@ -346,10 +349,12 @@ class TaskExecutor:
             valid_case_ids = []
             for cid in case_ids:
                 if cid and isinstance(cid, (str, uuid.UUID)) and str(cid).strip():
-                    # 验证 UUID 格式
+                    # 验证并转换为 UUID 对象
                     try:
-                        uuid.UUID(str(cid))
-                        valid_case_ids.append(str(cid))
+                        if isinstance(cid, uuid.UUID):
+                            valid_case_ids.append(cid)
+                        else:
+                            valid_case_ids.append(uuid.UUID(str(cid)))
                     except ValueError:
                         logger.warning(f"跳过无效的 case_id UUID: {cid}")
                 else:
@@ -385,9 +390,12 @@ class TaskExecutor:
                 valid_step_ids = []
                 for sid in step_ids:
                     if sid and isinstance(sid, (str, uuid.UUID)) and str(sid).strip():
+                        # 验证并转换为 UUID 对象
                         try:
-                            uuid.UUID(str(sid))
-                            valid_step_ids.append(str(sid))
+                            if isinstance(sid, uuid.UUID):
+                                valid_step_ids.append(sid)
+                            else:
+                                valid_step_ids.append(uuid.UUID(str(sid)))
                         except ValueError:
                             logger.warning(f"跳过无效的 step_id UUID: {sid}")
                     else:
