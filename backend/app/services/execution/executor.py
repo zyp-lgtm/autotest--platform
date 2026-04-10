@@ -150,10 +150,12 @@ class TaskExecutor:
 
             # 4. 检查是否有可用的本地 Agent
             # 使用函数调用来获取最新的 manager 状态
+            import importlib
+            from importlib import reload
+
             def get_available_agents():
                 """获取当前可用的 Agent"""
                 # 动态导入确保使用最新的模块实例
-                from importlib import reload
                 module = reload(importlib.import_module("app.api.agent"))
                 return module.manager.get_all_agents()
 
@@ -179,8 +181,6 @@ class TaskExecutor:
                     logger.info("Agent 执行模式：显示浏览器")
 
                 # 获取最新的 manager 实例
-                from importlib import reload
-                import importlib
                 agent_module = reload(importlib.import_module("app.api.agent"))
                 agent_mgr = agent_module.manager
 
