@@ -3,7 +3,7 @@ import type { UITask } from '../types'
 
 export const tasksApi = {
   getTasks: async (projectId: string): Promise<UITask[]> => {
-    const response = await apiClient.get<UITask[]>(`/v1/ui/tasks/?project_id=${projectId}`)
+    const response = await apiClient.get<UITask[]>(`/v1/ui/tasks?project_id=${projectId}`)
     return response.data
   },
 
@@ -13,7 +13,7 @@ export const tasksApi = {
   },
 
   createTask: async (projectId: string, data: Partial<UITask>): Promise<UITask> => {
-    const response = await apiClient.post<UITask>(`/v1/ui/tasks/?project_id=${projectId}`, data)
+    const response = await apiClient.post<UITask>(`/v1/ui/tasks?project_id=${projectId}`, data)
     return response.data
   },
 

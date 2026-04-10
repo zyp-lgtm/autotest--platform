@@ -115,7 +115,7 @@ export const scenariosApi = {
   },
 
   createScenario: async (taskId: string, data: ScenarioCreate): Promise<Scenario> => {
-    const response = await apiClient.post<Scenario>(`/v1/ui/scenarios/?task_id=${taskId}`, data)
+    const response = await apiClient.post<Scenario>(`/v1/ui/scenarios?task_id=${taskId}`, data)
     return response.data
   },
 
