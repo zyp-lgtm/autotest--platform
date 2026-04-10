@@ -440,12 +440,30 @@ class TaskExecutor:
 
         logger.info(f"Prepared task with {total_steps} steps for agent execution")
 
+        # 生成任务 ID
+        task_execution_id = str(uuid.uuid4())
+
+        # 构建任务消息
+        task_message = {
+            "type": "execute_task",
+            "task_id": task_execution_id,
+            "task_data": task_structure,
+            "browser_config": browser_config
+        }
+
         # 发送任务给 Agent
-        result = await agent_manager.manager.send_task_to_agent(
-            agent_id=agent_id,
-            task_data=task_structure,
-            browser_config=browser_config
+        sent = await agent_manager.manager.send_to_agent(agent_id, task_message)
+        if not sent:
+            raise Exception(f"发送任务给 Agent {agent_id} 失败")
+
+        # 等待任务执行结果（使用任务 ID）
+        result = await agent_manager.manager.wait_for_task_result(
+            task_execution_id,
+            timeout=180.0  # 3分钟超时
         )
+
+        if result is None:
+            raise Exception(f"Agent {agent_id} 执行任务超时")
 
         return result
 
