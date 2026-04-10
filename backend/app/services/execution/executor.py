@@ -365,7 +365,6 @@ class TaskExecutor:
                 continue
 
             # 加载用例
-            from ..models.ui_task import UICase
             cases = self.db.query(UICase).filter(
                 UICase.id.in_(valid_case_ids)
             ).all()
@@ -416,9 +415,6 @@ class TaskExecutor:
                 }
 
                 # 加载步骤
-                from ..models.ui_task import UIStep
-                from ..models.keyword import Keyword
-
                 if valid_step_ids:
                     steps = self.db.query(UIStep).filter(
                         UIStep.id.in_(valid_step_ids)
