@@ -493,10 +493,11 @@ class TaskExecutor:
             Agent 格式的步骤
         """
         try:
-            # Agent 格式
+            # Agent 期望的格式：{action, parameters}
+            # keyword.name 就是操作名称（如 "NAVIGATE", "CLICK"）
+            # 需要转换为小写作为 action
             agent_step = {
-                "keyword": keyword.name,
-                "category": keyword.category,
+                "action": keyword.name.lower(),  # NAVIGATE -> navigate
                 "parameters": parameters
             }
             return agent_step
