@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from ...models.ui_task import UITask, UIScenario, UICase, UIStep
-from ...models.execution import TestExecution
+from ...models.execution import TestExecution, StepExecution
 from ...models.keyword import Keyword
 from ...services.playwright_browser import PlaywrightBrowser
 from ...services.debug_collector import DebugInfoCollector
@@ -149,33 +149,17 @@ class TaskExecutor:
             browser_config = request.browser_config or {}
 
             # 4. 检查是否有可用的本地 Agent
-            # 通过 HTTP API 查询，确保获取实时状态
-            import urllib.request
-            import json
+            # 直接访问 ConnectionManager 单例，避免 HTTP 认证问题
+            logger.info("[DEBUG] 直接访问 ConnectionManager 单例查询 Agent...")
+            from app.api.agent import manager as agent_mgr
+            available_agents = agent_mgr.get_all_agents()
 
-            def check_agents_via_api():
-                """通过 API 查询已注册的 Agent（同步）"""
-                try:
-                    req = urllib.request.Request(
-                        "http://localhost:8000/api/v1/agents",
-                        headers={"Authorization": "Bearer dummy"}
-                    )
-                    with urllib.request.urlopen(req, timeout=2) as response:
-                        if response.status == 200:
-                            data = json.loads(response.read())
-                            return data.get("agents", {})
-                except Exception as e:
-                    logger.warning(f"通过 API 查询 Agent 失败: {e}")
-                return {}
-
-            # 在线程池中执行同步 HTTP 请求
-            import concurrent.futures
-            import asyncio
-
-            loop = asyncio.get_event_loop()
-            available_agents = await loop.run_in_executor(None, check_agents_via_api)
-
-            logger.info(f"当前可用 Agent 数量 (通过 API): {len(available_agents)}")
+            logger.info(f"[DEBUG] 查询完成，available_agents 类型: {type(available_agents)}")
+            logger.info(f"[DEBUG] available_agents 是否为 None: {available_agents is None}")
+            logger.info(f"[DEBUG] available_agents 长度: {len(available_agents) if available_agents else 0}")
+            if available_agents:
+                logger.info(f"[DEBUG] Agent IDs: {list(available_agents.keys())}")
+            logger.info(f"当前可用 Agent 数量: {len(available_agents)}")
             logger.info(f"browser_config: {browser_config}")
             logger.info(f"use_agent 配置: {browser_config.get('use_agent', True)}")
 
@@ -209,19 +193,36 @@ class TaskExecutor:
                 started_at_aware = _ensure_datetime_aware(execution.started_at)
                 execution.duration = (execution.completed_at - started_at_aware).total_seconds()
 
+                # Agent 返回格式: {success, results: [{success, action, error}], message}
+                # 需要从 results 数组计算步骤统计
+                agent_results = result.get("results", [])
+                total_steps = len(agent_results)
+                passed_steps = sum(1 for r in agent_results if r.get("success"))
+                failed_steps = total_steps - passed_steps
+
+                logger.info(f"Agent 返回 {total_steps} 个步骤结果: {passed_steps} 成功, {failed_steps} 失败")
+
                 if result.get("success"):
                     execution.status = "completed"
                     execution.result = "pass"
-                    execution.total_steps = result.get("total_steps", 0)
-                    execution.passed_steps = result.get("passed_steps", 0)
-                    execution.failed_steps = result.get("failed_steps", 0)
+                    execution.total_steps = total_steps
+                    execution.passed_steps = passed_steps
+                    execution.failed_steps = failed_steps
                 else:
                     execution.status = "completed"
                     execution.result = "fail"
-                    execution.error_message = result.get("error", "Agent 执行失败")
-                    execution.total_steps = result.get("total_steps", 0)
-                    execution.passed_steps = result.get("passed_steps", 0)
-                    execution.failed_steps = result.get("failed_steps", 0)
+
+                    # 获取第一个失败步骤的错误信息
+                    error_info = None
+                    for step_result in agent_results:
+                        if not step_result.get("success"):
+                            error_info = step_result.get("error", "Agent 执行失败")
+                            break
+
+                    execution.error_message = error_info or "Agent 执行失败"
+                    execution.total_steps = total_steps
+                    execution.passed_steps = passed_steps
+                    execution.failed_steps = failed_steps
 
                 self.db.commit()
                 self.db.refresh(execution)
@@ -521,8 +522,104 @@ class TaskExecutor:
         # 从包装中提取实际的执行结果
         result = wrapper.get("result", {})
         logger.info(f"提取执行结果: {result}")
+        logger.info(f"Agent 返回的 results 字段: {result.get('results', [])}")
+        logger.info(f"Agent 返回的 results 长度: {len(result.get('results', []))}")
+
+        # 为每个步骤创建 StepExecution 记录
+        logger.info(f"准备创建步骤执行记录...")
+        try:
+            await self._create_step_executions_for_agent(
+                execution=self.current_execution,
+                task_structure=task_structure,
+                agent_results=result.get("results", []),
+                agent_id=agent_id
+            )
+            logger.info(f"✓ 步骤执行记录创建完成")
+        except Exception as e:
+            logger.error(f"✗ 创建步骤执行记录失败: {e}")
+            logger.error(f"错误详情: {type(e).__name__}: {str(e)}")
+            import traceback
+            logger.error(f"堆栈跟踪:\n{traceback.format_exc()}")
 
         return result
+
+    async def _create_step_executions_for_agent(
+        self,
+        execution: TestExecution,
+        task_structure: dict,
+        agent_results: list,
+        agent_id: str
+    ):
+        """
+        为 Agent 执行创建步骤执行记录
+
+        Args:
+            execution: 执行记录
+            task_structure: 任务结构（包含 scenarios/cases/steps）
+            agent_results: Agent 返回的步骤结果列表
+            agent_id: Agent ID
+        """
+        logger.info(f"开始创建 {len(agent_results)} 个步骤执行记录")
+
+        # 扁平化所有步骤（保留原始步骤信息）
+        all_steps = []
+        for scenario in task_structure.get("scenarios", []):
+            for case in scenario.get("cases", []):
+                for step in case.get("steps", []):
+                    step["scenario_id"] = scenario.get("scenario_id")
+                    step["scenario_name"] = scenario.get("scenario_name")
+                    step["case_id"] = case.get("case_id")
+                    step["case_name"] = case.get("case_name")
+                    all_steps.append(step)
+
+        # 遍历 Agent 返回的结果，创建 StepExecution 记录
+        for idx, agent_result in enumerate(agent_results):
+            if idx >= len(all_steps):
+                logger.warning(f"Agent 返回的结果数 ({len(agent_results)}) 超过步骤数 ({len(all_steps)})")
+                break
+
+            step_info = all_steps[idx]
+            step_result = agent_result  # {success, action, error, ...}
+
+            # 创建 StepExecution 记录
+            step_execution = StepExecution(
+                id=uuid.uuid4(),
+                case_execution_id=None,  # Agent 执行没有 case_execution
+                step_id=None,  # Agent 步骤没有 UIStep ID
+                keyword_id=None,
+                # 步骤名称包含场景和用例上下文
+                step_name=f"{step_info.get('scenario_name', 'Scenario')} > "
+                          f"{step_info.get('case_name', 'Case')} > "
+                          f"{step_info.get('step_name', f'Step {idx + 1}')}",
+                step_order=idx,
+                keyword_name=step_result.get("action", ""),
+                category="agent",
+                status="completed" if step_result.get("success") else "failed",
+                result="pass" if step_result.get("success") else "fail",
+                started_at=datetime.now(timezone.utc),
+                completed_at=datetime.now(timezone.utc),
+                duration=0,  # Agent 没有返回每个步骤的耗时
+                retry_attempt=0,
+                continue_on_failure=False,
+                parameters=step_info.get("parameters", {}),  # 直接传 dict，不需要 json.dumps
+                error_message=step_result.get("error") if not step_result.get("success") else None,
+                # 存储 Agent 执行的详细信息
+                output={
+                    "action": step_result.get("action"),
+                    "success": step_result.get("success"),
+                    "scenario_id": str(step_info.get("scenario_id", "")),
+                    "scenario_name": step_info.get("scenario_name", ""),
+                    "case_id": str(step_info.get("case_id", "")),
+                    "case_name": step_info.get("case_name", ""),
+                }
+            )
+
+            self.db.add(step_execution)
+            logger.info(f"  步骤 {idx + 1}: {step_result.get('action')} - "
+                       f"{'✓ 通过' if step_result.get('success') else '✗ 失败'}")
+
+        self.db.commit()
+        logger.info(f"✓ 已创建 {len(agent_results)} 个步骤执行记录")
 
     def _convert_step_to_agent_format(self, keyword: Keyword, parameters: dict) -> Optional[dict]:
         """
@@ -536,12 +633,80 @@ class TaskExecutor:
             Agent 格式的步骤
         """
         try:
-            # Agent 期望的格式：{action, parameters}
-            # keyword.name 就是操作名称（如 "NAVIGATE", "CLICK"）
-            # 需要转换为小写作为 action
+            # Agent 支持的操作映射
+            action_mapping = {
+                "NAVIGATE": "navigate",
+                "CLICK": "click",
+                "INPUT": "input",
+                "WAIT_FOR_ELEMENT": "wait",
+                "SCREENSHOT": "screenshot"
+            }
+
+            # 获取映射后的 action
+            action = action_mapping.get(keyword.name, keyword.name.lower())
+
+            # 处理参数转换
+            agent_params = parameters.copy()
+
+            # WAIT_FOR_ELEMENT 的参数转换
+            if keyword.name == "WAIT_FOR_ELEMENT":
+                agent_params = {
+                    "selector": parameters.get("selector"),
+                    "state": parameters.get("state", "visible"),
+                    "timeout": parameters.get("timeout", 5000)
+                }
+                logger.info(f"转换 WAIT_FOR_ELEMENT -> wait, 参数: selector={agent_params['selector']}, state={agent_params['state']}, timeout={agent_params['timeout']}")
+
             agent_step = {
-                "action": keyword.name.lower(),  # NAVIGATE -> navigate
-                "parameters": parameters
+                "action": action,
+                "parameters": agent_params
+            }
+            return agent_step
+        except Exception as e:
+            logger.error(f"Failed to convert step to agent format: {e}")
+            return None
+        """
+        将步骤转换为 Agent 格式
+
+        Args:
+            keyword: 关键字定义
+            parameters: 参数
+
+        Returns:
+            Agent 格式的步骤
+        """
+        try:
+            # Agent 支持的操作映射
+            # 后端关键字名称 -> Agent 操作名称
+            action_mapping = {
+                "NAVIGATE": "navigate",
+                "CLICK": "click",
+                "INPUT": "input",
+                "WAIT_FOR_ELEMENT": "wait",  # 映射到 Agent 的 wait 操作
+                "SCREENSHOT": "screenshot"
+            }
+
+            # 获取映射后的 action
+            action = action_mapping.get(keyword.name, keyword.name.lower())
+
+            # 处理参数转换
+            agent_params = parameters.copy()
+
+            # WAIT_FOR_ELEMENT 的参数转换
+            # 后端: {selector, state, timeout}
+            # Agent: {selector, state, timeout}
+            if keyword.name == "WAIT_FOR_ELEMENT":
+                # Agent 现在支持 state 参数
+                agent_params = {
+                    "selector": parameters.get("selector"),
+                    "state": parameters.get("state", "visible"),  # visible/attached/hidden
+                    "timeout": parameters.get("timeout", 5000)
+                }
+                logger.info(f"转换 WAIT_FOR_ELEMENT -> wait, 参数: selector={agent_params['selector']}, state={agent_params['state']}, timeout={agent_params['timeout']}")
+
+            agent_step = {
+                "action": action,
+                "parameters": agent_params
             }
             return agent_step
         except Exception as e:

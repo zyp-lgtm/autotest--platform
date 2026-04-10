@@ -113,9 +113,10 @@ class StepExecution(Base):
     __tablename__ = "step_executions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    case_execution_id = Column(UUID(as_uuid=True), ForeignKey("case_executions.id"), nullable=False)
-    step_id = Column(UUID(as_uuid=True), ForeignKey("ui_test_steps.id"), nullable=False)
-    keyword_id = Column(UUID(as_uuid=True), ForeignKey("keywords.id"), nullable=False)
+    # Agent 执行模式下，这些字段可以为空
+    case_execution_id = Column(UUID(as_uuid=True), ForeignKey("case_executions.id"), nullable=True)
+    step_id = Column(UUID(as_uuid=True), ForeignKey("ui_test_steps.id"), nullable=True)
+    keyword_id = Column(UUID(as_uuid=True), ForeignKey("keywords.id"), nullable=True)
 
     # 执行信息
     status = Column(String(20), default="pending")  # pending, running, passed, failed, skipped

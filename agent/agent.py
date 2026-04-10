@@ -368,7 +368,8 @@ class LocalAgent:
             logger.info(f"  参数: selector={params.get('selector')}, text={params.get('text')}")
         elif action == "wait":
             logger.info(f"  操作: 等待元素")
-            logger.info(f"  参数: selector={params.get('selector')}, timeout={params.get('timeout', 5000)}ms")
+            state = params.get('state', 'visible')
+            logger.info(f"  参数: selector={params.get('selector')}, state={state}, timeout={params.get('timeout', 5000)}ms")
         elif action == "screenshot":
             logger.info(f"  操作: 截图")
             logger.info(f"  参数: path={params.get('path')}")
@@ -394,7 +395,23 @@ class LocalAgent:
             elif action == "input":
                 selector = params.get("selector")
                 text = params.get("text")
-                await page.fill(selector, text)
+                clear_first = params.get("clear_first", False)
+
+                # 对于隐藏的输入框，直接使用 force=True 强制填充
+                try:
+                    # 先尝试点击元素使其获得焦点（超时时间短）
+                    await page.click(selector, timeout=3000)
+                    logger.info(f"  → 已点击元素使其可见")
+                except Exception as e:
+                    # 如果点击失败，使用 force=True 强制操作
+                    logger.info(f"  → 点击失败，使用 force=True: {str(e)[:50]}...")
+
+                # 清空现有内容（如果需要）
+                if clear_first:
+                    await page.fill(selector, "", force=True)
+
+                # 填充文本（使用 force=True 强制操作隐藏元素）
+                await page.fill(selector, text, force=True)
                 elapsed = time.time() - start_time
                 logger.info(f"  ✓ 成功 | 耗时: {elapsed:.2f}秒")
                 return {"success": True, "action": action}
@@ -402,7 +419,8 @@ class LocalAgent:
             elif action == "wait":
                 selector = params.get("selector")
                 timeout = params.get("timeout", 5000)
-                await page.wait_for_selector(selector, timeout=timeout)
+                state = params.get("state", "visible")  # 支持 attached/visible/hidden
+                await page.wait_for_selector(selector, timeout=timeout, state=state)
                 elapsed = time.time() - start_time
                 logger.info(f"  ✓ 成功 | 耗时: {elapsed:.2f}秒")
                 return {"success": True, "action": action}
