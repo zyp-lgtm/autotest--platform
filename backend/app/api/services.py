@@ -158,7 +158,6 @@ class ServiceManager:
 
             # 端口没有被占用，但可能有残留的 vite/npm 进程
             # 清理所有可能残留的前端进程
-            import subprocess
             try:
                 # 查找所有 vite 进程
                 result = subprocess.run(
