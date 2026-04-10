@@ -211,8 +211,6 @@ class StepExecutor:
             case_execution_id=case_execution.id,
             step_id=step.id,
             keyword_id=step.keyword_id,
-            scenario_execution_id=scenario_execution.id,
-            test_execution_id=task_execution.id,
             step_name=step.step_name,
             step_order=step.step_order,
             keyword_name="",  # 稍后从关键字获取
@@ -222,8 +220,7 @@ class StepExecutor:
             started_at=datetime.now(timezone.utc),
             retry_attempt=0,
             continue_on_failure=step.continue_on_failure,
-            parameters=step.parameters or {},
-            screenshot_config=step.screenshot_config or {}
+            parameters=step.parameters or {}
         )
 
         return step_execution

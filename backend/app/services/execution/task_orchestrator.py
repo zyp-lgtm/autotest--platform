@@ -4,6 +4,7 @@
 负责任务的编排：协调场景、用例、步骤的执行顺序
 """
 import logging
+import uuid
 from typing import Dict, Any, List
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
@@ -246,8 +247,23 @@ class TaskOrchestrator:
         if not scenario_ids:
             return []
 
+        # 转换字符串 ID 为 UUID 对象（SQLite + UUID 需要）
+        valid_scenario_ids = []
+        for sid in scenario_ids:
+            if sid and isinstance(sid, (str, uuid.UUID)) and str(sid).strip():
+                try:
+                    if isinstance(sid, uuid.UUID):
+                        valid_scenario_ids.append(sid)
+                    else:
+                        valid_scenario_ids.append(uuid.UUID(str(sid)))
+                except ValueError:
+                    logger.warning(f"跳过无效的 scenario_id UUID: {sid}")
+
+        if not valid_scenario_ids:
+            return []
+
         scenarios = self.db.query(UIScenario).filter(
-            UIScenario.id.in_(scenario_ids)
+            UIScenario.id.in_(valid_scenario_ids)
         ).order_by(UIScenario.execution_order).all()
 
         logger.info(f"加载了 {len(scenarios)} 个场景")
@@ -259,8 +275,23 @@ class TaskOrchestrator:
         if not case_ids:
             return []
 
+        # 转换字符串 ID 为 UUID 对象（SQLite + UUID 需要）
+        valid_case_ids = []
+        for cid in case_ids:
+            if cid and isinstance(cid, (str, uuid.UUID)) and str(cid).strip():
+                try:
+                    if isinstance(cid, uuid.UUID):
+                        valid_case_ids.append(cid)
+                    else:
+                        valid_case_ids.append(uuid.UUID(str(cid)))
+                except ValueError:
+                    logger.warning(f"跳过无效的 case_id UUID: {cid}")
+
+        if not valid_case_ids:
+            return []
+
         cases = self.db.query(UICase).filter(
-            UICase.id.in_(case_ids)
+            UICase.id.in_(valid_case_ids)
         ).all()
 
         logger.info(f"加载了 {len(cases)} 个用例")
@@ -272,8 +303,23 @@ class TaskOrchestrator:
         if not step_ids:
             return []
 
+        # 转换字符串 ID 为 UUID 对象（SQLite + UUID 需要）
+        valid_step_ids = []
+        for sid in step_ids:
+            if sid and isinstance(sid, (str, uuid.UUID)) and str(sid).strip():
+                try:
+                    if isinstance(sid, uuid.UUID):
+                        valid_step_ids.append(sid)
+                    else:
+                        valid_step_ids.append(uuid.UUID(str(sid)))
+                except ValueError:
+                    logger.warning(f"跳过无效的 step_id UUID: {sid}")
+
+        if not valid_step_ids:
+            return []
+
         steps = self.db.query(UIStep).filter(
-            UIStep.id.in_(step_ids)
+            UIStep.id.in_(valid_step_ids)
         ).order_by(UIStep.step_order).all()
 
         logger.info(f"加载了 {len(steps)} 个步骤")
