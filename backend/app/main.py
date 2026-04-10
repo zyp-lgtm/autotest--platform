@@ -27,7 +27,7 @@ logging.basicConfig(
 
 settings = get_settings()
 
-app = FastAPI(title="测试自动化平台", version="0.1.0")
+app = FastAPI(title="测试自动化平台", version="0.1.0", redirect_slashes=False)
 
 # CORS 配置
 app.add_middleware(

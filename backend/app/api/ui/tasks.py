@@ -18,6 +18,7 @@ router = APIRouter(prefix="/ui/tasks", tags=["UI任务"])
 
 
 @router.post("/")
+@router.post("")
 async def create_ui_task(
     task: TaskCreate,
     project_id: str = Query(..., description="项目ID"),
@@ -52,6 +53,7 @@ async def create_ui_task(
 
 
 @router.get("/")
+@router.get("")
 async def list_ui_tasks(
     project_id: str = Query(..., description="项目ID"),
     token: str = Depends(oauth2_scheme),
