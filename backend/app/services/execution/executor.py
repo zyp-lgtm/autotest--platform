@@ -149,17 +149,28 @@ class TaskExecutor:
             browser_config = request.browser_config or {}
 
             # 4. 检查是否有可用的本地 Agent
-            # 直接访问全局 manager 实例（绕过模块导入缓存）
-            import sys
-            if "app.api.agent" in sys.modules:
-                # 删除缓存，强制重新导入
-                del sys.modules["app.api.agent"]
+            # 通过 HTTP API 查询，确保获取实时状态
+            import aiohttp
+            import json
 
-            from app.api import agent as agent_module
-            available_agents = agent_module.manager.get_all_agents()
+            async def check_agents_via_api():
+                """通过 API 查询已注册的 Agent"""
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            "http://localhost:8000/api/v1/agents",
+                            headers={"Authorization": "Bearer dummy"}  # 这个端点不验证token
+                        ) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                return data.get("agents", {})
+                except Exception as e:
+                    logger.warning(f"通过 API 查询 Agent 失败: {e}")
+                return {}
 
-            logger.info(f"当前可用 Agent 数量: {len(available_agents)}")
-            logger.info(f"Agent 列表: {list(available_agents.keys()) if available_agents else []}")
+            available_agents = await check_agents_via_api()
+
+            logger.info(f"当前可用 Agent 数量 (通过 API): {len(available_agents)}")
             logger.info(f"browser_config: {browser_config}")
             logger.info(f"use_agent 配置: {browser_config.get('use_agent', True)}")
 
@@ -167,7 +178,7 @@ class TaskExecutor:
                 # 使用本地 Agent 执行
                 execution.execution_mode = "agent"
                 self.db.flush()
-                logger.info(f"发现 {len(available_agents)} 个可用 Agent，使用 Agent 执行任务")
+                logger.info(f"✓ 发现 {len(available_agents)} 个可用 Agent，使用 Agent 执行任务")
 
                 # 获取第一个可用的 Agent
                 agent_id = list(available_agents.keys())[0]
@@ -179,7 +190,8 @@ class TaskExecutor:
                     agent_browser_config["headless"] = False
                     logger.info("Agent 执行模式：显示浏览器")
 
-                # 使用当前模块的 manager
+                # 获取 manager 实例用于发送消息
+                from app.api import agent as agent_module
                 agent_mgr = agent_module.manager
 
                 # 转换任务为 Agent 格式并下发
