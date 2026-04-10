@@ -15,9 +15,22 @@ logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
-    """管理 WebSocket 连接"""
+    """管理 WebSocket 连接（单例模式）"""
+
+    _instance = None
+    _lock = asyncio.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
 
     def __init__(self):
+        # 只初始化一次
+        if self._initialized:
+            return
+
         # agent_id -> WebSocket
         self.active_connections: Dict[str, WebSocket] = {}
         # agent_id -> agent_info
@@ -26,6 +39,7 @@ class ConnectionManager:
         self.task_results: Dict[str, dict] = {}
         # task_id -> event (用于通知等待的协程)
         self.task_events: Dict[str, asyncio.Event] = {}
+        self._initialized = True
 
     async def connect(self, websocket: WebSocket, agent_id: str):
         """接受连接"""

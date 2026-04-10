@@ -171,7 +171,9 @@ class TaskExecutor:
                     logger.info("Agent 执行模式：显示浏览器")
 
                 # 转换任务为 Agent 格式并下发
+                logger.info(f"开始通过 Agent {agent_id} 执行任务...")
                 result = await self._execute_via_agent(agent_id, task, agent_browser_config)
+                logger.info(f"Agent 执行完成，result: {result}")
 
                 # 更新执行结果
                 execution.completed_at = datetime.now(timezone.utc)
@@ -470,14 +472,18 @@ class TaskExecutor:
 
         logger.info(f"开始等待任务执行结果 (超时: 180秒)...")
         # 等待任务执行结果（使用任务 ID）
-        result = await agent_manager.manager.wait_for_task_result(
+        wrapper = await agent_manager.manager.wait_for_task_result(
             task_execution_id,
             timeout=180.0  # 3分钟超时
         )
-        logger.info(f"收到任务执行结果: {result}")
+        logger.info(f"收到任务执行包装结果: {wrapper}")
 
-        if result is None:
+        if wrapper is None:
             raise Exception(f"Agent {agent_id} 执行任务超时")
+
+        # 从包装中提取实际的执行结果
+        result = wrapper.get("result", {})
+        logger.info(f"提取执行结果: {result}")
 
         return result
 
