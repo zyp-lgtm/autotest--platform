@@ -18,6 +18,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // 监听登出事件（由响应拦截器触发）
+  useEffect(() => {
+    const handleLogout = () => {
+      console.log('[AuthContext] 收到登出事件，清除状态')
+      setUser(null)
+      setToken(null)
+      setLoading(false)
+    }
+
+    window.addEventListener('auth:logout', handleLogout)
+    return () => {
+      window.removeEventListener('auth:logout', handleLogout)
+    }
+  }, [])
+
   // 初始化：从 localStorage 读取 token
   useEffect(() => {
     console.log('[AuthContext] 初始化开始')
