@@ -39,18 +39,23 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       console.log('[apiClient] 检测到 401 错误，清除认证信息')
       console.log('[apiClient] 当前路径:', window.location.pathname)
+      console.log('[apiClient] 清除前 localStorage 有 token:', !!localStorage.getItem('access_token'))
 
       // 清除 token
       localStorage.removeItem('access_token')
 
+      console.log('[apiClient] Token 已清除，localStorage 现在有 token:', !!localStorage.getItem('access_token'))
+
       // 触发自定义事件，通知 AuthContext 更新状态
       window.dispatchEvent(new CustomEvent('auth:logout'))
 
-      // 只在非登录/注册页面时才重定向
-      if (!window.location.pathname.match(/^(\/login|\/register)/)) {
-        console.log('[apiClient] 重定向到登录页面')
-        window.location.href = '/login'
-      }
+      // 延迟重定向，让日志有时间输出
+      setTimeout(() => {
+        if (!window.location.pathname.match(/^(\/login|\/register)/)) {
+          console.log('[apiClient] 重定向到登录页面')
+          window.location.href = '/login'
+        }
+      }, 100)
     }
     return Promise.reject(error)
   }

@@ -67,54 +67,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const login = async (username: string, password: string) => {
-    const response = await authApi.login({ username, password })
-    const { access_token } = response
-
-    // 先设置 token 到 state 和 localStorage
-    setToken(access_token)
-    localStorage.setItem('access_token', access_token)
-
-    // 使用新获取的 token 调用 API
-    // 注意：不能立即调用 fetchCurrentUser，因为响应拦截器可能还没更新
-    // 给一点时间让 token 传播到 apiClient
+    console.log('[AuthContext] 开始登录流程')
     try {
-      // 手动添加 Authorization 头来确保请求使用最新的 token
-      const response = await fetch('/api/v1/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${access_token}`
-        }
-      })
+      const response = await authApi.login({ username, password })
+      const { access_token } = response
+      console.log('[AuthContext] 登录 API 返回成功')
 
-      if (response.ok) {
-        const userData = await response.json()
-        setUser(userData)
-      } else {
-        // 如果获取用户信息失败，仍然保持登录状态（使用 JWT 中的信息）
-        console.warn('[AuthContext] 获取用户信息失败，但保持登录状态')
-        // 从 JWT 解码获取用户名
-        const parts = access_token.split('.')
-        if (parts.length === 3) {
-          const payload = JSON.parse(atob(parts[1]))
-          setUser({ username: payload.sub, id: payload.sub })
-        }
-      }
-    } catch (error) {
-      console.error('[AuthContext] 获取用户信息失败:', error)
-      // 即使获取用户信息失败，也保持登录状态
-      // 因为 login API 已经成功返回了 token
+      // 从 JWT 解码获取用户信息（不需要额外的 API 调用）
       const parts = access_token.split('.')
       if (parts.length === 3) {
-        try {
-          const payload = JSON.parse(atob(parts[1]))
-          setUser({ username: payload.sub, id: payload.sub })
-        } catch {
-          // 如果解码失败，至少设置用户名为已知值
-          setUser({ username, id: username })
-        }
-      }
-    }
+        const payload = JSON.parse(atob(parts[1]))
+        console.log('[AuthContext] JWT payload:', payload)
 
-    setLoading(false)
+        const userData = {
+          username: payload.sub,
+          id: payload.sub
+        }
+
+        // 先设置用户信息和 token
+        setUser(userData)
+        setToken(access_token)
+
+        // 然后保存到 localStorage（重要：要在设置 state 之后）
+        localStorage.setItem('access_token', access_token)
+
+        console.log('[AuthContext] 登录成功，用户信息已设置:', userData)
+        console.log('[AuthContext] Token 已保存到 localStorage')
+      } else {
+        throw new Error('Invalid token format')
+      }
+    } catch (error) {
+      console.error('[AuthContext] 登录失败:', error)
+      throw error
+    } finally {
+      setLoading(false)
+    }
   }
 
   const register = async (username: string, email: string, password: string) => {
