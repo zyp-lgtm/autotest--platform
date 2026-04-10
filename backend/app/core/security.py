@@ -29,19 +29,26 @@ def create_access_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(seconds=settings.JWT_EXPIRATION)
     to_encode.update({"exp": expire})
+    logger.info(f"[create_access_token] 使用 JWT_SECRET: {settings.JWT_SECRET[:20]}...")
     encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    logger.info(f"[create_access_token] 生成的 Token: {encoded_jwt[:30]}...")
     return encoded_jwt
 
 
 def verify_token(token: str) -> Optional[dict]:
     try:
+        logger.info(f"[verify_token] 使用 JWT_SECRET: {settings.JWT_SECRET[:20]}...")
+        logger.info(f"[verify_token] Token 前缀: {token[:30]}...")
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        logger.info(f"[verify_token] Token 验证成功: {payload}")
         return payload
     except ExpiredSignatureError:
         logger.warning("Token has expired")
         return None
     except JWTError as e:
         logger.warning(f"Invalid token: {e}")
+        logger.warning(f"[verify_token] JWT_SECRET: {settings.JWT_SECRET[:20]}...")
+        logger.warning(f"[verify_token] Token: {token[:30]}...")
         return None
 
 
