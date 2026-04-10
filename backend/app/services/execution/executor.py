@@ -303,9 +303,24 @@ class TaskExecutor:
 
         # 加载场景和用例
         scenarios = []
-        for scenario_id in task.scenario_ids:
+        for scenario_id in task.scenario_ids or []:
+            # 跳过无效的 scenario_id（空字典、空字符串等）
+            if not scenario_id or not isinstance(scenario_id, (str, uuid.UUID)):
+                logger.warning(f"跳过无效的 scenario_id: {scenario_id} (类型: {type(scenario_id)})")
+                continue
+
+            # 确保 scenario_id 是字符串
+            scenario_id_str = str(scenario_id) if isinstance(scenario_id, uuid.UUID) else scenario_id
+
+            # 验证 UUID 格式
+            try:
+                uuid.UUID(scenario_id_str)
+            except ValueError:
+                logger.warning(f"跳过无效的 UUID 格式: {scenario_id_str}")
+                continue
+
             scenario = self.db.query(UIScenario).filter(
-                UIScenario.id == scenario_id
+                UIScenario.id == scenario_id_str
             ).first()
             if scenario:
                 scenarios.append(scenario)
