@@ -17,9 +17,9 @@ const ProjectContext = createContext<ProjectContextType | undefined>(undefined)
 // TODO: 从 API 获取项目列表
 const MOCK_PROJECTS: Project[] = [
   {
-    id: '550e8400-e29b-41d4-a716-446655440000',
-    name: '测试项目1',
-    description: '第一个测试项目',
+    id: '468f7eccc919406082661497eb6a7b2d',
+    name: '测试项目',
+    description: '默认测试项目',
   },
 ]
 
