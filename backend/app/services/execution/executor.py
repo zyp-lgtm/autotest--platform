@@ -377,28 +377,37 @@ class TaskExecutor:
 
         total_steps = 0
         for scenario in scenarios:
+            logger.info(f"处理场景: {scenario.name}")
             # 解析用例ID
             case_ids = scenario.case_ids or []
+            logger.info(f"原始 case_ids: {case_ids}, 类型: {type(case_ids)}")
+
             if isinstance(case_ids, str):
                 try:
                     case_ids = json.loads(case_ids)
+                    logger.info(f"解析后的 case_ids: {case_ids}")
                 except json.JSONDecodeError:
+                    logger.error(f"JSON 解析失败: {case_ids}")
                     case_ids = []
 
             # 过滤无效的 case_id（空字典、空字符串等）
             valid_case_ids = []
-            for cid in case_ids:
+            for idx, cid in enumerate(case_ids):
+                logger.info(f"检查 case_id[{idx}]: {repr(cid)}, 类型: {type(cid)}")
                 if cid and isinstance(cid, (str, uuid.UUID)) and str(cid).strip():
                     # 验证并转换为 UUID 对象
                     try:
                         if isinstance(cid, uuid.UUID):
                             valid_case_ids.append(cid)
+                            logger.info(f"  ✓ 有效的 UUID 对象: {cid}")
                         else:
-                            valid_case_ids.append(uuid.UUID(str(cid)))
-                    except ValueError:
-                        logger.warning(f"跳过无效的 case_id UUID: {cid}")
+                            uuid_obj = uuid.UUID(str(cid))
+                            valid_case_ids.append(uuid_obj)
+                            logger.info(f"  ✓ 转换为 UUID: {cid} -> {uuid_obj}")
+                    except ValueError as e:
+                        logger.warning(f"  ✗ 跳过无效的 case_id UUID: {cid}, 错误: {e}")
                 else:
-                    logger.warning(f"跳过无效的 case_id: {cid} (类型: {type(cid)})")
+                    logger.warning(f"  ✗ 跳过无效的 case_id: {cid} (类型: {type(cid)})")
 
             if not valid_case_ids:
                 logger.warning(f"场景 {scenario.name} 没有有效的用例 ID")
