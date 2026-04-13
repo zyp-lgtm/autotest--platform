@@ -583,7 +583,7 @@ class TaskExecutor:
                 scenario_execution = ScenarioExecution(
                     id=uuid.uuid4(),
                     test_execution_id=execution.id,
-                    scenario_id=scenario_info.get("scenario_id"),
+                    scenario_id=uuid.UUID(scenario_info.get("scenario_id")) if scenario_info.get("scenario_id") else None,
                     status="completed" if all(r.get("success", False) for r in agent_results) else "failed",
                     result="pass" if all(r.get("success", False) for r in agent_results) else "fail",
                     total_steps=len(agent_results),
@@ -601,7 +601,7 @@ class TaskExecutor:
                     id=uuid.uuid4(),
                     scenario_execution_id=scenario_execution.id,
                     test_execution_id=execution.id,
-                    case_id=case_info.get("case_id"),
+                    case_id=uuid.UUID(case_info.get("case_id")) if case_info.get("case_id") else None,
                     status="completed" if all(r.get("success", False) for r in agent_results) else "failed",
                     result="pass" if all(r.get("success", False) for r in agent_results) else "fail",
                     total_steps=len(agent_results),
