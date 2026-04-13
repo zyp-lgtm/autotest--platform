@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from ...models.ui_task import UITask, UIScenario, UICase, UIStep
-from ...models.execution import TestExecution, StepExecution
+from ...models.execution import TestExecution, ScenarioExecution, CaseExecution, StepExecution
 from ...models.keyword import Keyword
 from ...services.playwright_browser import PlaywrightBrowser
 from ...services.debug_collector import DebugInfoCollector
@@ -571,6 +571,54 @@ class TaskExecutor:
         """
         logger.info(f"开始创建 {len(agent_results)} 个步骤执行记录")
 
+        # 为 Agent 执行创建 scenario_execution 和 case_execution（使用第一个场景/用例）
+        scenarios = task_structure.get("scenarios", [])
+        if scenarios:
+            scenario_info = scenarios[0]
+            cases = scenario_info.get("cases", [])
+            if cases:
+                case_info = cases[0]
+
+                # 创建 scenario_execution
+                scenario_execution = ScenarioExecution(
+                    id=uuid.uuid4(),
+                    test_execution_id=execution.id,
+                    scenario_id=scenario_info.get("scenario_id"),
+                    scenario_name=scenario_info.get("scenario_name", ""),
+                    status="completed" if all(r.get("success", False) for r in agent_results) else "failed",
+                    result="pass" if all(r.get("success", False) for r in agent_results) else "fail",
+                    total_steps=len(agent_results),
+                    passed_steps=sum(1 for r in agent_results if r.get("success", False)),
+                    failed_steps=sum(1 for r in agent_results if not r.get("success", False)),
+                    started_at=execution.started_at,
+                    completed_at=execution.completed_at,
+                    duration=execution.duration
+                )
+                self.db.add(scenario_execution)
+                self.db.flush()  # 获取 ID
+
+                # 创建 case_execution
+                case_execution = CaseExecution(
+                    id=uuid.uuid4(),
+                    scenario_execution_id=scenario_execution.id,
+                    test_execution_id=execution.id,
+                    case_id=case_info.get("case_id"),
+                    case_name=case_info.get("case_name", ""),
+                    status="completed" if all(r.get("success", False) for r in agent_results) else "failed",
+                    result="pass" if all(r.get("success", False) for r in agent_results) else "fail",
+                    total_steps=len(agent_results),
+                    passed_steps=sum(1 for r in agent_results if r.get("success", False)),
+                    failed_steps=sum(1 for r in agent_results if not r.get("success", False)),
+                    started_at=execution.started_at,
+                    completed_at=execution.completed_at,
+                    duration=execution.duration
+                )
+                self.db.add(case_execution)
+                self.db.flush()  # 获取 ID
+
+                logger.info(f"✓ 创建 scenario_execution: {scenario_execution.id}")
+                logger.info(f"✓ 创建 case_execution: {case_execution.id}")
+
         # 扁平化所有步骤（保留原始步骤信息）
         all_steps = []
         for scenario in task_structure.get("scenarios", []):
@@ -591,10 +639,10 @@ class TaskExecutor:
             step_info = all_steps[idx]
             step_result = agent_result  # {success, action, error, ...}
 
-            # 创建 StepExecution 记录
+            # 创建 StepExecution 记录，关联到 case_execution
             step_execution = StepExecution(
                 id=uuid.uuid4(),
-                case_execution_id=None,  # Agent 执行没有 case_execution
+                case_execution_id=case_execution.id,  # 关联到 case_execution
                 step_id=None,  # Agent 步骤没有 UIStep ID
                 keyword_id=None,
                 # 步骤名称包含场景和用例上下文
