@@ -127,7 +127,7 @@ try:
             step_order=2,
             parameters={
                 "selector": "#kw",
-                "state": "visible",
+                "state": "attached",  # 使用 attached 而不是 visible，因为元素可能隐藏
                 "timeout": 5000
             },
             enabled=True

@@ -481,6 +481,7 @@ class TaskExecutor:
                         if step_data:
                             step_data["step_order"] = step.step_order
                             step_data["step_name"] = step.step_name
+                            step_data["continue_on_failure"] = step.continue_on_failure or False  # 添加 continue_on_failure
                             case_data["steps"].append(step_data)
 
                 scenario_data["cases"].append(case_data)
@@ -609,7 +610,7 @@ class TaskExecutor:
                 completed_at=datetime.now(timezone.utc),
                 duration=0,  # Agent 没有返回每个步骤的耗时
                 retry_attempt=0,
-                continue_on_failure=False,
+                continue_on_failure=step_info.get("continue_on_failure", False),  # 从步骤信息读取
                 parameters=step_info.get("parameters", {}),  # 直接传 dict，不需要 json.dumps
                 error_message=step_result.get("error") if not step_result.get("success") else None,
                 # 存储 Agent 执行的详细信息

@@ -306,7 +306,13 @@ class LocalAgent:
                     success_count += 1
                 else:
                     fail_count += 1
-                    break  # 失败则停止
+                    # 检查是否需要继续执行
+                    continue_on_failure = step.get("continue_on_failure", False)
+                    if not continue_on_failure:
+                        logger.info(f"  → 步骤失败且 continue_on_failure=False，停止执行")
+                        break
+                    else:
+                        logger.info(f"  → 步骤失败但 continue_on_failure=True，继续执行")
 
             # 输出执行摘要
             logger.info("")
