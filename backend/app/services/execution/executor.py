@@ -257,7 +257,6 @@ class TaskExecutor:
             execution.error_message = str(e)
             execution.completed_at = datetime.now(timezone.utc)
 
-            if execution.started_at:
                 started_at_aware = _ensure_datetime_aware(execution.started_at)
                 execution.duration = (execution.completed_at - started_at_aware).total_seconds()
 
@@ -569,15 +568,39 @@ class TaskExecutor:
             agent_results: Agent 返回的步骤结果列表
             agent_id: Agent ID
         """
+        # 计算执行时间（execution 对象可能还没有 completed_at 和 duration）
+        completed_at = execution.completed_at
+        if completed_at is None:
+            completed_at = datetime.now(timezone.utc)
+
+        duration = execution.duration
+        if duration is None:
+            # 确保 started_at 是时区感知的
+            started_at_aware = execution.started_at if execution.started_at else completed_at
+            if started_at_aware.tzinfo is None:
+                started_at_aware = started_at_aware.replace(tzinfo=timezone.utc)
+            duration = (completed_at - started_at_aware).total_seconds()
+
         logger.info(f"开始创建 {len(agent_results)} 个步骤执行记录")
 
         # 为 Agent 执行创建 scenario_execution 和 case_execution（使用第一个场景/用例）
         scenarios = task_structure.get("scenarios", [])
+
+        try:
+                if scenarios:
+                    scenario_info = scenarios[0]
+                    cases = scenario_info.get("cases", [])
+        except:
+            pass
+        logger.info(f"task_structure has {len(scenarios)} scenarios")
         if scenarios:
             scenario_info = scenarios[0]
+            logger.info(f"scenario_info keys: {list(scenario_info.keys())}")
             cases = scenario_info.get("cases", [])
+            logger.info(f"cases array length: {len(cases)}")
             if cases:
                 case_info = cases[0]
+                logger.info(f"case_info keys: {list(case_info.keys())}")
 
                 # 创建 scenario_execution
                 scenario_execution = ScenarioExecution(
@@ -590,8 +613,8 @@ class TaskExecutor:
                     passed_steps=sum(1 for r in agent_results if r.get("success", False)),
                     failed_steps=sum(1 for r in agent_results if not r.get("success", False)),
                     started_at=execution.started_at,
-                    completed_at=execution.completed_at,
-                    duration=execution.duration
+                    completed_at=completed_at,
+                    duration=duration
                 )
                 self.db.add(scenario_execution)
                 self.db.flush()  # 获取 ID
@@ -600,7 +623,6 @@ class TaskExecutor:
                 case_execution = CaseExecution(
                     id=uuid.uuid4(),
                     scenario_execution_id=scenario_execution.id,
-                    test_execution_id=execution.id,
                     case_id=uuid.UUID(case_info.get("case_id")) if case_info.get("case_id") else None,
                     status="completed" if all(r.get("success", False) for r in agent_results) else "failed",
                     result="pass" if all(r.get("success", False) for r in agent_results) else "fail",
@@ -608,8 +630,8 @@ class TaskExecutor:
                     passed_steps=sum(1 for r in agent_results if r.get("success", False)),
                     failed_steps=sum(1 for r in agent_results if not r.get("success", False)),
                     started_at=execution.started_at,
-                    completed_at=execution.completed_at,
-                    duration=execution.duration
+                    completed_at=completed_at,
+                    duration=duration
                 )
                 self.db.add(case_execution)
                 self.db.flush()  # 获取 ID
