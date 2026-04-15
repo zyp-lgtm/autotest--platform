@@ -676,11 +676,13 @@ class TaskExecutor:
                 result="pass" if step_result.get("success") else "fail",
                 started_at=datetime.now(timezone.utc),
                 completed_at=datetime.now(timezone.utc),
-                duration=0,  # Agent 没有返回每个步骤的耗时
+                duration=step_result.get("duration", 0),  # 从 Agent 结果获取执行时长
                 retry_attempt=0,
                 continue_on_failure=step_info.get("continue_on_failure", False),  # 从步骤信息读取
                 parameters=step_info.get("parameters", {}),  # 直接传 dict，不需要 json.dumps
                 error_message=step_result.get("error") if not step_result.get("success") else None,
+                logs=step_result.get("logs", []),  # 保存 Agent 返回的详细日志
+                screenshot_path=step_result.get("screenshot"),  # 保存失败截图路径
                 # 存储 Agent 执行的详细信息
                 output={
                     "action": step_result.get("action"),
@@ -689,6 +691,7 @@ class TaskExecutor:
                     "scenario_name": step_info.get("scenario_name", ""),
                     "case_id": str(step_info.get("case_id", "")),
                     "case_name": step_info.get("case_name", ""),
+                    "duration": step_result.get("duration", 0),  # 也保存到 output 中
                 }
             )
 

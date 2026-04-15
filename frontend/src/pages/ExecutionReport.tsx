@@ -199,12 +199,7 @@ export default function ExecutionReport() {
           </div>
         )}
 
-        {execution.error_message && (
-          <div className="mt-4 p-3 bg-red-50 text-red-700 rounded">
-            <p className="font-medium">错误信息:</p>
-            <p className="text-sm">{execution.error_message}</p>
-          </div>
-        )}
+        {/* 移除顶部全局错误信息栏，只在具体步骤中显示错误 */}
       </div>
 
       {/* 场景执行详情 */}
@@ -251,12 +246,13 @@ export default function ExecutionReport() {
                       step={{
                         step_name: stepExec.step_name,
                         keyword_name: stepExec.keyword_name,
-                        parameters: stepExec.output?.parameters || {},
+                        parameters: stepExec.parameters || {},
                         status: stepExec.status,
                         result: stepExec.result,
                         duration: stepExec.duration,
                         error_message: stepExec.error_message,
                         logs: stepExec.logs,
+                        screenshot_path: stepExec.screenshot_path,
                         output: stepExec.output
                       }}
                     />

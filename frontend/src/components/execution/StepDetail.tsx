@@ -11,6 +11,7 @@ interface StepDetailProps {
     duration?: number
     error_message?: string
     logs?: Array<{ timestamp: string; level: string; message: string }>
+    screenshot_path?: string
     output?: {
       error_category?: string
       error_severity?: string
@@ -116,8 +117,25 @@ export default function StepDetail({ step }: StepDetailProps) {
 
               {/* 错误消息 */}
               <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded">
-                <p className="text-sm text-red-800 font-mono">{step.error_message}</p>
+                <p className="text-sm text-red-800 font-mono whitespace-pre-wrap">{step.error_message}</p>
               </div>
+
+              {/* 失败截图 */}
+              {step.screenshot_path && (
+                <div className="mb-3">
+                  <h5 className="text-xs font-medium text-gray-600 mb-2">失败截图</h5>
+                  <div className="border border-gray-300 rounded overflow-hidden">
+                    <img
+                      src={`http://localhost:8000${step.screenshot_path}`}
+                      alt="失败截图"
+                      className="w-full"
+                      onError={(e) => {
+                        e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjE1MCIgZmlsbD0iI2VjZWNlYyIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LXNpemU9IjE0IiBmaWxsPSIjOTk5Ij7lipvvvI7lnKjnva7lm648L3RleHQ+PC9zdmc+'
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* 错误分类和建议 */}
               {step.output?.error_suggestion && (

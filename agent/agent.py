@@ -356,47 +356,72 @@ class LocalAgent:
     async def _execute_step(self, page: Page, step: Dict[str, Any]) -> Dict[str, Any]:
         """执行单个步骤"""
         import time
+        from datetime import datetime
         action = step.get("action")
         params = step.get("parameters", {})
 
         # 记录开始时间
         start_time = time.time()
 
+        # 收集详细日志
+        logs = []
+        def add_log(level: str, message: str):
+            log_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "level": level,
+                "message": message
+            }
+            logs.append(log_entry)
+            if level == "error":
+                logger.error(f"  {message}")
+            else:
+                logger.info(f"  {message}")
+
         # 增强日志输出
         if action == "navigate":
-            logger.info(f"  操作: 导航到 URL")
-            logger.info(f"  参数: url={params.get('url')}")
+            add_log("info", f"操作: 导航到 URL")
+            add_log("info", f"参数: url={params.get('url')}")
         elif action == "click":
-            logger.info(f"  操作: 点击元素")
-            logger.info(f"  参数: selector={params.get('selector')}")
+            add_log("info", f"操作: 点击元素")
+            add_log("info", f"参数: selector={params.get('selector')}")
         elif action == "input":
-            logger.info(f"  操作: 输入文本")
-            logger.info(f"  参数: selector={params.get('selector')}, text={params.get('text')}")
+            add_log("info", f"操作: 输入文本")
+            add_log("info", f"参数: selector={params.get('selector')}, text={params.get('text')}")
         elif action == "wait":
-            logger.info(f"  操作: 等待元素")
+            add_log("info", f"操作: 等待元素")
             state = params.get('state', 'visible')
-            logger.info(f"  参数: selector={params.get('selector')}, state={state}, timeout={params.get('timeout', 5000)}ms")
+            add_log("info", f"参数: selector={params.get('selector')}, state={state}, timeout={params.get('timeout', 5000)}ms")
         elif action == "screenshot":
-            logger.info(f"  操作: 截图")
-            logger.info(f"  参数: path={params.get('path')}")
+            add_log("info", f"操作: 截图")
+            add_log("info", f"参数: path={params.get('path')}")
         else:
-            logger.info(f"  操作: {action}")
-            logger.info(f"  参数: {params}")
+            add_log("info", f"操作: {action}")
+            add_log("info", f"参数: {params}")
 
         try:
             if action == "navigate":
                 url = params.get("url")
                 await page.goto(url)
                 elapsed = time.time() - start_time
-                logger.info(f"  ✓ 成功 | 耗时: {elapsed:.2f}秒")
-                return {"success": True, "action": action}
+                add_log("info", f"✓ 成功 | 耗时: {elapsed:.2f}秒")
+                return {
+                    "success": True,
+                    "action": action,
+                    "duration": elapsed,
+                    "logs": logs
+                }
 
             elif action == "click":
                 selector = params.get("selector")
                 await page.click(selector)
                 elapsed = time.time() - start_time
-                logger.info(f"  ✓ 成功 | 耗时: {elapsed:.2f}秒")
-                return {"success": True, "action": action}
+                add_log("info", f"✓ 成功 | 耗时: {elapsed:.2f}秒")
+                return {
+                    "success": True,
+                    "action": action,
+                    "duration": elapsed,
+                    "logs": logs
+                }
 
             elif action == "input":
                 selector = params.get("selector")
@@ -407,20 +432,26 @@ class LocalAgent:
                 try:
                     # 先尝试点击元素使其获得焦点（超时时间短）
                     await page.click(selector, timeout=3000)
-                    logger.info(f"  → 已点击元素使其可见")
+                    add_log("info", "→ 已点击元素使其可见")
                 except Exception as e:
                     # 如果点击失败，使用 force=True 强制操作
-                    logger.info(f"  → 点击失败，使用 force=True: {str(e)[:50]}...")
+                    add_log("info", f"→ 点击失败，使用 force=True: {str(e)[:50]}...")
 
                 # 清空现有内容（如果需要）
                 if clear_first:
                     await page.fill(selector, "", force=True)
+                    add_log("info", "→ 已清空现有内容")
 
                 # 填充文本（使用 force=True 强制操作隐藏元素）
                 await page.fill(selector, text, force=True)
                 elapsed = time.time() - start_time
-                logger.info(f"  ✓ 成功 | 耗时: {elapsed:.2f}秒")
-                return {"success": True, "action": action}
+                add_log("info", f"✓ 成功 | 输入文本: {text} | 耗时: {elapsed:.2f}秒")
+                return {
+                    "success": True,
+                    "action": action,
+                    "duration": elapsed,
+                    "logs": logs
+                }
 
             elif action == "wait":
                 selector = params.get("selector")
@@ -428,24 +459,58 @@ class LocalAgent:
                 state = params.get("state", "visible")  # 支持 attached/visible/hidden
                 await page.wait_for_selector(selector, timeout=timeout, state=state)
                 elapsed = time.time() - start_time
-                logger.info(f"  ✓ 成功 | 耗时: {elapsed:.2f}秒")
-                return {"success": True, "action": action}
+                add_log("info", f"✓ 成功 | 等待状态: {state} | 耗时: {elapsed:.2f}秒")
+                return {
+                    "success": True,
+                    "action": action,
+                    "duration": elapsed,
+                    "logs": logs
+                }
 
             elif action == "screenshot":
                 path = params.get("path", f"screenshot_{uuid.uuid4().hex}.png")
                 await page.screenshot(path=path)
                 elapsed = time.time() - start_time
-                logger.info(f"  ✓ 成功 | 保存路径: {path} | 耗时: {elapsed:.2f}秒")
-                return {"success": True, "action": action, "screenshot": path}
+                add_log("info", f"✓ 成功 | 保存路径: {path} | 耗时: {elapsed:.2f}秒")
+                return {
+                    "success": True,
+                    "action": action,
+                    "screenshot": path,
+                    "duration": elapsed,
+                    "logs": logs
+                }
 
             else:
-                return {"success": False, "action": action, "error": f"未知操作: {action}"}
+                return {
+                    "success": False,
+                    "action": action,
+                    "error": f"未知操作: {action}",
+                    "logs": logs
+                }
 
         except Exception as e:
             elapsed = time.time() - start_time
-            logger.error(f"  ✗ 失败 | 耗时: {elapsed:.2f}秒")
-            logger.error(f"  错误详情: {str(e)}")
-            return {"success": False, "action": action, "error": str(e)}
+            error_msg = str(e)
+            add_log("error", f"✗ 失败 | 耗时: {elapsed:.2f}秒")
+            add_log("error", f"错误详情: {error_msg}")
+
+            # 失败时自动截图
+            screenshot_path = None
+            try:
+                screenshot_path = f"screenshot_error_{uuid.uuid4().hex}.png"
+                await page.screenshot(path=screenshot_path)
+                add_log("info", f"✓ 已保存失败截图: {screenshot_path}")
+            except Exception as screenshot_error:
+                add_log("error", f"截图失败: {str(screenshot_error)}")
+
+            return {
+                "success": False,
+                "action": action,
+                "error": error_msg,
+                "duration": elapsed,
+                "logs": logs,
+                "screenshot": screenshot_path
+            }
 
     async def _close_browser(self):
         """关闭浏览器"""
