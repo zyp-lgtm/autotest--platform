@@ -257,8 +257,8 @@ class TaskExecutor:
             execution.error_message = str(e)
             execution.completed_at = datetime.now(timezone.utc)
 
-                started_at_aware = _ensure_datetime_aware(execution.started_at)
-                execution.duration = (execution.completed_at - started_at_aware).total_seconds()
+            started_at_aware = _ensure_datetime_aware(execution.started_at)
+            execution.duration = (execution.completed_at - started_at_aware).total_seconds()
 
             self.db.commit()
             self.db.refresh(execution)
