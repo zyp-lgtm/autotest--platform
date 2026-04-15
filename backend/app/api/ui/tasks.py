@@ -193,44 +193,67 @@ async def execute_ui_task(
                         "step_name": step_exec.step_name,
                         "step_order": step_exec.step_order,
                         "keyword_name": step_exec.keyword_name,
+                        "category": step_exec.category,
                         "status": step_exec.status,
                         "result": step_exec.result,
                         "duration": step_exec.duration,
+                        "retry_attempt": step_exec.retry_attempt,
+                        "continue_on_failure": step_exec.continue_on_failure,
+                        "parameters": step_exec.parameters,
                         "error_message": step_exec.error_message,
                         "logs": step_exec.logs or [],
-                        "screenshot_path": step_exec.screenshot_path
+                        "screenshot_path": step_exec.screenshot_path,
+                        "output": step_exec.output
                     })
 
                 cases_data.append({
+                    "id": str(case_exec.id),
+                    "case_id": str(case_exec.case_id) if case_exec.case_id else None,
                     "status": case_exec.status,
                     "result": case_exec.result,
                     "total_steps": case_exec.total_steps,
                     "passed_steps": case_exec.passed_steps,
                     "failed_steps": case_exec.failed_steps,
-                    "steps": steps_data
+                    "duration": case_exec.duration,
+                    "error_message": case_exec.error_message,
+                    "step_executions": steps_data
                 })
 
             scenarios_data.append({
+                "id": str(scenario_exec.id),
+                "scenario_id": str(scenario_exec.scenario_id) if scenario_exec.scenario_id else None,
                 "status": scenario_exec.status,
                 "result": scenario_exec.result,
-                "cases": cases_data
+                "execution_order": scenario_exec.execution_order,
+                "total_steps": scenario_exec.total_steps,
+                "passed_steps": scenario_exec.passed_steps,
+                "failed_steps": scenario_exec.failed_steps,
+                "duration": scenario_exec.duration,
+                "case_executions": cases_data
             })
 
-        # 返回带日志的执行结果
+        # 返回带日志的执行结果（使用完整的字段名 scenario_executions）
         return {
             "id": str(execution.id),
             "task_id": str(execution.task_id),
+            "project_id": str(execution.project_id) if execution.project_id else None,
+            "user_id": str(execution.user_id) if execution.user_id else None,
             "status": execution.status,
             "result": execution.result,
             "started_at": execution.started_at.isoformat() if execution.started_at else None,
             "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
             "duration": execution.duration,
+            # 统计信息
+            "total_scenarios": execution.total_scenarios,
+            "total_cases": execution.total_cases,
             "total_steps": execution.total_steps,
             "passed_steps": execution.passed_steps,
             "failed_steps": execution.failed_steps,
+            "skipped_steps": execution.skipped_steps or 0,
             "error_message": execution.error_message,
             "execution_mode": execution.execution_mode,
-            "scenarios": scenarios_data
+            # 使用完整的字段名，与前端期望保持一致
+            "scenario_executions": scenarios_data
         }
 
     except ValueError as e:
