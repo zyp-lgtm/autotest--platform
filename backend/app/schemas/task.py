@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import List, Optional
 import uuid
@@ -7,7 +7,7 @@ import uuid
 class StepBase(BaseModel):
     step_order: int
     keyword_id: uuid.UUID
-    step_name: str
+    step_name: str = Field(..., max_length=200, description="步骤名称")
     parameters: dict = {}
     enabled: bool = True
     continue_on_failure: bool = False
@@ -27,10 +27,10 @@ class StepResponse(StepBase):
 
 
 class CaseBase(BaseModel):
-    name: str
-    description: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=100, description="用例名称")
+    description: Optional[str] = Field(None, max_length=1000, description="用例描述")
     priority: str = "P2"
-    tags: List[str] = []
+    tags: List[str] = Field(default_factory=list, description="标签列表")
 
 
 class CaseCreate(CaseBase):
@@ -47,10 +47,10 @@ class CaseResponse(CaseBase):
 
 
 class ScenarioBase(BaseModel):
-    name: str
-    description: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=100, description="场景名称")
+    description: Optional[str] = Field(None, max_length=1000, description="场景描述")
     execution_order: int = 0
-    tags: List[str] = []
+    tags: List[str] = Field(default_factory=list, description="标签列表")
 
 
 class ScenarioCreate(ScenarioBase):
@@ -67,9 +67,9 @@ class ScenarioResponse(ScenarioBase):
 
 
 class TaskBase(BaseModel):
-    name: str
-    description: Optional[str] = None
-    tags: List[str] = []
+    name: str = Field(..., min_length=1, max_length=100, description="任务名称")
+    description: Optional[str] = Field(None, max_length=1000, description="任务描述")
+    tags: List[str] = Field(default_factory=list, description="标签列表")
 
 
 class TaskCreate(TaskBase):
@@ -77,8 +77,8 @@ class TaskCreate(TaskBase):
 
 
 class TaskUpdate(TaskBase):
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: Optional[str] = Field(None, max_length=100, description="任务名称")
+    description: Optional[str] = Field(None, max_length=1000, description="任务描述")
     tags: Optional[List[str]] = None
     scenario_ids: Optional[List[uuid.UUID]] = None
 

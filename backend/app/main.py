@@ -20,6 +20,7 @@ from .middleware import setup_rate_limit_middleware
 from .middleware.performance import PerformanceMonitorMiddleware, get_performance_monitor
 from .middleware.security import SecurityHeadersMiddleware
 from .middleware.csrf import CSRFMiddleware
+from .middleware.request_size import RequestSizeLimitMiddleware
 
 # Configure logging
 logging.basicConfig(
@@ -53,6 +54,9 @@ app.add_middleware(CSRFMiddleware)
 
 # 安全头中间件
 app.add_middleware(SecurityHeadersMiddleware)
+
+# 请求体大小限制中间件
+app.add_middleware(RequestSizeLimitMiddleware, max_size=settings.MAX_REQUEST_SIZE)
 
 # 速率限制中间件
 setup_rate_limit_middleware(app)

@@ -28,6 +28,9 @@ def get_default_jwt_secret() -> str:
 
 
 class Settings(BaseSettings):
+    # 环境
+    ENV: str = os.getenv("ENV", "development")
+
     # 数据库 - 开发环境使用SQLite
     if os.getenv("USE_POSTGRES") == "true":
         DATABASE_URL: str = "postgresql://admin:admin123@localhost:5432/test_platform"
@@ -43,12 +46,27 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION: int = 86400  # 24 小时
 
-    # CORS
-    BACKEND_CORS_ORIGINS: List[str] = [
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://localhost:5173",  # Vite默认端口
-    ]
+    # CORS - 根据环境配置
+    @property
+    def BACKEND_CORS_ORIGINS(self) -> List[str]:
+        """根据环境返回允许的 CORS 源"""
+        if self.ENV == "production":
+            # 生产环境：只允许配置的域名
+            origins_str = os.getenv("CORS_ORIGINS", "")
+            return [origin.strip() for origin in origins_str.split(",") if origin.strip()]
+        else:
+            # 开发环境：允许本地开发服务器
+            return [
+                "http://localhost:3000",
+                "http://localhost:3001",
+                "http://localhost:5173",  # Vite默认端口
+                "http://127.0.0.1:3000",
+                "http://127.0.0.1:3001",
+                "http://127.0.0.1:5173",
+            ]
+
+    # 请求体大小限制（字节）
+    MAX_REQUEST_SIZE: int = int(os.getenv("MAX_REQUEST_SIZE", "10485760"))  # 默认 10MB
 
     model_config = SettingsConfigDict(
         env_file=".env",
