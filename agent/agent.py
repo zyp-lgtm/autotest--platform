@@ -497,8 +497,18 @@ class LocalAgent:
             # 失败时自动截图
             screenshot_path = None
             try:
-                screenshot_path = f"screenshot_error_{uuid.uuid4().hex}.png"
-                await page.screenshot(path=screenshot_path)
+                import os
+                # 确保截图目录存在
+                screenshot_dir = "backend/screenshots"
+                os.makedirs(screenshot_dir, exist_ok=True)
+
+                # 保存截图到目录
+                screenshot_filename = f"screenshot_error_{uuid.uuid4().hex}.png"
+                screenshot_full_path = os.path.join(screenshot_dir, screenshot_filename)
+                await page.screenshot(path=screenshot_full_path)
+
+                # 返回相对路径（供前端访问）
+                screenshot_path = f"/screenshots/{screenshot_filename}"
                 add_log("info", f"✓ 已保存失败截图: {screenshot_path}")
             except Exception as screenshot_error:
                 add_log("error", f"截图失败: {str(screenshot_error)}")

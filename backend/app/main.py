@@ -1,6 +1,9 @@
 import logging
+import os
+from pathlib import Path
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from .core.config import get_settings
 from .api.auth import auth as auth_router
 from .api.data import data as data_router
@@ -28,6 +31,13 @@ logging.basicConfig(
 settings = get_settings()
 
 app = FastAPI(title="测试自动化平台", version="0.1.0", redirect_slashes=False)
+
+# 创建并配置静态文件目录
+screenshots_dir = Path("screenshots")
+screenshots_dir.mkdir(exist_ok=True)
+
+# 挂载静态文件服务
+app.mount("/screenshots", StaticFiles(directory=str(screenshots_dir)), name="screenshots")
 
 # CORS 配置
 app.add_middleware(

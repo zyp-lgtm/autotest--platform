@@ -126,7 +126,7 @@ export default function StepDetail({ step }: StepDetailProps) {
                   <h5 className="text-xs font-medium text-gray-600 mb-2">失败截图</h5>
                   <div className="border border-gray-300 rounded overflow-hidden">
                     <img
-                      src={`http://localhost:8000${step.screenshot_path}`}
+                      src={step.screenshot_path}
                       alt="失败截图"
                       className="w-full"
                       onError={(e) => {
