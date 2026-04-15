@@ -498,8 +498,18 @@ class LocalAgent:
             screenshot_path = None
             try:
                 import os
+                import sys
+
+                # 获取项目根目录（agent目录的父目录）
+                if getattr(sys, 'frozen', False):
+                    # 打包后的exe
+                    project_root = os.path.dirname(sys.executable)
+                else:
+                    # 正常Python脚本
+                    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
                 # 确保截图目录存在
-                screenshot_dir = "backend/screenshots"
+                screenshot_dir = os.path.join(project_root, "backend", "screenshots")
                 os.makedirs(screenshot_dir, exist_ok=True)
 
                 # 保存截图到目录
@@ -509,7 +519,7 @@ class LocalAgent:
 
                 # 返回相对路径（供前端访问）
                 screenshot_path = f"/screenshots/{screenshot_filename}"
-                add_log("info", f"✓ 已保存失败截图: {screenshot_path}")
+                add_log("info", f"✓ 已保存失败截图: {screenshot_path} (路径: {screenshot_full_path})")
             except Exception as screenshot_error:
                 add_log("error", f"截图失败: {str(screenshot_error)}")
 
