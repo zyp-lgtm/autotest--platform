@@ -2,16 +2,17 @@
 关键字 API
 提供关键字查询接口
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-import uuid
 import json
 
 from ...models.keyword import Keyword
+from ...models.user import User
 from ...core.database import get_db
-from ...core.security import oauth2_scheme, verify_token
+from ...core.security import get_authenticated_user
 from ...utils.cache import cache_response, invalidate_pattern
+from ..utils import validate_and_fetch
 
 router = APIRouter(prefix="/ui/keywords", tags=["UI关键字"])
 
@@ -22,14 +23,10 @@ router = APIRouter(prefix="/ui/keywords", tags=["UI关键字"])
 async def list_keywords(
     category: Optional[str] = Query(None, description="按类别过滤"),
     enabled_only: bool = Query(False, description="仅显示有效的关键字"),
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """获取关键字列表"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     query = db.query(Keyword)
 
     if category:
@@ -70,15 +67,12 @@ async def list_keywords(
 
 
 @router.get("/categories")
+@cache_response(ttl=600)  # 缓存 10 分钟（类别很少变化）
 async def get_categories(
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """获取所有关键字类别"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     categories = db.query(Keyword.category).distinct().all()
     return [cat[0] for cat in categories]
 
@@ -86,22 +80,11 @@ async def get_categories(
 @router.get("/{keyword_id}")
 async def get_keyword(
     keyword_id: str,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """获取单个关键字详情"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        keyword_id_uuid = uuid.UUID(keyword_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的关键字ID格式")
-
-    keyword = db.query(Keyword).filter(Keyword.id == keyword_id_uuid).first()
-    if not keyword:
-        raise HTTPException(status_code=404, detail="关键字不存在")
+    keyword = validate_and_fetch(db, Keyword, keyword_id, "关键字")
 
     # 处理 parameter_schema: 可能是字符串（SQLite）或字典（PostgreSQL）
     param_schema = keyword.parameter_schema
