@@ -10,7 +10,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import FileResponse, Response
 
-from ..core.security import verify_token
+from ..core.security import get_authenticated_user
+from ..models.user import User
 
 router = APIRouter()
 
@@ -50,7 +51,7 @@ def sanitize_path(file_path: str) -> Path:
 @router.get("/files/debug")
 async def get_debug_file(
     path: str,
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    user: User = Depends(get_authenticated_user)
 ):
     """
     获取调试文件（截图、HTML快照、JSON报告等）
@@ -61,10 +62,6 @@ async def get_debug_file(
     返回:
         文件内容或 404 错误
     """
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         file_path = sanitize_path(path)
 
@@ -119,7 +116,7 @@ async def get_debug_file(
 @router.get("/files/debug/list")
 async def list_debug_files(
     path: Optional[str] = None,
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    user: User = Depends(get_authenticated_user)
 ):
     """
     列出调试目录中的文件
@@ -130,10 +127,6 @@ async def list_debug_files(
     返回:
         文件和目录列表
     """
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         base_path = get_debug_base_path()
 
@@ -193,7 +186,7 @@ async def list_debug_files(
 @router.delete("/files/debug")
 async def delete_debug_file(
     path: str,
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    user: User = Depends(get_authenticated_user)
 ):
     """
     删除调试文件
@@ -204,10 +197,6 @@ async def delete_debug_file(
     返回:
         删除结果
     """
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         file_path = sanitize_path(path)
 

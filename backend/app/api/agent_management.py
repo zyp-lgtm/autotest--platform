@@ -6,10 +6,10 @@ Agent 管理 API
 import logging
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 from ..api import agent
-from ..core.security import verify_token
+from ..core.security import get_authenticated_user
+from ..models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +28,9 @@ class TaskRequest(BaseModel):
 
 @router.get("")
 async def list_agents(
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    user: User = Depends(get_authenticated_user)
 ):
     """获取所有已连接的 Agent"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     agents = agent.manager.get_all_agents()
     return {
         "agents": agents,
@@ -45,13 +41,9 @@ async def list_agents(
 @router.get("/{agent_id}")
 async def get_agent(
     agent_id: str,
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    user: User = Depends(get_authenticated_user)
 ):
     """获取指定 Agent信息"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     agent_info = agent.manager.get_agent(agent_id)
     if not agent_info:
         raise HTTPException(status_code=404, detail="Agent 不存在")
@@ -61,13 +53,9 @@ async def get_agent(
 @router.post("/dispatch")
 async def dispatch_task(
     request: TaskRequest,
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    user: User = Depends(get_authenticated_user)
 ):
     """下发任务给指定 Agent"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     agent_info = agent.manager.get_agent(request.agent_id)
     if not agent_info:
         raise HTTPException(status_code=404, detail="Agent 不存在或未连接")
@@ -99,13 +87,9 @@ async def dispatch_task(
 @router.post("/{agent_id}/close")
 async def close_browser(
     agent_id: str,
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    user: User = Depends(get_authenticated_user)
 ):
     """关闭 Agent 的浏览器"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     agent_info = agent.manager.get_agent(agent_id)
     if not agent_info:
         raise HTTPException(status_code=404, detail="Agent 不存在或未连接")

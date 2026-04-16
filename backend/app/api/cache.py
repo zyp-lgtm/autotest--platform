@@ -3,12 +3,12 @@
 提供缓存查询和管理功能
 """
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 from typing import Dict, Any
 
 from ..utils.cache import get_cache, invalidate_pattern
-from ..core.security import verify_token
+from ..core.security import get_authenticated_user, require_admin
+from ..models.user import User
 
 router = APIRouter(prefix="/cache", tags=["缓存管理"])
 
@@ -32,17 +32,13 @@ class CacheInvalidateRequest(BaseModel):
 
 @router.get("/stats", response_model=CacheStatsResponse)
 async def get_cache_stats(
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    user: User = Depends(get_authenticated_user)
 ):
     """
     获取缓存统计信息
 
     返回缓存命中率、大小等统计信息
     """
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     cache = get_cache()
     stats = cache.get_stats()
 
@@ -61,7 +57,7 @@ async def get_cache_stats(
 @router.post("/invalidate")
 async def invalidate_cache(
     request: CacheInvalidateRequest,
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    user: User = Depends(get_authenticated_user)
 ):
     """
     使缓存失效
@@ -69,10 +65,6 @@ async def invalidate_cache(
     支持通配符模式匹配
     例如：`list_keywords:*` 会清除所有 list_keywords 相关的缓存
     """
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
         count = invalidate_pattern(request.pattern)
         return {
@@ -90,17 +82,13 @@ async def invalidate_cache(
 
 @router.post("/clear")
 async def clear_all_cache(
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    user: User = Depends(get_authenticated_user)
 ):
     """
     清空所有缓存
 
     注意：这会清除所有缓存项，谨慎使用
     """
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     cache = get_cache()
     size = cache.get_size()
     cache.clear()
@@ -114,17 +102,13 @@ async def clear_all_cache(
 
 @router.post("/cleanup")
 async def cleanup_expired_cache(
-    token: str = Depends(OAuth2PasswordBearer(tokenUrl="api/v1/auth/login"))
+    user: User = Depends(get_authenticated_user)
 ):
     """
     清理过期缓存
 
     自动清理已过期的缓存项
     """
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     cache = get_cache()
     count = cache.cleanup_expired()
 

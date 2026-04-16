@@ -101,6 +101,7 @@ class TestExecutionResponse(BaseModel):
 class ExecutionRequest(BaseModel):
     """执行请求"""
     task_id: uuid.UUID
+    user_id: Optional[uuid.UUID] = None
     execution_config: Optional[Dict[str, Any]] = None
     browser_config: Optional[Dict[str, Any]] = None
     environment: Optional[str] = "development"

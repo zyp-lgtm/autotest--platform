@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from ...core.database import get_db
@@ -9,11 +9,12 @@ from ...core.security import (
     hash_password,
     verify_password,
     validate_password_strength,
-    oauth2_scheme
+    get_token_from_cookie_or_header
 )
 from ...core.csrf import get_csrf_token
 from ...schemas.user import UserCreate, UserResponse
 import logging
+from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,11 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+async def login(
+    response: Response,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
     user = db.query(User).filter(User.username == form_data.username).first()
 
     if not user:
@@ -88,15 +93,80 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
     # 生成 CSRF Token（使用用户 ID 作为 session_id）
     csrf_token = get_csrf_token(str(user.id))
 
+    # 设置 HttpOnly Cookie
+    # max_age: 24小时 = 86400秒
+    # httponly: 防止 XSS 攻击窃取 cookie
+    # secure: 生产环境需要 HTTPS
+    # samesite: 防止 CSRF 攻击
+    from ...core.config import get_settings
+    settings = get_settings()
+
+    is_production = settings.ENV == "production"
+
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        max_age=86400,  # 24小时
+        httponly=True,
+        secure=is_production,  # 生产环境需要 HTTPS
+        samesite="lax",  # 防止 CSRF
+        path="/"
+    )
+
+    # 同时在响应体中返回 token（用于向后兼容和 CSRF token）
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "csrf_token": csrf_token
+        "csrf_token": csrf_token,
+        "user": {
+            "id": str(user.id),
+            "username": user.username,
+            "email": user.email,
+            "full_name": user.full_name
+        }
     }
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+async def get_current_user(
+    token: str = Depends(get_token_from_cookie_or_header),
+    db: Session = Depends(get_db)
+):
+    """获取当前用户信息（带缓存）"""
+    from ...utils.cache import get_cache
+
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="无效的令牌")
+
+    username = payload.get("sub")
+
+    # 尝试从缓存获取
+    cache_key = f"user_info:{username}"
+    cache = get_cache()
+    cached_user = cache.get(cache_key)
+    if cached_user:
+        return UserResponse(**cached_user)
+
+    # 缓存未命中，查询数据库
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    user_response = UserResponse(
+        id=str(user.id),
+        username=user.username,
+        email=user.email,
+        full_name=user.full_name,
+        is_active=user.is_active,
+        role=user.role,
+        created_at=user.created_at
+    )
+
+    # 存入缓存（10 分钟）
+    cache.set(cache_key, user_response.dict(), ttl=600)
+
+    return user_response
     payload = verify_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="无效的令牌")
@@ -109,7 +179,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 
 
 @router.get("/csrf-token")
-async def get_csrf(token: str = Depends(oauth2_scheme)):
+async def get_csrf(token: str = Depends(get_token_from_cookie_or_header)):
     """
     获取 CSRF Token
 

@@ -4,7 +4,16 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
 from .core.config import get_settings
+from .core.exceptions import (
+    business_exception_handler,
+    http_exception_handler,
+    validation_exception_handler,
+    generic_exception_handler,
+    HTTPException
+)
+from .core.exceptions.business_exceptions import BusinessException
 from .api.auth import auth as auth_router
 from .api.data import data as data_router
 from .api.ui import tasks as ui_tasks_router
@@ -16,22 +25,53 @@ from .api import health as health_router
 from .api import services as services_router
 from .api import debug as debug_router
 from .api import cache as cache_router
+from .api import audit as audit_router
 from .middleware import setup_rate_limit_middleware
 from .middleware.performance import PerformanceMonitorMiddleware, get_performance_monitor
 from .middleware.security import SecurityHeadersMiddleware
 from .middleware.csrf import CSRFMiddleware
 from .middleware.request_size import RequestSizeLimitMiddleware
+from .middleware.audit import AuditMiddleware
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]
+# ============================================================================
+# 配置结构化日志系统
+# ============================================================================
+from .core.logging import setup_logging, get_logger, RequestLoggingMiddleware
+
+# 设置日志系统
+log_level = os.getenv("LOG_LEVEL", "INFO")
+log_file = os.getenv("LOG_FILE", None)  # 可选：日志文件路径
+json_output = os.getenv("ENV", "development") != "development"  # 生产环境使用 JSON
+
+setup_logging(
+    app_name="test_platform",
+    level=log_level,
+    log_file=log_file,
+    json_output=json_output
 )
+
+# 获取根日志记录器
+logger = get_logger(__name__)
 
 settings = get_settings()
 
 app = FastAPI(title="测试自动化平台", version="0.1.0", redirect_slashes=False)
+
+# ============================================================================
+# 全局异常处理器
+# ============================================================================
+
+# 业务异常处理器
+app.add_exception_handler(BusinessException, business_exception_handler)
+
+# HTTP 异常处理器
+app.add_exception_handler(HTTPException, http_exception_handler)
+
+# 参数验证异常处理器（Pydantic）
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+
+# 通用异常处理器（捕获所有未处理的异常）
+app.add_exception_handler(Exception, generic_exception_handler)
 
 # 创建并配置静态文件目录
 screenshots_dir = Path("screenshots")
@@ -63,6 +103,12 @@ setup_rate_limit_middleware(app)
 
 # 性能监控中间件
 app.add_middleware(PerformanceMonitorMiddleware)
+
+# 审计日志中间件
+app.add_middleware(AuditMiddleware)
+
+# 请求日志中间件（最外层，记录所有请求）
+app.add_middleware(RequestLoggingMiddleware)
 
 
 @app.get("/")
@@ -113,3 +159,6 @@ app.include_router(debug_router.router, prefix="/api/v1", tags=["debug"])
 
 # 缓存管理路由
 app.include_router(cache_router.router, prefix="/api/v1", tags=["cache"])
+
+# 审计日志路由
+app.include_router(audit_router.router, prefix="/api/v1")

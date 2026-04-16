@@ -10,8 +10,11 @@ import bcrypt
 import base64
 import secrets
 from fastapi.security.oauth2 import OAuth2PasswordBearer
-from fastapi import HTTPException, status, Depends
+from fastapi import HTTPException, status, Depends, Cookie, Request
+from sqlalchemy.orm import Session
 from .config import get_settings
+from .database import get_db
+from ..models.user import User
 import logging
 
 logger = logging.getLogger(__name__)
@@ -155,3 +158,198 @@ def generate_secure_secret(length: int = 32) -> str:
         URL 安全的随机密钥
     """
     return secrets.token_urlsafe(length)
+
+
+# Cookie-based authentication for HttpOnly cookies
+class CookieAuthScheme:
+    """
+    从 Cookie 中读取 access_token 的认证方案
+    与 Header Bearer token 兼容
+    """
+
+    async def __call__(self, request) -> Optional[str]:
+        # 首先尝试从 Authorization header 获取（向后兼容）
+        authorization = request.headers.get("Authorization")
+        if authorization and authorization.startswith("Bearer "):
+            token = authorization.split(" ")[1]
+            logger.debug(f"[CookieAuth] 从 Authorization header 获取 token: {token[:20]}...")
+            return token
+
+        # 然后尝试从 Cookie 获取
+        token = request.cookies.get("access_token")
+        if token:
+            logger.debug(f"[CookieAuth] 从 Cookie 获取 token: {token[:20]}...")
+            return token
+
+        logger.debug("[CookieAuth] 未找到 token")
+        return None
+
+
+# 创建 Cookie 认证方案实例
+cookie_scheme = CookieAuthScheme()
+
+
+async def get_token_from_cookie_or_header(request: Request) -> str:
+    """
+    从 Cookie 或 Header 获取 token
+
+    优先级：
+    1. Authorization header (Bearer token)
+    2. Cookie (HttpOnly cookie)
+
+    Args:
+        request: FastAPI Request 对象
+
+    Returns:
+        有效的 JWT token
+
+    Raises:
+        HTTPException: 如果没有找到有效的 token
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="无法验证凭证",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    # 首先尝试从 Authorization header 获取（向后兼容）
+    authorization = request.headers.get("Authorization")
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+        logger.debug(f"[get_token_from_cookie_or_header] 使用 Header token: {token[:20]}...")
+        return token
+
+    # 然后尝试从 Cookie 获取
+    token = request.cookies.get("access_token")
+    if token:
+        logger.debug(f"[get_token_from_cookie_or_header] 使用 Cookie token: {token[:20]}...")
+        return token
+
+    # 都没有则抛出异常
+    logger.warning("[get_token_from_cookie_or_header] 未找到 token")
+    raise credentials_exception
+
+
+# ============================================================================
+# 认证依赖函数 - 消除代码重复
+# ============================================================================
+
+async def get_authenticated_user(
+    token: str = Depends(get_token_from_cookie_or_header),
+    db: Session = Depends(get_db)
+) -> User:
+    """
+    从 Cookie 或 Header 获取 token 并验证，返回当前用户
+
+    统一的认证依赖函数，替代各 API 端点中重复的认证逻辑
+
+    Args:
+        token: JWT token (从 Cookie 或 Header 自动获取)
+        db: 数据库会话
+
+    Returns:
+        User: 当前认证用户对象
+
+    Raises:
+        HTTPException: 认证失败时抛出 401 错误
+
+    Usage:
+        from fastapi import Depends
+        from app.core.security import get_authenticated_user
+
+        @router.get("/api/endpoint")
+        async def my_endpoint(user: User = Depends(get_authenticated_user)):
+            return {"username": user.username}
+    """
+    # 验证 token
+    payload = verify_token(token)
+    if not payload:
+        raise credentials_exception
+
+    # 获取用户信息
+    username = payload.get("sub")
+    user = db.query(User).filter(User.username == username).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="用户已被禁用"
+        )
+
+    logger.debug(f"[get_authenticated_user] 用户认证成功: {user.username}")
+    return user
+
+
+async def require_admin(
+    current_user: User = Depends(get_authenticated_user)
+) -> User:
+    """
+    要求管理员权限的依赖函数
+
+    Args:
+        current_user: 当前认证用户
+
+    Returns:
+        User: 当前管理员用户
+
+    Raises:
+        HTTPException: 非管理员用户抛出 403 错误
+
+    Usage:
+        @router.delete("/admin/users/{user_id}")
+        async def delete_user(admin_user: User = Depends(require_admin)):
+            return {"message": "用户已删除"}
+    """
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="需要管理员权限"
+        )
+
+    logger.debug(f"[require_admin] 管理员权限验证通过: {current_user.username}")
+    return current_user
+
+
+async def get_optional_user(
+    token: Optional[str] = Depends(get_token_from_cookie_or_header),
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """
+    可选的用户认证 - 允许匿名访问
+
+    如果提供了有效的 token，返回用户对象；否则返回 None
+
+    Args:
+        token: JWT token (可选)
+        db: 数据库会话
+
+    Returns:
+        Optional[User]: 用户对象或 None
+
+    Usage:
+        @router.get("/public/content")
+        async def public_content(user: Optional[User] = Depends(get_optional_user)):
+            if user:
+                return {"message": f"Hello {user.username}"}
+            return {"message": "Hello, anonymous!"}
+    """
+    if not token:
+        return None
+
+    try:
+        payload = verify_token(token)
+        if not payload:
+            return None
+
+        username = payload.get("sub")
+        user = db.query(User).filter(User.username == username).first()
+        return user if user and user.is_active else None
+
+    except Exception:
+        return None

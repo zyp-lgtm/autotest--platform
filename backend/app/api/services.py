@@ -11,7 +11,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from pathlib import Path
 import socket
 
-from ..core.security import verify_token, oauth2_scheme
+from ..core.security import get_authenticated_user
+from ..models.user import User
 
 router = APIRouter()
 
@@ -496,37 +497,25 @@ service_manager = ServiceManager()
 @router.post("/services/{service_id}/start")
 async def start_service(
     service_id: str,
-    token: str = Depends(oauth2_scheme)
+    user: User = Depends(get_authenticated_user)
 ):
     """启动服务"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     return await service_manager.start_service(service_id)
 
 
 @router.post("/services/{service_id}/stop")
 async def stop_service(
     service_id: str,
-    token: str = Depends(oauth2_scheme)
+    user: User = Depends(get_authenticated_user)
 ):
     """停止服务"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     return await service_manager.stop_service(service_id)
 
 
 @router.post("/services/{service_id}/restart")
 async def restart_service(
     service_id: str,
-    token: str = Depends(oauth2_scheme)
+    user: User = Depends(get_authenticated_user)
 ):
     """重启服务"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     return await service_manager.restart_service(service_id)

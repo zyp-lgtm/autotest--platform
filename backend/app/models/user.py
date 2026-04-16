@@ -25,3 +25,6 @@ class User(Base):
     # Relationships to keywords and test data
     keywords = relationship("Keyword", back_populates="creator")
     test_data = relationship("TestData", back_populates="creator")
+
+    # Relationship to audit logs
+    audit_logs = relationship("AuditLog", back_populates="user")
