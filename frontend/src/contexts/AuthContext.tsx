@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { authApi } from '../api/auth'
-import type { User } from '../types'
+import type { User, AuthResponse } from '../types'
 
 interface AuthContextType {
   user: User | null
@@ -33,69 +33,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // 初始化：从 localStorage 读取 token
+  // 初始化：验证 Cookie 中的 token 是否有效
   useEffect(() => {
-    console.log('[AuthContext] 初始化开始')
-    try {
-      const storedToken = localStorage.getItem('access_token')
-      console.log('[AuthContext] 存储的 token:', storedToken ? '存在' : '不存在')
-      if (storedToken) {
-        setToken(storedToken)
-        fetchCurrentUser(storedToken)
-      } else {
-        console.log('[AuthContext] 无 token，设置 loading=false')
-        setLoading(false)
-      }
-    } catch (error) {
-      console.error('[AuthContext] 初始化失败:', error)
-      setLoading(false)
-    }
+    console.log('[AuthContext] 初始化开始 - 使用 HttpOnly Cookie')
+    validateCurrentSession()
   }, [])
 
-  const fetchCurrentUser = async (_accessToken: string) => {
+  // 验证当前会话（Cookie 中的 token）
+  const validateCurrentSession = async () => {
+    console.log('[AuthContext] 验证当前会话...')
+    try {
+      // 直接调用 API，Cookie 会自动发送
+      const userData = await authApi.getCurrentUser()
+      console.log('[AuthContext] 当前会话有效，用户:', userData)
+      setUser(userData)
+      setToken('cookie-based')  // 标记使用 Cookie
+      setLoading(false)
+    } catch (error: any) {
+      console.log('[AuthContext] 当前会话无效或未登录:', error?.response?.status)
+      // 401 表示未认证，这是正常的
+      if (error?.response?.status !== 401) {
+        console.error('[AuthContext] 验证会话时发生错误:', error)
+      }
+      setUser(null)
+      setToken(null)
+      setLoading(false)
+    }
+  }
+
+  const fetchCurrentUser = async (accessToken: string) => {
     try {
       const userData = await authApi.getCurrentUser()
       setUser(userData)
     } catch (error) {
       console.error('[AuthContext] 获取用户信息失败:', error)
-      // 不要立即清除 token，因为可能是网络错误或临时故障
-      // 只有在确认 token 无效时才清除（由响应拦截器处理）
-      // 如果获取用户信息失败，至少设置 loading 为 false
-    } finally {
-      setLoading(false)
+      throw error
     }
   }
 
   const login = async (username: string, password: string) => {
     console.log('[AuthContext] 开始登录流程')
     try {
-      const response = await authApi.login({ username, password })
-      const { access_token } = response
-      console.log('[AuthContext] 登录 API 返回成功')
+      const response: AuthResponse = await authApi.login({ username, password })
 
-      // 从 JWT 解码获取用户信息（不需要额外的 API 调用）
-      const parts = access_token.split('.')
-      if (parts.length === 3) {
-        const payload = JSON.parse(atob(parts[1]))
-        console.log('[AuthContext] JWT payload:', payload)
-
-        const userData = {
-          username: payload.sub,
-          id: payload.sub
-        }
-
-        // 先设置用户信息和 token
-        setUser(userData)
-        setToken(access_token)
-
-        // 然后保存到 localStorage（重要：要在设置 state 之后）
-        localStorage.setItem('access_token', access_token)
-
-        console.log('[AuthContext] 登录成功，用户信息已设置:', userData)
-        console.log('[AuthContext] Token 已保存到 localStorage')
+      // 后端现在返回 user 对象
+      if (response.user) {
+        console.log('[AuthContext] 登录成功，用户信息:', response.user)
+        setUser(response.user)
+        setToken('cookie-based')  // 标记使用 Cookie
       } else {
-        throw new Error('Invalid token format')
+        // 如果后端没有返回 user（向后兼容），从 JWT 解码
+        if (response.access_token) {
+          const parts = response.access_token.split('.')
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1]))
+            const userData = {
+              username: payload.sub,
+              id: payload.sub,
+              email: '',
+              full_name: '',
+              is_active: true,
+              role: ''
+            }
+            setUser(userData)
+            setToken('cookie-based')
+          }
+        } else {
+          throw new Error('Invalid login response')
+        }
       }
+
+      console.log('[AuthContext] 登录成功，已设置 HttpOnly Cookie')
     } catch (error) {
       console.error('[AuthContext] 登录失败:', error)
       throw error
@@ -110,10 +118,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await login(username, password)
   }
 
-  const logout = () => {
-    localStorage.removeItem('access_token')
-    setUser(null)
-    setToken(null)
+  const logout = async () => {
+    try {
+      // 调用后端登出接口（如果有的话）
+      // await authApi.logout()
+      console.log('[AuthContext] 登出成功')
+    } catch (error) {
+      console.error('[AuthContext] 登出时发生错误:', error)
+    } finally {
+      // 清除本地状态
+      setUser(null)
+      setToken(null)
+    }
   }
 
   return (
