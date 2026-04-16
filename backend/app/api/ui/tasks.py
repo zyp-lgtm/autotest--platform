@@ -3,13 +3,16 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from typing import List, Optional, Dict, Any
 import uuid
 
-from ...models.ui_task import UITask
+from ...models.ui_task import UITask, UIScenario, UICase, UIStep
 from ...models.execution import TestExecution, ScenarioExecution, CaseExecution, StepExecution
+from ...models.user import User
 from ...schemas.task import TaskCreate, TaskUpdate, TaskResponse
 from ...schemas.execution import ExecutionRequest
 from ...core.database import get_db
-from ...core.security import oauth2_scheme, verify_token
+from ...core.security import get_authenticated_user
 from ...services.execution import TaskExecutor
+from ...utils.cache import cache_response, invalidate_pattern
+from ..utils import validate_and_fetch, validate_uuid, serialize_model
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,23 +25,19 @@ router = APIRouter(prefix="/ui/tasks", tags=["UI任务"])
 async def create_ui_task(
     task: TaskCreate,
     project_id: str = Query(..., description="项目ID"),
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """创建UI任务"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        project_id_uuid = uuid.UUID(project_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的项目ID格式")
+    project_id_uuid = validate_uuid(project_id, "项目")
 
     new_task = UITask(**task.dict(), project_id=project_id_uuid)
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
+
+    # 清除任务列表缓存
+    invalidate_pattern("list_ui_tasks*")
 
     return {
         "id": str(new_task.id),
@@ -54,20 +53,14 @@ async def create_ui_task(
 
 @router.get("/")
 @router.get("")
+@cache_response(ttl=300)  # 缓存 5 分钟
 async def list_ui_tasks(
     project_id: str = Query(..., description="项目ID"),
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """获取任务列表"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        project_id_uuid = uuid.UUID(project_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的项目ID格式")
+    project_id_uuid = validate_uuid(project_id, "项目")
 
     tasks = db.query(UITask).filter(
         UITask.project_id == project_id_uuid
@@ -91,56 +84,27 @@ async def list_ui_tasks(
 @router.get("/{task_id}")
 async def get_ui_task(
     task_id: str,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """获取任务详情"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        task_id_uuid = uuid.UUID(task_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的任务ID格式")
-
-    task = db.query(UITask).filter(UITask.id == task_id_uuid).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
-
-    return {
-        "id": str(task.id),
-        "project_id": str(task.project_id),
-        "name": task.name,
-        "description": task.description,
-        "task_type": task.task_type,
-        "scenario_ids": [str(sid) for sid in (task.scenario_ids or [])],
-        "tags": list(task.tags) if task.tags else [],
-        "created_at": task.created_at.isoformat() if task.created_at else None
-    }
+    task = validate_and_fetch(db, UITask, task_id, "任务")
+    return serialize_model(task)
 
 
 @router.post("/{task_id}/execute")
 async def execute_ui_task(
     task_id: str,
     browser_config: Optional[Dict[str, Any]] = Body(None),
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """执行 UI 任务"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        task_id_uuid = uuid.UUID(task_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的任务ID格式")
-
     # 验证任务存在
-    task = db.query(UITask).filter(UITask.id == task_id_uuid).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
+    task = validate_and_fetch(db, UITask, task_id, "任务")
+
+    # 验证并转换 task_id 为 UUID
+    task_id_uuid = validate_uuid(task_id, "任务")
 
     # 合并浏览器配置（优先级：API参数 > 任务配置 > 默认值）
     final_browser_config = {"headless": False}  # 默认显示浏览器
@@ -160,6 +124,7 @@ async def execute_ui_task(
     # 创建执行请求
     request = ExecutionRequest(
         task_id=task_id_uuid,
+        user_id=user.id,
         execution_config=task.execution_config or {},
         browser_config=final_browser_config,
         environment="production"
@@ -267,22 +232,11 @@ async def execute_ui_task(
 async def update_ui_task(
     task_id: str,
     task_update: TaskUpdate,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """更新任务"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        task_id_uuid = uuid.UUID(task_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的任务ID格式")
-
-    task = db.query(UITask).filter(UITask.id == task_id_uuid).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
+    task = validate_and_fetch(db, UITask, task_id, "任务")
 
     # 更新非空字段
     update_data = task_update.dict(exclude_unset=True)
@@ -307,44 +261,106 @@ async def update_ui_task(
 @router.delete("/{task_id}")
 async def delete_ui_task(
     task_id: str,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
-    """删除任务"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
+    """删除任务（级联删除关联的场景、用例、步骤和执行记录）"""
+    import json
+
+    # 验证并转换 UUID
+    task_id_uuid = validate_uuid(task_id, "任务")
+    task = validate_and_fetch(db, UITask, task_id, "任务")
+
     try:
-        task_id_uuid = uuid.UUID(task_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的任务ID格式")
+        # 1. 删除执行记录（先删除子记录）
+        from ...models.execution import (
+            TestExecution, ScenarioExecution, CaseExecution, StepExecution
+        )
 
-    task = db.query(UITask).filter(UITask.id == task_id_uuid).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
+        # 获取所有执行记录
+        executions = db.query(TestExecution).filter(
+            TestExecution.task_id == task_id_uuid
+        ).all()
 
-    db.delete(task)
-    db.commit()
-    return {"message": "任务已删除"}
+        for execution in executions:
+            # 获取所有场景执行记录
+            scenario_executions = db.query(ScenarioExecution).filter(
+                ScenarioExecution.test_execution_id == execution.id
+            ).all()
+
+            for scenario_exec in scenario_executions:
+                # 获取所有用例执行记录
+                case_executions = db.query(CaseExecution).filter(
+                    CaseExecution.scenario_execution_id == scenario_exec.id
+                ).all()
+
+                for case_exec in case_executions:
+                    # 删除步骤执行记录
+                    db.query(StepExecution).filter(
+                        StepExecution.case_execution_id == case_exec.id
+                    ).delete()
+                    # 删除用例执行记录
+                    db.delete(case_exec)
+
+                # 删除场景执行记录
+                db.delete(scenario_exec)
+
+            # 删除执行记录
+            db.delete(execution)
+
+        # 2. 删除场景、用例、步骤
+        scenarios = db.query(UIScenario).filter(
+            UIScenario.task_id == task_id_uuid
+        ).all()
+
+        for scenario in scenarios:
+            # 获取场景的所有用例
+            cases = db.query(UICase).filter(
+                UICase.scenario_id == scenario.id
+            ).all()
+
+            for case in cases:
+                # 删除用例的所有步骤
+                db.query(UIStep).filter(
+                    UIStep.case_id == case.id
+                ).delete()
+                # 删除用例
+                db.delete(case)
+
+            # 删除场景
+            db.delete(scenario)
+
+        # 3. 删除任务
+        db.delete(task)
+        db.commit()
+
+        # 4. 清除缓存
+        try:
+            from ...utils.cache import invalidate_pattern
+            invalidate_pattern("list_tasks*")
+        except Exception as e:
+            logger.warning(f"清除缓存失败: {e}")
+
+        return {"message": "任务已删除"}
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"删除任务失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"删除任务失败: {str(e)}"
+        )
 
 
 @router.get("/{task_id}/executions")
 async def get_task_executions(
     task_id: str,
     limit: int = Query(10, ge=1, le=100),
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """获取任务的执行记录"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        task_id_uuid = uuid.UUID(task_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的任务ID格式")
+    task_id_uuid = validate_uuid(task_id, "任务")
 
     executions = db.query(TestExecution).filter(
         TestExecution.task_id == task_id_uuid
@@ -375,23 +391,14 @@ async def get_task_executions(
 @router.get("/executions/{execution_id}")
 async def get_execution(
     execution_id: str,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """获取单个执行记录详情"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        execution_id_uuid = uuid.UUID(execution_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的执行ID格式")
-
     # 使用 eager loading 优化 N+1 查询（将 61+ 次查询减少到 3 次）
     execution = db.query(TestExecution).options(
         selectinload(TestExecution.scenario_executions).selectinload(ScenarioExecution.case_executions).selectinload(CaseExecution.step_executions)
-    ).filter(TestExecution.id == execution_id_uuid).first()
+    ).filter(TestExecution.id == validate_uuid(execution_id, "执行")).first()
 
     if not execution:
         raise HTTPException(status_code=404, detail="执行记录不存在")

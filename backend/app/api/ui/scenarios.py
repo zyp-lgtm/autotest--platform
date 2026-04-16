@@ -6,17 +6,52 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import uuid
+import json
 
 from ...models.ui_task import UITask, UIScenario, UICase, UIStep
 from ...models.keyword import Keyword
+from ...models.user import User
 from ...schemas.scenario import ScenarioCreate, ScenarioUpdate, ScenarioResponse
 from ...schemas.case import CaseCreate, CaseUpdate, CaseResponse
 from ...schemas.step import StepCreate, StepUpdate, StepResponse
 from ...core.database import get_db
-from ...core.security import oauth2_scheme, verify_token
+from ...core.security import get_authenticated_user
+from ...utils.cache import cache_response, invalidate_pattern
+from ..utils import validate_and_fetch, validate_uuid, serialize_model
 import logging
 
 logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/ui/scenarios", tags=["场景管理"])
+
+
+def append_to_json_ids_field(obj, field_name, value):
+    """
+    安全地追加值到 JSON *_ids 字段
+
+    SQLite 的 JSON 字段可能返回字符串或列表
+    这个函数处理两种情况并确保返回正确的列表格式
+    """
+    import json
+
+    # 获取当前值
+    current_value = getattr(obj, field_name)
+
+    # 如果是字符串，尝试解析为 JSON
+    if isinstance(current_value, str):
+        try:
+            current_value = json.loads(current_value)
+        except:
+            current_value = []
+    # 如果是 None 或其他类型，初始化为空列表
+    elif not isinstance(current_value, list):
+        current_value = []
+
+    # 追加新值
+    current_value.append(value)
+
+    # 更新对象
+    setattr(obj, field_name, current_value)
 
 router = APIRouter(prefix="/ui/scenarios", tags=["场景管理"])
 
@@ -26,157 +61,110 @@ router = APIRouter(prefix="/ui/scenarios", tags=["场景管理"])
 async def create_scenario(
     scenario: ScenarioCreate,
     task_id: str = Query(..., description="任务ID"),
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """创建场景"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
-        task_id_uuid = uuid.UUID(task_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的任务ID格式")
+        # 验证并转换 UUID
+        task_id_uuid = validate_uuid(task_id, "任务")
 
-    # 验证任务存在
-    task = db.query(UITask).filter(UITask.id == task_id_uuid).first()
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
+        # 验证任务存在
+        task = validate_and_fetch(db, UITask, task_id, "任务")
 
-    # 获取当前最大执行顺序
-    max_order = db.query(UIScenario).filter(
-        UIScenario.task_id == task_id_uuid
-    ).count()
+        # 获取当前最大执行顺序
+        max_order = db.query(UIScenario).filter(
+            UIScenario.task_id == task_id_uuid
+        ).count()
 
-    new_scenario = UIScenario(
-        **scenario.dict(),
-        task_id=task_id_uuid,
-        project_id=task.project_id,
-        execution_order=max_order
-    )
-    db.add(new_scenario)
-    db.commit()
-    db.refresh(new_scenario)
+        # 创建场景（使用 UUID 对象，SQLAlchemy 会自动处理）
+        new_scenario = UIScenario(
+            name=scenario.name,
+            description=scenario.description,
+            scenario_type=scenario.scenario_type,
+            tags=scenario.tags or [],
+            task_id=task_id_uuid,  # UUID 对象
+            project_id=task.project_id,  # UUID 对象
+            execution_order=max_order,
+            case_ids=[]
+        )
+        db.add(new_scenario)
+        db.commit()
+        db.refresh(new_scenario)
 
-    # 更新任务的场景列表（将 UUID 转换为字符串以支持 JSON 序列化）
-    if not task.scenario_ids:
-        task.scenario_ids = []
-    task.scenario_ids.append(str(new_scenario.id))
-    db.commit()
+        # 更新任务的场景列表
+        append_to_json_ids_field(task, 'scenario_ids', str(new_scenario.id))
+        db.commit()
 
-    # 手动序列化
-    return {
-        "id": str(new_scenario.id),
-        "task_id": str(new_scenario.task_id),
-        "project_id": str(new_scenario.project_id),
-        "name": new_scenario.name,
-        "description": new_scenario.description,
-        "scenario_type": new_scenario.scenario_type,
-        "execution_order": new_scenario.execution_order,
-        "case_ids": [str(cid) for cid in (new_scenario.case_ids or [])],
-        "tags": list(new_scenario.tags) if new_scenario.tags else [],
-        "created_at": new_scenario.created_at.isoformat() if new_scenario.created_at else None,
-        "updated_at": new_scenario.updated_at.isoformat() if new_scenario.updated_at else None
-    }
+        # 清除场景列表缓存
+        try:
+            invalidate_pattern("list_scenarios*")
+        except Exception as e:
+            logger.warning(f"清除缓存失败: {e}")
+
+        # 手动序列化
+        return {
+            "id": str(new_scenario.id),
+            "task_id": str(new_scenario.task_id),
+            "project_id": str(new_scenario.project_id),
+            "name": new_scenario.name,
+            "description": new_scenario.description,
+            "scenario_type": new_scenario.scenario_type,
+            "execution_order": new_scenario.execution_order,
+            "case_ids": [str(cid) for cid in (new_scenario.case_ids or [])],
+            "tags": list(new_scenario.tags) if new_scenario.tags else [],
+            "created_at": new_scenario.created_at.isoformat() if new_scenario.created_at else None,
+            "updated_at": new_scenario.updated_at.isoformat() if new_scenario.updated_at else None
+        }
+    except Exception as e:
+        logger.error(f"创建场景失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"创建场景失败: {str(e)}"
+        )
 
 
 @router.get("/")
 @router.get("")
+@cache_response(ttl=300)  # 缓存 5 分钟
 async def list_scenarios(
     task_id: str = Query(..., description="任务ID"),
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """获取任务的所有场景"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        task_id_uuid = uuid.UUID(task_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的任务ID格式")
+    task_id_uuid = validate_uuid(task_id, "任务")
 
     scenarios = db.query(UIScenario).filter(
         UIScenario.task_id == task_id_uuid
     ).order_by(UIScenario.execution_order).all()
 
-    # 简化序列化
     result = []
     for scenario in scenarios:
-        result.append({
-            "id": str(scenario.id),
-            "task_id": str(scenario.task_id),
-            "project_id": str(scenario.project_id),
-            "name": scenario.name,
-            "description": scenario.description,
-            "scenario_type": scenario.scenario_type,
-            "execution_order": scenario.execution_order,
-            "case_ids": [str(cid) for cid in (scenario.case_ids or [])],
-            "tags": list(scenario.tags) if scenario.tags else [],
-            "created_at": scenario.created_at.isoformat() if scenario.created_at else None,
-            "updated_at": scenario.updated_at.isoformat() if scenario.updated_at else None
-        })
+        result.append(serialize_model(scenario))
     return result
 
 
 @router.get("/{scenario_id}")
 async def get_scenario(
     scenario_id: str,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """获取场景详情"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        scenario_id_uuid = uuid.UUID(scenario_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的场景ID格式")
-
-    scenario = db.query(UIScenario).filter(UIScenario.id == scenario_id_uuid).first()
-    if not scenario:
-        raise HTTPException(status_code=404, detail="场景不存在")
-
-    # 手动序列化
-    return {
-        "id": str(scenario.id),
-        "task_id": str(scenario.task_id),
-        "project_id": str(scenario.project_id),
-        "name": scenario.name,
-        "description": scenario.description,
-        "scenario_type": scenario.scenario_type,
-        "execution_order": scenario.execution_order,
-        "case_ids": [str(cid) for cid in (scenario.case_ids or [])],
-        "tags": list(scenario.tags) if scenario.tags else [],
-        "created_at": scenario.created_at.isoformat() if scenario.created_at else None,
-        "updated_at": scenario.updated_at.isoformat() if scenario.updated_at else None
-    }
+    scenario = validate_and_fetch(db, UIScenario, scenario_id, "场景")
+    return serialize_model(scenario)
 
 
 @router.put("/{scenario_id}")
 async def update_scenario(
     scenario_id: str,
     scenario_update: ScenarioUpdate,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """更新场景"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        scenario_id_uuid = uuid.UUID(scenario_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的场景ID格式")
-
-    scenario = db.query(UIScenario).filter(UIScenario.id == scenario_id_uuid).first()
-    if not scenario:
-        raise HTTPException(status_code=404, detail="场景不存在")
+    scenario = validate_and_fetch(db, UIScenario, scenario_id, "场景")
 
     update_data = scenario_update.dict(exclude_unset=True)
     for field, value in update_data.items():
@@ -185,55 +173,65 @@ async def update_scenario(
     db.commit()
     db.refresh(scenario)
 
-    # 手动序列化
-    return {
-        "id": str(scenario.id),
-        "task_id": str(scenario.task_id),
-        "project_id": str(scenario.project_id),
-        "name": scenario.name,
-        "description": scenario.description,
-        "scenario_type": scenario.scenario_type,
-        "execution_order": scenario.execution_order,
-        "case_ids": [str(cid) for cid in (scenario.case_ids or [])],
-        "tags": list(scenario.tags) if scenario.tags else [],
-        "created_at": scenario.created_at.isoformat() if scenario.created_at else None,
-        "updated_at": scenario.updated_at.isoformat() if scenario.updated_at else None
-    }
+    return serialize_model(scenario)
 
 
 @router.delete("/{scenario_id}")
 async def delete_scenario(
     scenario_id: str,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """删除场景"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
-        scenario_id_uuid = uuid.UUID(scenario_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的场景ID格式")
+        # 验证并转换 UUID
+        scenario_id_uuid = validate_uuid(scenario_id, "场景")
 
-    scenario = db.query(UIScenario).filter(UIScenario.id == scenario_id_uuid).first()
-    if not scenario:
-        raise HTTPException(status_code=404, detail="场景不存在")
+        # 验证场景存在
+        scenario = validate_and_fetch(db, UIScenario, scenario_id, "场景")
 
-    task_id = scenario.task_id
+        task_id = scenario.task_id
 
-    # 删除场景及其关联的用例和步骤
-    db.delete(scenario)
-    db.commit()
+        # 级联删除：先删除步骤，再删除用例，最后删除场景
+        # 1. 获取并删除所有用例
+        cases = db.query(UICase).filter(UICase.scenario_id == scenario_id_uuid).all()
 
-    # 更新任务的场景列表（将 UUID 转换为字符串以支持 JSON 序列化）
-    task = db.query(UITask).filter(UITask.id == task_id).first()
-    if task and task.scenario_ids:
-        task.scenario_ids = [sid for sid in task.scenario_ids if sid != str(scenario_id_uuid)]
+        for case in cases:
+            # 删除用例的所有步骤
+            db.query(UIStep).filter(UIStep.case_id == case.id).delete()
+            # 删除用例
+            db.delete(case)
+
+        # 2. 删除场景
+        db.delete(scenario)
         db.commit()
 
-    return {"message": "场景已删除"}
+        # 更新任务的场景列表
+        task = db.query(UITask).filter(UITask.id == task_id).first()
+        if task and task.scenario_ids:
+            import json
+            # 确保 scenario_ids 是列表
+            if isinstance(task.scenario_ids, str):
+                try:
+                    scenario_ids_list = json.loads(task.scenario_ids)
+                except:
+                    scenario_ids_list = []
+            else:
+                scenario_ids_list = task.scenario_ids
+
+            # 移除删除的场景 ID
+            task.scenario_ids = [sid for sid in scenario_ids_list if sid != str(scenario_id_uuid)]
+            db.commit()
+
+        return {"message": "场景已删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除场景失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"删除场景失败: {str(e)}"
+        )
 
 
 # ==================== 用例管理 ====================
@@ -242,31 +240,60 @@ async def delete_scenario(
 async def create_case(
     scenario_id: str,
     case: CaseCreate,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """创建用例"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
-        scenario_id_uuid = uuid.UUID(scenario_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的场景ID格式")
+        # 验证并转换 UUID
+        scenario_id_uuid = validate_uuid(scenario_id, "场景")
 
-    scenario = db.query(UIScenario).filter(UIScenario.id == scenario_id_uuid).first()
-    if not scenario:
-        raise HTTPException(status_code=404, detail="场景不存在")
+        # 验证场景存在
+        scenario = validate_and_fetch(db, UIScenario, scenario_id, "场景")
 
-    new_case = UICase(
-        **case.dict(),
-        scenario_id=scenario_id_uuid,
-        project_id=scenario.project_id
-    )
-    db.add(new_case)
-    db.commit()
-    db.refresh(new_case)
+        # 创建用例（使用 UUID 对象）
+        new_case = UICase(
+            name=case.name,
+            description=case.description,
+            case_type=case.case_type,
+            priority=case.priority,
+            tags=case.tags or [],
+            data_bindings=case.data_bindings or {},
+            browser_config=case.browser_config or {},
+            scenario_id=scenario_id_uuid,
+            project_id=scenario.project_id,
+            step_ids=[]
+        )
+        db.add(new_case)
+        db.commit()
+        db.refresh(new_case)
+
+        # 更新场景的用例列表
+        append_to_json_ids_field(scenario, 'case_ids', str(new_case.id))
+        db.commit()
+
+        # 手动序列化
+        return {
+            "id": str(new_case.id),
+            "scenario_id": str(new_case.scenario_id),
+            "project_id": str(new_case.project_id),
+            "name": new_case.name,
+            "description": new_case.description,
+            "case_type": new_case.case_type,
+            "step_ids": [str(sid) for sid in (new_case.step_ids or [])],
+            "priority": new_case.priority,
+            "tags": list(new_case.tags) if new_case.tags else [],
+            "data_bindings": new_case.data_bindings or {},
+            "browser_config": new_case.browser_config or {},
+            "created_at": new_case.created_at.isoformat() if new_case.created_at else None,
+            "updated_at": new_case.updated_at.isoformat() if new_case.updated_at else None
+        }
+    except Exception as e:
+        logger.error(f"创建用例失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"创建用例失败: {str(e)}"
+        )
 
     # 更新场景的用例列表（将 UUID 转换为字符串以支持 JSON 序列化）
     if not scenario.case_ids:
@@ -295,39 +322,17 @@ async def create_case(
 @router.get("/{scenario_id}/cases")
 async def list_cases(
     scenario_id: str,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """获取场景的所有用例"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        scenario_id_uuid = uuid.UUID(scenario_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的场景ID格式")
+    scenario_id_uuid = validate_uuid(scenario_id, "场景")
 
     cases = db.query(UICase).filter(UICase.scenario_id == scenario_id_uuid).all()
 
-    # 简化序列化
     result = []
     for case_item in cases:
-        result.append({
-            "id": str(case_item.id),
-            "scenario_id": str(case_item.scenario_id),
-            "project_id": str(case_item.project_id),
-            "name": case_item.name,
-            "description": case_item.description,
-            "case_type": case_item.case_type,
-            "step_ids": [str(sid) for sid in (case_item.step_ids or [])],
-            "priority": case_item.priority,
-            "tags": list(case_item.tags) if case_item.tags else [],
-            "data_bindings": case_item.data_bindings or {},
-            "browser_config": case_item.browser_config or {},
-            "created_at": case_item.created_at.isoformat() if case_item.created_at else None,
-            "updated_at": case_item.updated_at.isoformat() if case_item.updated_at else None
-        })
+        result.append(serialize_model(case_item))
     return result
 
 
@@ -335,22 +340,11 @@ async def list_cases(
 async def update_case(
     case_id: str,
     case_update: CaseUpdate,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """更新用例"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        case_id_uuid = uuid.UUID(case_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的用例ID格式")
-
-    case_item = db.query(UICase).filter(UICase.id == case_id_uuid).first()
-    if not case_item:
-        raise HTTPException(status_code=404, detail="用例不存在")
+    case_item = validate_and_fetch(db, UICase, case_id, "用例")
 
     update_data = case_update.dict(exclude_unset=True)
     for field, value in update_data.items():
@@ -359,56 +353,59 @@ async def update_case(
     db.commit()
     db.refresh(case_item)
 
-    # 手动序列化
-    return {
-        "id": str(case_item.id),
-        "scenario_id": str(case_item.scenario_id),
-        "project_id": str(case_item.project_id),
-        "name": case_item.name,
-        "description": case_item.description,
-        "case_type": case_item.case_type,
-        "step_ids": [str(sid) for sid in (case_item.step_ids or [])],
-        "priority": case_item.priority,
-        "tags": list(case_item.tags) if case_item.tags else [],
-        "data_bindings": case_item.data_bindings or {},
-        "browser_config": case_item.browser_config or {},
-        "created_at": case_item.created_at.isoformat() if case_item.created_at else None,
-        "updated_at": case_item.updated_at.isoformat() if case_item.updated_at else None
-    }
+    return serialize_model(case_item)
 
 
 @router.delete("/cases/{case_id}")
 async def delete_case(
     case_id: str,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """删除用例"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
-        case_id_uuid = uuid.UUID(case_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的用例ID格式")
+        # 验证并转换 UUID
+        case_id_uuid = validate_uuid(case_id, "用例")
 
-    case_item = db.query(UICase).filter(UICase.id == case_id_uuid).first()
-    if not case_item:
-        raise HTTPException(status_code=404, detail="用例不存在")
+        # 验证用例存在
+        case_item = validate_and_fetch(db, UICase, case_id, "用例")
 
-    scenario_id = case_item.scenario_id
+        scenario_id = case_item.scenario_id
 
-    db.delete(case_item)
-    db.commit()
+        # 级联删除：先删除步骤，再删除用例
+        # 1. 删除用例的所有步骤
+        db.query(UIStep).filter(UIStep.case_id == case_id_uuid).delete()
 
-    # 更新场景的用例列表（将 UUID 转换为字符串以支持 JSON 序列化）
-    scenario = db.query(UIScenario).filter(UIScenario.id == scenario_id).first()
-    if scenario and scenario.case_ids:
-        scenario.case_ids = [cid for cid in scenario.case_ids if cid != str(case_id_uuid)]
+        # 2. 删除用例
+        db.delete(case_item)
         db.commit()
 
-    return {"message": "用例已删除"}
+        # 更新场景的用例列表
+        scenario = db.query(UIScenario).filter(UIScenario.id == scenario_id).first()
+        if scenario and scenario.case_ids:
+            import json
+            # 确保 case_ids 是列表
+            if isinstance(scenario.case_ids, str):
+                try:
+                    case_ids_list = json.loads(scenario.case_ids)
+                except:
+                    case_ids_list = []
+            else:
+                case_ids_list = scenario.case_ids
+
+            # 移除删除的用例 ID
+            scenario.case_ids = [cid for cid in case_ids_list if cid != str(case_id_uuid)]
+            db.commit()
+
+        return {"message": "用例已删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除用例失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"删除用例失败: {str(e)}"
+        )
 
 
 # ==================== 步骤管理 ====================
@@ -417,111 +414,91 @@ async def delete_case(
 async def create_step(
     case_id: str,
     step: StepCreate,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """创建步骤"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
-        case_id_uuid = uuid.UUID(case_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的用例ID格式")
+        # 验证并转换 UUID
+        case_id_uuid = validate_uuid(case_id, "用例")
 
-    case_item = db.query(UICase).filter(UICase.id == case_id_uuid).first()
-    if not case_item:
-        raise HTTPException(status_code=404, detail="用例不存在")
+        # 验证用例存在
+        case_item = validate_and_fetch(db, UICase, case_id, "用例")
 
-    # 获取场景和任务信息
-    scenario = db.query(UIScenario).filter(UIScenario.id == case_item.scenario_id).first()
-    if not scenario:
-        raise HTTPException(status_code=404, detail="场景不存在")
+        # 获取场景和任务信息
+        scenario = db.query(UIScenario).filter(UIScenario.id == case_item.scenario_id).first()
+        if not scenario:
+            raise HTTPException(status_code=404, detail="场景不存在")
 
-    # 验证关键字存在
-    keyword = db.query(Keyword).filter(Keyword.id == step.keyword_id).first()
-    if not keyword:
-        raise HTTPException(status_code=404, detail="关键字不存在")
+        # 验证关键字存在
+        keyword = validate_and_fetch(db, Keyword, str(step.keyword_id), "关键字")
 
-    # 获取当前最大步骤顺序
-    max_order = db.query(UIStep).filter(UIStep.case_id == case_id_uuid).count()
+        # 获取当前最大步骤顺序
+        max_order = db.query(UIStep).filter(UIStep.case_id == case_id_uuid).count()
 
-    new_step = UIStep(
-        **step.dict(),
-        id=uuid.uuid4(),
-        case_id=case_id_uuid,
-        scenario_id=case_item.scenario_id,
-        task_id=scenario.task_id,
-        step_order=max_order,
-        step_type=keyword.category
-    )
-    db.add(new_step)
-    db.commit()
-    db.refresh(new_step)
+        # 创建步骤
+        new_step = UIStep(
+            keyword_id=validate_uuid(str(step.keyword_id), "关键字"),
+            step_name=step.step_name,
+            parameters=step.parameters or {},
+            enabled=step.enabled if hasattr(step, 'enabled') else True,
+            continue_on_failure=step.continue_on_failure if hasattr(step, 'continue_on_failure') else False,
+            screenshot_config=step.screenshot_config or {},
+            case_id=case_id_uuid,
+            scenario_id=case_item.scenario_id,
+            task_id=scenario.task_id,
+            step_order=max_order,
+            step_type=keyword.category
+        )
+        db.add(new_step)
+        db.commit()
+        db.refresh(new_step)
 
-    # 更新用例的步骤列表（将 UUID 转换为字符串以支持 JSON 序列化）
-    if not case_item.step_ids:
-        case_item.step_ids = []
-    case_item.step_ids.append(str(new_step.id))
-    db.commit()
+        # 更新用例的步骤列表
+        append_to_json_ids_field(case_item, 'step_ids', str(new_step.id))
+        db.commit()
 
-    # 手动序列化
-    return {
-        "id": str(new_step.id),
-        "case_id": str(new_step.case_id),
-        "scenario_id": str(new_step.scenario_id),
-        "task_id": str(new_step.task_id),
-        "step_order": new_step.step_order,
-        "keyword_id": str(new_step.keyword_id),
-        "step_name": new_step.step_name,
-        "step_type": new_step.step_type,
-        "parameters": new_step.parameters or {},
-        "enabled": new_step.enabled,
-        "continue_on_failure": new_step.continue_on_failure,
-        "screenshot_config": new_step.screenshot_config or {},
-        "created_at": new_step.created_at.isoformat() if new_step.created_at else None,
-        "updated_at": new_step.updated_at.isoformat() if new_step.updated_at else None
-    }
+        # 手动序列化
+        return {
+            "id": str(new_step.id),
+            "case_id": str(new_step.case_id),
+            "scenario_id": str(new_step.scenario_id),
+            "task_id": str(new_step.task_id),
+            "step_order": new_step.step_order,
+            "keyword_id": str(new_step.keyword_id),
+            "step_name": new_step.step_name,
+            "step_type": new_step.step_type,
+            "parameters": new_step.parameters or {},
+            "enabled": new_step.enabled,
+            "continue_on_failure": new_step.continue_on_failure,
+            "screenshot_config": new_step.screenshot_config or {},
+            "created_at": new_step.created_at.isoformat() if new_step.created_at else None,
+            "updated_at": new_step.updated_at.isoformat() if new_step.updated_at else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建步骤失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"创建步骤失败: {str(e)}"
+        )
 
 
 @router.get("/cases/{case_id}/steps")
 async def list_steps(
     case_id: str,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """获取用例的所有步骤"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        case_id_uuid = uuid.UUID(case_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的用例ID格式")
+    case_id_uuid = validate_uuid(case_id, "用例")
 
     steps = db.query(UIStep).filter(UIStep.case_id == case_id_uuid).order_by(UIStep.step_order).all()
 
-    # 简化序列化
     result = []
     for step_item in steps:
-        result.append({
-            "id": str(step_item.id),
-            "case_id": str(step_item.case_id),
-            "scenario_id": str(step_item.scenario_id),
-            "task_id": str(step_item.task_id),
-            "step_order": step_item.step_order,
-            "keyword_id": str(step_item.keyword_id),
-            "step_name": step_item.step_name,
-            "step_type": step_item.step_type,
-            "parameters": step_item.parameters or {},
-            "enabled": step_item.enabled,
-            "continue_on_failure": step_item.continue_on_failure,
-            "screenshot_config": step_item.screenshot_config or {},
-            "created_at": step_item.created_at.isoformat() if step_item.created_at else None,
-            "updated_at": step_item.updated_at.isoformat() if step_item.updated_at else None
-        })
+        result.append(serialize_model(step_item))
     return result
 
 
@@ -529,30 +506,18 @@ async def list_steps(
 async def update_step(
     step_id: str,
     step_update: StepUpdate,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """更新步骤"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
-    try:
-        step_id_uuid = uuid.UUID(step_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的步骤ID格式")
-
-    step_item = db.query(UIStep).filter(UIStep.id == step_id_uuid).first()
-    if not step_item:
-        raise HTTPException(status_code=404, detail="步骤不存在")
+    step_item = validate_and_fetch(db, UIStep, step_id, "步骤")
 
     update_data = step_update.dict(exclude_unset=True)
 
     # 如果更新了关键字，更新步骤类型
     if 'keyword_id' in update_data:
-        keyword = db.query(Keyword).filter(Keyword.id == update_data['keyword_id']).first()
-        if keyword:
-            update_data['step_type'] = keyword.category
+        keyword = validate_and_fetch(db, Keyword, str(update_data['keyword_id']), "关键字")
+        update_data['step_type'] = keyword.category
 
     for field, value in update_data.items():
         setattr(step_item, field, value)
@@ -560,54 +525,51 @@ async def update_step(
     db.commit()
     db.refresh(step_item)
 
-    # 手动序列化
-    return {
-        "id": str(step_item.id),
-        "case_id": str(step_item.case_id),
-        "scenario_id": str(step_item.scenario_id),
-        "task_id": str(step_item.task_id),
-        "step_order": step_item.step_order,
-        "keyword_id": str(step_item.keyword_id),
-        "step_name": step_item.step_name,
-        "step_type": step_item.step_type,
-        "parameters": step_item.parameters or {},
-        "enabled": step_item.enabled,
-        "continue_on_failure": step_item.continue_on_failure,
-        "screenshot_config": step_item.screenshot_config or {},
-        "created_at": step_item.created_at.isoformat() if step_item.created_at else None,
-        "updated_at": step_item.updated_at.isoformat() if step_item.updated_at else None
-    }
+    return serialize_model(step_item)
 
 
 @router.delete("/steps/{step_id}")
 async def delete_step(
     step_id: str,
-    token: str = Depends(oauth2_scheme),
+    user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """删除步骤"""
-    # 验证用户身份
-    payload = verify_token(token)
-    if not payload:
-        raise HTTPException(status_code=401, detail="无效的认证令牌")
     try:
-        step_id_uuid = uuid.UUID(step_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="无效的步骤ID格式")
+        # 验证并转换 UUID
+        step_id_uuid = validate_uuid(step_id, "步骤")
 
-    step_item = db.query(UIStep).filter(UIStep.id == step_id_uuid).first()
-    if not step_item:
-        raise HTTPException(status_code=404, detail="步骤不存在")
+        # 验证步骤存在
+        step_item = validate_and_fetch(db, UIStep, step_id, "步骤")
 
-    case_id = step_item.case_id
+        case_id = step_item.case_id
 
-    db.delete(step_item)
-    db.commit()
-
-    # 更新用例的步骤列表（将 UUID 转换为字符串以支持 JSON 序列化）
-    case_item = db.query(UICase).filter(UICase.id == case_id).first()
-    if case_item and case_item.step_ids:
-        case_item.step_ids = [sid for sid in case_item.step_ids if sid != str(step_id_uuid)]
+        db.delete(step_item)
         db.commit()
 
-    return {"message": "步骤已删除"}
+        # 更新用例的步骤列表
+        case_item = db.query(UICase).filter(UICase.id == case_id).first()
+        if case_item and case_item.step_ids:
+            import json
+            # 确保 step_ids 是列表
+            if isinstance(case_item.step_ids, str):
+                try:
+                    step_ids_list = json.loads(case_item.step_ids)
+                except:
+                    step_ids_list = []
+            else:
+                step_ids_list = case_item.step_ids
+
+            # 移除删除的步骤 ID
+            case_item.step_ids = [sid for sid in step_ids_list if sid != str(step_id_uuid)]
+            db.commit()
+
+        return {"message": "步骤已删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除步骤失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"删除步骤失败: {str(e)}"
+        )

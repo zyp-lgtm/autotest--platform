@@ -131,7 +131,7 @@ class TaskExecutor:
         execution = TestExecution(
             task_id=request.task_id,
             project_id=task.project_id,
-            user_id=None,  # TODO: 从 token 获取
+            user_id=request.user_id,
             status="running",
             started_at=datetime.now(timezone.utc),
             execution_config=request.execution_config or {},
@@ -334,11 +334,23 @@ class TaskExecutor:
         logger.info(f"Executing via agent: {agent_id}")
         logger.info(f"task.scenario_ids = {task.scenario_ids} (type: {type(task.scenario_ids)})")
 
+        # 解析 scenario_ids（SQLite 返回 JSON 字符串）
+        scenario_ids_list = task.scenario_ids or []
+        logger.info(f"原始 scenario_ids: {scenario_ids_list}, 类型: {type(scenario_ids_list)}")
+
+        if isinstance(scenario_ids_list, str):
+            try:
+                scenario_ids_list = json.loads(scenario_ids_list)
+                logger.info(f"解析后的 scenario_ids: {scenario_ids_list}")
+            except json.JSONDecodeError:
+                logger.error(f"JSON 解析失败: {scenario_ids_list}")
+                scenario_ids_list = []
+
         # 加载场景和用例
         scenarios = []
-        logger.info(f"开始加载场景，task.scenario_ids = {task.scenario_ids}")
+        logger.info(f"开始加载场景，scenario_ids_list = {scenario_ids_list}")
 
-        for idx, scenario_id in enumerate(task.scenario_ids or []):
+        for idx, scenario_id in enumerate(scenario_ids_list or []):
             logger.info(f"处理 scenario_id #{idx}: {repr(scenario_id)} (type: {type(scenario_id)})")
 
             # 跳过无效的 scenario_id（空字典、空字符串等）
