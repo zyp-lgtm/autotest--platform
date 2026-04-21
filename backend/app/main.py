@@ -16,6 +16,7 @@ from .core.exceptions import (
 from .core.exceptions.business_exceptions import BusinessException
 from .api.auth import auth as auth_router
 from .api.data import data as data_router
+from .api.projects import router as projects_router
 from .api.ui import tasks as ui_tasks_router
 from .api.ui import scenarios as ui_scenarios_router
 from .api.ui import keywords as ui_keywords_router
@@ -26,6 +27,11 @@ from .api import services as services_router
 from .api import debug as debug_router
 from .api import cache as cache_router
 from .api import audit as audit_router
+# 暂时移除所有新增API路由以解决映射问题
+# from .api import environments as environments_router
+# from .api import test_data as test_data_router
+# from .api import batch as batch_router
+# from .api import scheduled_jobs as scheduled_jobs_router
 from .middleware import setup_rate_limit_middleware
 from .middleware.performance import PerformanceMonitorMiddleware, get_performance_monitor
 from .middleware.security import SecurityHeadersMiddleware
@@ -142,6 +148,7 @@ async def agent_websocket(websocket: WebSocket):
 app.include_router(auth_router.router, prefix="/api/v1")
 
 # 项目相关的 API 路由
+app.include_router(projects_router, prefix="/api/v1")
 app.include_router(data_router.router, prefix="/api/v1")
 app.include_router(ui_tasks_router.router, prefix="/api/v1")
 app.include_router(ui_scenarios_router.router, prefix="/api/v1")
@@ -162,3 +169,64 @@ app.include_router(cache_router.router, prefix="/api/v1", tags=["cache"])
 
 # 审计日志路由
 app.include_router(audit_router.router, prefix="/api/v1")
+
+# Phase 2 & 3 新增路由 - 重新启用
+from .api import environments as environments_router
+from .api import test_data as test_data_router
+from .api import batch as batch_router
+from .api import scheduled_jobs as scheduled_jobs_router
+from .api import recording as recording_router
+
+app.include_router(environments_router.router, prefix="/api/v1")
+app.include_router(test_data_router.router, prefix="/api/v1")
+app.include_router(batch_router.router, prefix="/api/v1")
+app.include_router(scheduled_jobs_router.router, prefix="/api/v1")
+app.include_router(recording_router.router, prefix="/api/v1")
+
+
+# ============================================================================
+# 应用启动事件
+# ============================================================================
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时执行"""
+    logger = get_logger(__name__)
+
+    logger.info("=" * 60)
+    logger.info("测试自动化平台启动中...")
+    logger.info("=" * 60)
+
+    # 1. 数据库健康检查和自动初始化
+    logger.info("检查数据库状态...")
+    from .core.database_health import ensure_database_ready
+
+    if not ensure_database_ready():
+        logger.error("✗ 数据库初始化失败，应用可能无法正常工作")
+        logger.error("请手动运行: python3 init_db.py")
+    else:
+        logger.info("✓ 数据库就绪")
+
+    # 2. 缓存预热
+    try:
+        from .utils.cache_warmup import warmup_cache
+        logger.info("预热缓存...")
+        await warmup_cache()
+        logger.info("✓ 缓存预热完成")
+    except Exception as e:
+        logger.warning(f"缓存预热失败（非致命）: {e}")
+
+    logger.info("=" * 60)
+    logger.info("✓ 测试自动化平台启动完成")
+    logger.info("=" * 60)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭时执行"""
+    logger = get_logger(__name__)
+    logger.info("测试自动化平台关闭中...")
+
+    # 清理资源
+    # TODO: 关闭数据库连接、清理缓存等
+
+    logger.info("✓ 测试自动化平台已关闭")

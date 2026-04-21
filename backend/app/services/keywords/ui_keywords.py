@@ -23,6 +23,48 @@ class UIKeywordEngine(BaseKeywordEngine):
         """
         self.browser_manager = browser_manager
 
+    async def _collect_debug_info(self) -> Dict[str, Any]:
+        """
+        收集调试信息（在关键字失败时自动调用）
+
+        Returns:
+            包含页面快照、控制台日志、网络请求的调试信息
+        """
+        if not self.browser_manager:
+            return {}
+
+        try:
+            debug_info = await self.browser_manager.get_debug_info()
+            logger.info("✓ 调试信息已收集")
+            return debug_info
+        except Exception as e:
+            logger.warning(f"⚠ 收集调试信息失败: {e}")
+            return {"error": str(e)}
+
+    async def _error_with_debug(self, message: str, error_detail: str = None) -> Dict[str, Any]:
+        """
+        创建包含调试信息的错误响应
+
+        Args:
+            message: 错误消息
+            error_detail: 详细错误信息
+
+        Returns:
+            包含 success=False 和调试信息的响应字典
+        """
+        response = {
+            "success": False,
+            "message": message,
+            "error": error_detail or message
+        }
+
+        # 自动收集调试信息
+        debug_info = await self._collect_debug_info()
+        if debug_info:
+            response["debug_info"] = debug_info
+
+        return response
+
     async def execute(
         self,
         keyword_def: Any,
@@ -293,11 +335,64 @@ class UIKeywordEngine(BaseKeywordEngine):
 
     async def _select(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """下拉选择"""
+        selector = params.get("selector")
+        if not selector:
+            return self._error_response("缺少必需参数: selector")
+
+        value = params.get("value")
+        if not value:
+            return self._error_response("缺少必需参数: value")
+
+        by = params.get("by", "value")  # value/label/index
+        timeout = params.get("timeout", 5000)
+
         try:
-            # 实现选择逻辑
-            return self._success_response({"message": "已选择下拉选项"})
+            page = await self.browser_manager.get_page()
+
+            # 等待元素就绪
+            wait_result = await self.browser_manager.wait_for_element(
+                selector=selector, state="attached", timeout=timeout
+            )
+            if not wait_result["success"]:
+                return wait_result
+
+            # 根据 by 参数选择选择方式
+            if by == "value":
+                await page.select_option(selector, value=value)
+            elif by == "label":
+                await page.select_option(selector, label=value)
+            elif by == "index":
+                try:
+                    index = int(value)
+                    await page.select_option(selector, index=index)
+                except ValueError:
+                    return {
+                        "success": False,
+                        "message": f"索引必须是整数: {value}",
+                        "error": f"index 参数必须是整数，收到: {value}"
+                    }
+            else:
+                return {
+                    "success": False,
+                    "message": f"不支持的 selection 方式: {by}",
+                    "error": f"by 参数必须是 value/label/index 之一"
+                }
+
+            return {
+                "success": True,
+                "message": f"已选择下拉选项: {value} ({by})",
+                "selector": selector,
+                "value": value,
+                "by": by
+            }
+
         except Exception as e:
-            return self._error_response(f"选择失败: {str(e)}")
+            logger.error(f"SELECT 失败: {e}")
+            return {
+                "success": False,
+                "message": f"选择失败: {str(e)}",
+                "error": str(e)
+            }
 
     async def _checkbox(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """复选框操作"""
@@ -342,36 +437,198 @@ class UIKeywordEngine(BaseKeywordEngine):
     # ============ 断言关键字 ============
 
     async def _assert_text(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """断言文本"""
+        """断言文本内容"""
+        selector = params.get("selector")
+        expected_text = params.get("text")
+        match_type = params.get("match_type", "contains")  # contains/exact/regex
+
+        if not selector:
+            return self._error_response("缺少必需参数: selector")
+        if not expected_text:
+            return self._error_response("缺少必需参数: text")
+
         try:
-            # 实现断言逻辑
-            return self._success_response({"message": "文本断言通过"})
+            page = await self.browser_manager.get_page()
+            element = await page.query_selector(selector)
+
+            if not element:
+                return {
+                    "success": False,
+                    "message": f"元素不存在: {selector}",
+                    "error": f"元素 {selector} 不存在"
+                }
+
+            actual_text = await element.inner_text()
+
+            # 根据匹配类型进行断言
+            if match_type == "contains":
+                success = expected_text in actual_text
+            elif match_type == "exact":
+                success = actual_text == expected_text
+            elif match_type == "regex":
+                import re
+                try:
+                    success = bool(re.search(expected_text, actual_text))
+                except re.error as e:
+                    return {
+                        "success": False,
+                        "message": f"正则表达式无效: {expected_text}",
+                        "error": f"正则表达式错误: {str(e)}",
+                        "expected": expected_text,
+                        "actual": actual_text
+                    }
+            else:
+                return {
+                    "success": False,
+                    "message": f"不支持的匹配类型: {match_type}",
+                    "error": f"match_type 必须是 contains/exact/regex 之一"
+                }
+
+            return {
+                "success": success,
+                "message": f"文本断言: 期望 '{expected_text}' ({match_type})",
+                "expected": expected_text,
+                "actual": actual_text,
+                "match_type": match_type
+            }
+
         except Exception as e:
-            return self._error_response(f"文本断言失败: {str(e)}")
+            logger.error(f"ASSERT_TEXT 失败: {e}")
+            return {
+                "success": False,
+                "message": f"文本断言失败: {str(e)}",
+                "error": str(e)
+            }
 
     async def _assert_visible(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """断言元素可见"""
+        selector = params.get("selector")
+        if not selector:
+            return self._error_response("缺少必需参数: selector")
+
+        timeout = params.get("timeout", 5000)
+
         try:
-            # 实现断言逻辑
-            return self._success_response({"message": "元素可见断言通过"})
+            page = await self.browser_manager.get_page()
+
+            # 等待元素可见
+            wait_result = await self.browser_manager.wait_for_element(
+                selector=selector, state="visible", timeout=timeout
+            )
+
+            if not wait_result["success"]:
+                # 失败时自动截图
+                screenshot_path = await self.browser_manager.take_screenshot()
+                return {
+                    "success": False,
+                    "message": f"元素不可见: {selector}",
+                    "error": wait_result.get("error", "元素不可见"),
+                    "screenshot": screenshot_path
+                }
+
+            return {
+                "success": True,
+                "message": f"元素可见: {selector}",
+                "selector": selector
+            }
+
         except Exception as e:
-            return self._error_response(f"可见性断言失败: {str(e)}")
+            logger.error(f"ASSERT_VISIBLE 失败: {e}")
+            # 异常时也尝试截图
+            try:
+                screenshot_path = await self.browser_manager.take_screenshot()
+                return {
+                    "success": False,
+                    "message": f"元素可见性断言失败: {selector}",
+                    "error": str(e),
+                    "screenshot": screenshot_path
+                }
+            except:
+                return {
+                    "success": False,
+                    "message": f"元素可见性断言失败: {selector}",
+                    "error": str(e)
+                }
 
     async def _assert_url(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """断言 URL"""
+        expected_url = params.get("url")
+        match_type = params.get("match_type", "contains")  # contains/exact
+
+        if not expected_url:
+            return self._error_response("缺少必需参数: url")
+
         try:
-            # 实现断言逻辑
-            return self._success_response({"message": "URL 断言通过"})
+            page = await self.browser_manager.get_page()
+            actual_url = page.url
+
+            # 根据匹配类型进行断言
+            if match_type == "contains":
+                success = expected_url in actual_url
+            elif match_type == "exact":
+                success = actual_url == expected_url
+            else:
+                return {
+                    "success": False,
+                    "message": f"不支持的匹配类型: {match_type}",
+                    "error": f"match_type 必须是 contains/exact 之一"
+                }
+
+            return {
+                "success": success,
+                "message": f"URL断言: 期望 '{expected_url}'",
+                "expected": expected_url,
+                "actual": actual_url,
+                "match_type": match_type
+            }
+
         except Exception as e:
-            return self._error_response(f"URL 断言失败: {str(e)}")
+            logger.error(f"ASSERT_URL 失败: {e}")
+            return {
+                "success": False,
+                "message": f"URL断言失败: {str(e)}",
+                "error": str(e)
+            }
 
     async def _assert_title(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """断言标题"""
+        """断言页面标题"""
+        expected_title = params.get("title")
+        match_type = params.get("match_type", "contains")  # contains/exact
+
+        if not expected_title:
+            return self._error_response("缺少必需参数: title")
+
         try:
-            # 实现断言逻辑
-            return self._success_response({"message": "标题断言通过"})
+            page = await self.browser_manager.get_page()
+            actual_title = await page.title()
+
+            # 根据匹配类型进行断言
+            if match_type == "contains":
+                success = expected_title in actual_title
+            elif match_type == "exact":
+                success = actual_title == expected_title
+            else:
+                return {
+                    "success": False,
+                    "message": f"不支持的匹配类型: {match_type}",
+                    "error": f"match_type 必须是 contains/exact 之一"
+                }
+
+            return {
+                "success": success,
+                "message": f"标题断言: 期望 '{expected_title}'",
+                "expected": expected_title,
+                "actual": actual_title,
+                "match_type": match_type
+            }
+
         except Exception as e:
-            return self._error_response(f"标题断言失败: {str(e)}")
+            logger.error(f"ASSERT_TITLE 失败: {e}")
+            return {
+                "success": False,
+                "message": f"标题断言失败: {str(e)}",
+                "error": str(e)
+            }
 
     async def _assert_element_count(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """断言元素数量"""
@@ -382,9 +639,35 @@ class UIKeywordEngine(BaseKeywordEngine):
             return self._error_response(f"元素数量断言失败: {str(e)}")
 
     async def _get_text(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """获取文本"""
+        """获取元素文本内容"""
+        selector = params.get("selector")
+        if not selector:
+            return self._error_response("缺少必需参数: selector")
+
         try:
-            # 实现获取文本逻辑
-            return self._success_response({"text": "提取的文本"})
+            page = await self.browser_manager.get_page()
+            element = await page.query_selector(selector)
+
+            if not element:
+                return {
+                    "success": False,
+                    "message": f"元素不存在: {selector}",
+                    "error": f"元素 {selector} 不存在"
+                }
+
+            text_content = await element.inner_text()
+
+            return {
+                "success": True,
+                "message": f"已获取文本: {selector}",
+                "text": text_content,
+                "selector": selector
+            }
+
         except Exception as e:
-            return self._error_response(f"获取文本失败: {str(e)}")
+            logger.error(f"GET_TEXT 失败: {e}")
+            return {
+                "success": False,
+                "message": f"获取文本失败: {str(e)}",
+                "error": str(e)
+            }

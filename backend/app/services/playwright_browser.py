@@ -51,6 +51,10 @@ class PlaywrightBrowser:
 
         self._is_started = False
 
+        # 调试信息收集
+        self.console_messages = []
+        self.network_requests = []
+
     async def start_browser(self) -> None:
         """启动浏览器或连接到远程浏览器"""
         if self._is_started:
@@ -219,6 +223,120 @@ class PlaywrightBrowser:
         except Exception as e:
             logger.error(f"截图失败: {e}")
             raise
+
+    # ============ 调试增强功能 ============
+
+    async def setup_listeners(self, page: Optional[Page] = None) -> None:
+        """
+        设置监听器，收集调试信息
+
+        Args:
+            page: 要监听的页面，如果为 None 则使用当前页面
+        """
+        target_page = page or await self.get_page()
+
+        # 清空之前的日志
+        self.console_messages.clear()
+        self.network_requests.clear()
+
+        # 监听控制台消息
+        def on_console(msg):
+            self.console_messages.append({
+                "type": msg.type,
+                "text": msg.text,
+                "timestamp": datetime.now().isoformat()
+            })
+            logger.debug(f"Console [{msg.type}]: {msg.text}")
+
+        target_page.on("console", on_console)
+
+        # 监听网络请求
+        def on_request(request):
+            self.network_requests.append({
+                "url": request.url,
+                "method": request.method,
+                "resource_type": request.resource_type,
+                "timestamp": datetime.now().isoformat()
+            })
+            logger.debug(f"Request [{request.method}]: {request.url}")
+
+        target_page.on("request", on_request)
+
+        logger.info("调试监听器已设置")
+
+    async def get_page_snapshot(self, page: Optional[Page] = None) -> Dict[str, Any]:
+        """
+        获取页面快照
+
+        Args:
+            page: 目标页面，如果为 None 则使用当前页面
+
+        Returns:
+            包含 URL、标题、HTML 等信息的字典
+        """
+        target_page = page or await self.get_page()
+
+        try:
+            snapshot = {
+                "url": target_page.url,
+                "title": await target_page.title(),
+                "html_length": len(await target_page.content()),
+                "timestamp": datetime.now().isoformat()
+            }
+
+            # 如果 HTML 不太大，包含完整内容
+            html_content = await target_page.content()
+            if len(html_content) < 100000:  # 小于 100KB
+                snapshot["html"] = html_content
+            else:
+                snapshot["html"] = f"<html trimmed ({len(html_content)} chars)>"
+
+            return snapshot
+
+        except Exception as e:
+            logger.error(f"获取页面快照失败: {e}")
+            return {
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+
+    async def get_console_logs(self) -> list:
+        """
+        获取控制台日志
+
+        Returns:
+            控制台消息列表
+        """
+        return self.console_messages.copy()
+
+    async def get_network_requests(self, limit: int = 10) -> list:
+        """
+        获取网络请求
+
+        Args:
+            limit: 返回最近 N 个请求
+
+        Returns:
+            网络请求列表
+        """
+        return self.network_requests[-limit:] if self.network_requests else []
+
+    async def get_debug_info(self, page: Optional[Page] = None) -> Dict[str, Any]:
+        """
+        获取完整的调试信息
+
+        Args:
+            page: 目标页面
+
+        Returns:
+            包含页面快照、控制台日志、网络请求的完整调试信息
+        """
+        return {
+            "page_snapshot": await self.get_page_snapshot(page),
+            "console_logs": await self.get_console_logs(),
+            "network_requests": await self.get_network_requests(limit=10),
+            "timestamp": datetime.now().isoformat()
+        }
 
     async def close(self) -> None:
         """关闭浏览器和清理资源"""

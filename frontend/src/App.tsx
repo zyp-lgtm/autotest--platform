@@ -13,6 +13,10 @@ const Tasks = lazy(() => import('./pages/Tasks'))
 const TaskForm = lazy(() => import('./components/TaskForm'))
 const ExecutionReportPage = lazy(() => import('./pages/ExecutionReport'))
 const Scenarios = lazy(() => import('./pages/Scenarios'))
+const ProjectsPage = lazy(() => import('./pages/Projects'))
+const TestDataPage = lazy(() => import('./pages/TestData'))
+const EnvironmentsPage = lazy(() => import('./pages/Environments'))
+const ScheduledJobsPage = lazy(() => import('./pages/ScheduledJobs'))
 
 // 懒加载组件的加载指示器
 function LazyLoader() {
@@ -55,7 +59,11 @@ function App() {
                           <Route path="/tasks/:taskId/edit" element={<TaskForm mode="edit" />} />
                           <Route path="/tasks/:taskId/scenarios" element={<Scenarios />} />
                           <Route path="/executions/:executionId" element={<ExecutionReportPage />} />
-                          {/* 未来添加更多路由 */}
+                          {/* 新增页面路由 */}
+                          <Route path="/projects" element={<ProjectsPage />} />
+                          <Route path="/test-data" element={<TestDataPage />} />
+                          <Route path="/environments" element={<EnvironmentsPage />} />
+                          <Route path="/scheduled-jobs" element={<ScheduledJobsPage />} />
                         </Routes>
                       </Layout>
                     </ProtectedRoute>

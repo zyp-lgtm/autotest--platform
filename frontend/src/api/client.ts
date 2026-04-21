@@ -16,7 +16,9 @@ apiClient.interceptors.request.use(
       hasToken: !!token,
       tokenPrefix: token ? token.substring(0, 20) + '...' : 'none'
     })
-    if (token) {
+    // 只在有有效的Bearer token时才添加Authorization头
+    // 如果使用Cookie认证（token为'cookie-based'或不存在），不添加Authorization头
+    if (token && token !== 'cookie-based') {
       config.headers.Authorization = `Bearer ${token}`
     }
     return config

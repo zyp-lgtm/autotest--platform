@@ -24,9 +24,12 @@ export default function KeywordSelector({ value, onChange, category, disabled }:
   const loadCategories = async () => {
     try {
       const cats = await keywordsApi.getCategories()
+      console.log('加载的类别:', cats)
       setCategories(['all', ...cats])
     } catch (err) {
       console.error('加载类别失败:', err)
+      // 如果API失败，使用默认类别
+      setCategories(['all', 'api', 'ui', 'assertion', 'extract', 'data'])
     }
   }
 
@@ -35,9 +38,12 @@ export default function KeywordSelector({ value, onChange, category, disabled }:
       setLoading(true)
       const cat = selectedCategory === 'all' ? undefined : selectedCategory
       const data = await keywordsApi.getKeywords(cat)
+      console.log(`加载 ${cat || '所有'} 类别的关键字:`, data.length, '个')
       setKeywords(data)
     } catch (err) {
       console.error('加载关键字失败:', err)
+      // 设置空数组避免显示错误数据
+      setKeywords([])
     } finally {
       setLoading(false)
     }
@@ -83,7 +89,10 @@ export default function KeywordSelector({ value, onChange, category, disabled }:
               </div>
             </div>
           ) : (
-            <div className="text-gray-500 text-sm">请选择关键字</div>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+              <div className="text-gray-500 text-sm">请从下方选择一个关键字</div>
+              <div className="text-xs text-gray-400 mt-1">使用搜索或分类过滤快速查找</div>
+            </div>
           )}
         </div>
       </div>
@@ -115,12 +124,23 @@ export default function KeywordSelector({ value, onChange, category, disabled }:
 
           {/* 关键字列表 */}
           {loading ? (
-            <div className="text-center text-gray-500 py-4">加载中...</div>
+            <div className="text-center text-gray-500 py-8">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+              <div>加载关键字中...</div>
+            </div>
+          ) : keywords.length === 0 ? (
+            <div className="text-center py-8 bg-red-50 border border-red-200 rounded-lg">
+              <div className="text-red-600 mb-2">⚠️ 无法加载关键字</div>
+              <div className="text-sm text-red-500">请检查网络连接或刷新页面重试</div>
+            </div>
           ) : (
             <div className="max-h-64 overflow-y-auto space-y-3">
               {Object.entries(groupedKeywords).map(([cat, kws]) => (
                 <div key={cat}>
-                  <div className="text-sm font-medium text-gray-700 mb-2">{cat}</div>
+                  <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                    <span className="bg-gray-200 px-2 py-0.5 rounded text-xs">{cat}</span>
+                    <span className="text-xs text-gray-500">({kws.length} 个)</span>
+                  </div>
                   <div className="space-y-1 ml-2">
                     {kws.map((kw) => (
                       <div key={kw.id}>
@@ -128,26 +148,26 @@ export default function KeywordSelector({ value, onChange, category, disabled }:
                           <button
                             onClick={() => onChange(kw.id)}
                             disabled={disabled}
-                            className={`flex-1 text-left p-2 rounded hover:bg-gray-50 transition ${
+                            className={`flex-1 text-left p-2 rounded hover:bg-blue-50 transition border border-transparent hover:border-blue-200 ${
                               disabled ? 'opacity-50 cursor-not-allowed' : ''
                             }`}
                           >
-                            <div className="font-medium text-sm">{kw.name}</div>
-                            <div className="text-xs text-gray-500">{kw.description}</div>
+                            <div className="font-medium text-sm text-blue-900">{kw.name}</div>
+                            <div className="text-xs text-gray-600">{kw.description}</div>
                           </button>
                           {kw.examples && kw.examples.length > 0 && (
                             <button
                               onClick={() => setShowExamples(showExamples === kw.id ? null : kw.id)}
-                              className="text-xs text-blue-600 hover:text-blue-800 ml-2"
+                              className="text-xs text-blue-600 hover:text-blue-800 ml-2 px-2 py-1 bg-blue-50 rounded"
                             >
                               示例
                             </button>
                           )}
                         </div>
                         {showExamples === kw.id && kw.examples && (
-                          <div className="ml-4 mt-1 p-2 bg-gray-50 rounded text-xs">
-                            <div className="font-medium mb-1">参数示例:</div>
-                            <pre className="text-gray-600 whitespace-pre-wrap">
+                          <div className="ml-4 mt-1 p-2 bg-blue-50 rounded text-xs">
+                            <div className="font-medium mb-1 text-blue-900">📋 参数示例:</div>
+                            <pre className="text-blue-800 whitespace-pre-wrap">
                               {JSON.stringify(kw.examples[0], null, 2)}
                             </pre>
                           </div>
@@ -158,7 +178,11 @@ export default function KeywordSelector({ value, onChange, category, disabled }:
                 </div>
               ))}
               {filteredKeywords.length === 0 && (
-                <div className="text-center text-gray-500 py-4">没有找到匹配的关键字</div>
+                <div className="text-center text-gray-500 py-8 bg-gray-50 rounded-lg">
+                  <div className="text-2xl mb-2">🔍</div>
+                  <div>没有找到匹配的关键字</div>
+                  <div className="text-xs text-gray-400 mt-1">尝试更改搜索词或选择其他类别</div>
+                </div>
               )}
             </div>
           )}

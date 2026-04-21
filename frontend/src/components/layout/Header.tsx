@@ -8,6 +8,10 @@ export function Header() {
   const navItems = [
     { path: '/', label: '仪表盘' },
     { path: '/tasks', label: '任务管理' },
+    { path: '/projects', label: '项目管理' },
+    { path: '/test-data', label: '测试数据' },
+    { path: '/environments', label: '环境配置' },
+    { path: '/scheduled-jobs', label: '定时任务' },
   ]
 
   return (

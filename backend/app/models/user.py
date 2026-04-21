@@ -24,7 +24,7 @@ class User(Base):
 
     # Relationships to keywords and test data
     keywords = relationship("Keyword", back_populates="creator")
-    test_data = relationship("TestData", back_populates="creator")
+    test_data = relationship("TestData", foreign_keys="TestData.created_by")
 
     # Relationship to audit logs
     audit_logs = relationship("AuditLog", back_populates="user")

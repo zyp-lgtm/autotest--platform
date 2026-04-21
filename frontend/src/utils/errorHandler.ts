@@ -5,6 +5,15 @@
 
 export interface ApiError {
   status?: number
+  response?: {
+    status?: number
+    data?: {
+      detail?: string
+      retry_after?: number
+      code?: string
+      message?: string
+    }
+  }
   data?: {
     detail?: string
     retry_after?: number
@@ -12,6 +21,7 @@ export interface ApiError {
     message?: string
   }
   retryAfter?: number
+  message?: string
 }
 
 /**

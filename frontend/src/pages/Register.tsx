@@ -77,7 +77,7 @@ function RegisterPage() {
     setLoading(true)
 
     try {
-      await register(username, email, password, fullName)
+      await register(username, email, password)
       navigate('/')
     } catch (err: any) {
       // 检查是否为速率限制错误

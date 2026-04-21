@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { scenariosApi, Step, StepCreate, StepUpdate } from '../api/scenarios'
 import { keywordsApi, Keyword } from '../api/keywords'
 import KeywordSelector from './KeywordSelector'
+import ElementPicker from './ElementPicker'
 
 interface StepFormProps {
   caseId: string
@@ -21,6 +22,7 @@ export default function StepForm({ caseId, step, onSuccess, onCancel }: StepForm
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedKeyword, setSelectedKeyword] = useState<Keyword | null>(null)
+  const [showElementPicker, setShowElementPicker] = useState(false)
 
   // 当选择关键字时，加载关键字详情
   useEffect(() => {
@@ -143,15 +145,37 @@ export default function StepForm({ caseId, step, onSuccess, onCancel }: StepForm
           <label className="block text-sm font-medium text-gray-700">
             参数配置 (JSON格式)
           </label>
-          {selectedKeyword?.examples && selectedKeyword.examples.length > 0 && (
+          <div className="flex gap-2">
+            {selectedKeyword?.examples && selectedKeyword.examples.length > 0 && (
+              <button
+                type="button"
+                onClick={fillExample}
+                className="text-xs text-blue-600 hover:text-blue-800"
+              >
+                填充示例
+              </button>
+            )}
             <button
               type="button"
-              onClick={fillExample}
-              className="text-xs text-blue-600 hover:text-blue-800"
+              onClick={() => setShowElementPicker(true)}
+              className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200 transition flex items-center gap-1"
             >
-              填充示例
+              <span>🎯</span> 元素选择器
             </button>
-          )}
+          </div>
+        </div>
+
+        {/* 用户提示 */}
+        <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-start gap-2">
+            <span className="text-yellow-600 text-lg">💡</span>
+            <div className="flex-1">
+              <div className="text-sm font-medium text-yellow-900">需要帮助选择元素？</div>
+              <div className="text-xs text-yellow-700 mt-1">
+                点击上方 <strong>"🎯 元素选择器"</strong> 按钮，查看如何准确选择网页元素的详细指南
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* 参数说明 */}
@@ -213,6 +237,34 @@ export default function StepForm({ caseId, step, onSuccess, onCancel }: StepForm
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded text-sm">
           {error}
         </div>
+      )}
+
+      {/* 元素选择器弹窗 */}
+      {showElementPicker && (
+        <ElementPicker
+          onElementSelected={(selector) => {
+            // 尝试将选择器插入到当前参数中
+            try {
+              const currentParams = JSON.parse(parameters || '{}')
+
+              // 智能推断参数名
+              if (selectedKeyword?.name.includes('CLICK') || selectedKeyword?.name.includes('INPUT')) {
+                currentParams.selector = selector
+              } else if (Object.keys(currentParams).length === 0) {
+                // 如果参数为空，默认使用selector
+                currentParams.selector = selector
+              }
+
+              setParameters(JSON.stringify(currentParams, null, 2))
+              setShowElementPicker(false)
+            } catch (err) {
+              // 如果JSON解析失败，直接替换
+              setParameters(JSON.stringify({ selector }, null, 2))
+              setShowElementPicker(false)
+            }
+          }}
+          onClose={() => setShowElementPicker(false)}
+        />
       )}
 
       <div className="flex gap-2 pt-2">

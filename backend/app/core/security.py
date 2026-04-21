@@ -261,6 +261,13 @@ async def get_authenticated_user(
         async def my_endpoint(user: User = Depends(get_authenticated_user)):
             return {"username": user.username}
     """
+    # 定义认证异常
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="无法验证凭证",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
     # 验证 token
     payload = verify_token(token)
     if not payload:

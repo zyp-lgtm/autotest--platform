@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProject } from '../contexts/ProjectContext'
 import { tasksApi } from '../api/tasks'
+import { keywordsApi, Keyword } from '../api/keywords'
+import { scenariosApi } from '../api/scenarios'
 import type { UITask } from '../types'
 import type { TestExecution } from '../types'
 
@@ -14,10 +16,26 @@ export default function Tasks() {
   const [searchTerm, setSearchTerm] = useState('')
   const [executions, setExecutions] = useState<Record<string, TestExecution[]>>({})
   const [showHistory, setShowHistory] = useState<Record<string, boolean>>({})
+  const [keywords, setKeywords] = useState<Record<string, Keyword>>({})
+  const [taskKeywords, setTaskKeywords] = useState<Record<string, string[]>>({})
 
   useEffect(() => {
     loadTasks()
+    loadKeywords()
   }, [currentProject])
+
+  const loadKeywords = async () => {
+    try {
+      const keywordsData = await keywordsApi.getKeywords()
+      const kwMap: Record<string, Keyword> = {}
+      for (const kw of keywordsData) {
+        kwMap[kw.id] = kw
+      }
+      setKeywords(kwMap)
+    } catch (err) {
+      console.error('加载关键字失败:', err)
+    }
+  }
 
   const loadTasks = async () => {
     if (!currentProject) {
@@ -30,6 +48,45 @@ export default function Tasks() {
       setError(null)
       const data = await tasksApi.getTasks(currentProject.id)
       setTasks(data)
+
+      // 加载每个任务的关键字统计
+      const taskKwMap: Record<string, string[]> = {}
+      for (const task of data) {
+        try {
+          const uniqueKeywords = new Set<string>()
+
+          // 遍历任务的所有场景
+          for (const scenarioId of task.scenario_ids) {
+            try {
+              const cases = await scenariosApi.getCases(scenarioId)
+
+              // 遍历每个场景的用例
+              for (const caseItem of cases) {
+                try {
+                  const steps = await scenariosApi.getSteps(caseItem.id)
+
+                  // 收集步骤中使用的关键字
+                  for (const step of steps) {
+                    if (step.keyword_id) {
+                      uniqueKeywords.add(step.keyword_id)
+                    }
+                  }
+                } catch (err) {
+                  console.error(`加载用例 ${caseItem.id} 的步骤失败:`, err)
+                }
+              }
+            } catch (err) {
+              console.error(`加载场景 ${scenarioId} 的用例失败:`, err)
+            }
+          }
+
+          taskKwMap[task.id] = Array.from(uniqueKeywords)
+        } catch (err) {
+          console.error(`加载任务 ${task.id} 的关键字统计失败:`, err)
+          taskKwMap[task.id] = []
+        }
+      }
+      setTaskKeywords(taskKwMap)
     } catch (err: any) {
       setError(err.response?.data?.detail || '加载任务失败')
     } finally {
@@ -205,11 +262,37 @@ export default function Tasks() {
                     </div>
                   )}
 
-                  {/* 场景数量 */}
+                  {/* 场景数量和关键字统计 */}
                   <div className="flex items-center gap-4 mt-3 text-sm text-gray-500">
                     <span>场景数: {task.scenario_ids?.length || 0}</span>
+                    {taskKeywords[task.id] && taskKeywords[task.id].length > 0 && (
+                      <span>关键字数: {taskKeywords[task.id].length}</span>
+                    )}
                     <span>创建时间: {new Date(task.created_at).toLocaleString('zh-CN')}</span>
                   </div>
+
+                  {/* 关键字标签 */}
+                  {taskKeywords[task.id] && taskKeywords[task.id].length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {taskKeywords[task.id].slice(0, 5).map((keywordId) => {
+                        const keyword = keywords[keywordId]
+                        return keyword ? (
+                          <span
+                            key={keywordId}
+                            className="px-2 py-1 text-xs bg-purple-50 text-purple-700 rounded border border-purple-200"
+                            title={keyword.description}
+                          >
+                            {keyword.name}
+                          </span>
+                        ) : null
+                      })}
+                      {taskKeywords[task.id].length > 5 && (
+                        <span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded">
+                          +{taskKeywords[task.id].length - 5} 更多
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* 操作按钮 */}

@@ -97,6 +97,7 @@ export interface StepExecution {
   duration?: number
   error_message?: string
   screenshot_path?: string
+  parameters?: Record<string, any>
   logs: Array<{ timestamp: string; level: string; message: string }>
   output?: any
 }

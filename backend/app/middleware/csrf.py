@@ -50,6 +50,12 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             if auth_header.startswith("Bearer "):
                 return await call_next(request)
 
+            # 豁免带有 HttpOnly Cookie 的请求
+            # Cookie 只能通过同源请求发送，这本身就提供了 CSRF 保护
+            if request.cookies.get("access_token"):
+                logger.debug(f"CSRF 豁免: 检测到 HttpOnly Cookie - {request.url.path}")
+                return await call_next(request)
+
             try:
                 # 验证 CSRF Token
                 csrf_protect.validate_request(request)

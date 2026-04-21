@@ -19,6 +19,7 @@ class Project(Base):
     # Relationship to owner
     owner = relationship("User", back_populates="projects")
 
-    # Relationships to keywords and test data
+    # Relationships to keywords, test data, and environments
     keywords = relationship("Keyword", back_populates="project")
-    test_data = relationship("TestData", back_populates="project")
+    test_data_sets = relationship("TestData", foreign_keys="TestData.project_id")
+    environments = relationship("Environment", foreign_keys="Environment.project_id")

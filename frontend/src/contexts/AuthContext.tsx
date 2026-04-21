@@ -61,15 +61,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const fetchCurrentUser = async (accessToken: string) => {
-    try {
-      const userData = await authApi.getCurrentUser()
-      setUser(userData)
-    } catch (error) {
-      console.error('[AuthContext] 获取用户信息失败:', error)
-      throw error
-    }
-  }
+//   const fetchCurrentUser = async (accessToken: string) => {
+//     try {
+//       const userData = await authApi.getCurrentUser()
+//       setUser(userData)
+//     } catch (error) {
+//       console.error('[AuthContext] 获取用户信息失败:', error)
+//       throw error
+//     }
+//   }
 
   const login = async (username: string, password: string) => {
     console.log('[AuthContext] 开始登录流程')
@@ -93,7 +93,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               email: '',
               full_name: '',
               is_active: true,
-              role: ''
+              role: '',
+              created_at: new Date().toISOString()
             }
             setUser(userData)
             setToken('cookie-based')
