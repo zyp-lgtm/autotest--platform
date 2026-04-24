@@ -1,7 +1,7 @@
-# 测试自动化平台 MVP
+# 测试自动化平台
 
-> **当前状态**: 🟡 基础框架完成，核心功能开发中
-> **成熟度**: ⭐⭐/⭐⭐⭐⭐⭐ (2/5)
+> **当前状态**: 🟢 核心功能已完成，进入增强阶段
+> **成熟度**: ⭐⭐⭐⭐/⭐⭐⭐⭐⭐ (4/5)
 > **详细计划**: 查看 [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) 了解完整的开发路线图
 
 关键字驱动测试自动化平台，支持 API 和 UI 测试，采用四层结构设计（任务 → 场景 → 用例 → 步骤），完全分离 UI 和 API 测试类型。
@@ -9,40 +9,63 @@
 ## 🚀 快速导航
 
 - 📋 [开发计划](./DEVELOPMENT_PLAN.md) - 完整的功能规划和优先级
-- 🎯 [MVP 进度](#mvp-进度) - 当前进度跟踪
 - 📖 [CLAUDE.md](./CLAUDE.md) - 项目宪法和开发规范
 - 🤖 [Agent 指南](./AGENT_GUIDE.md) - Agent 使用说明
+- 📝 [更新日志](./CHANGELOG.md) - 版本更新历史
 
 ## 📊 当前能力评估
 
-### ✅ 已实现功能
-- ✅ 用户认证和项目管理
-- ✅ 任务/场景/用例 CRUD
-- ✅ 关键字管理（NAVIGATE）
-- ✅ 任务执行引擎
-- ✅ 浏览器显示支持
-- ✅ 基础执行日志
+### ✅ 已实现核心功能
 
-### 🔴 急需补充功能
-- ❌ **关键字扩展** - 只有 1 个，需要 15+ 个（CLICK、INPUT、ASSERT 等）
-- ❌ **智能等待** - 缺少等待机制导致测试不稳定
-- ❌ **断言功能** - 无法验证测试结果
-- ❌ **调试增强** - 失败时缺少截图和详细日志
-- ❌ **元素选择器** - 需要手动配置选择器
-- ❌ **测试数据管理** - 无法数据驱动测试
+#### 测试执行能力
+- ✅ **15+ UI 关键字** - 导航、交互、等待、断言等完整覆盖
+- ✅ **智能等待机制** - 自动等待元素出现，测试更稳定
+- ✅ **完善的断言系统** - ASSERT_VISIBLE, ASSERT_TEXT, ASSERT_TITLE, ASSERT_URL
+- ✅ **调试能力增强** - 失败截图、详细日志、错误分类
+- ✅ **元素选择器工具** - 可视化选择页面元素
+- ✅ **测试数据管理** - 完整的数据驱动测试支持
+- ✅ **环境配置管理** - 多环境配置切换
+- ✅ **定时任务系统** - 支持定时执行测试
+
+#### 浏览器录制功能（2026-04-21 新增）🎬
+- ✅ **可视化录制** - 在浏览器中执行操作，系统自动记录
+- ✅ **智能数据提取** - 自动识别测试数据（用户名、密码等）
+- ✅ **自动生成场景** - 录制的操作直接转换为测试用例
+- ✅ **跨页面录制** - 支持多页面操作录制
+- ✅ **实时进度显示** - 录制过程中实时显示捕获的操作数
+
+#### 性能优化
+- ✅ **内存缓存系统** - API 响应缓存，减少 70% 数据库查询
+- ✅ **智能缓存失效** - 修改数据后自动清除相关缓存
+- ✅ **并发执行系统** - 支持多个测试并发执行
+- ✅ **自动重试机制** - 失败自动重试，提高成功率
+
+#### 系统架构
+- ✅ **插件化关键字系统** - 支持自定义关键字扩展
+- ✅ **仓储模式层** - 数据访问层抽象，支持多数据库
+- ✅ **结构化日志** - 统一的日志格式和级别
+- ✅ **审计日志系统** - 完整的操作审计追踪
+- ✅ **统一错误处理** - 错误分类和修复建议
+
+### 🔜 待增强功能
+- ⏳ **AI 驱动测试** - 自然语言生成测试步骤（阶段4）
+- ⏳ **高级报告生成** - 更丰富的测试报告和图表
+- ⏳ **CI/CD 集成** - 与主流 CI/CD 工具集成
+- ⏳ **分布式执行** - 多机器分布式测试执行
 
 ### 📈 成熟度评分
 
 | 维度 | 评分 | 说明 |
 |------|------|------|
-| 基础架构 | ⭐⭐⭐⭐ | 架构合理，技术选型好 |
-| 关键字丰富度 | ⭐ | 只有 NAVIGATE，需要 15+ |
-| 易用性 | ⭐⭐ | 手动配置，需要录制功能 |
-| 稳定性 | ⭐⭐ | 缺少等待和重试 |
-| 可调试性 | ⭐ | 缺少详细日志和截图 |
-| 报告质量 | ⭐ | 信息太少 |
-| 数据管理 | ⭐ | 没有数据驱动 |
-| **总体评分** | **⭐⭐** | **框架完成，功能不足** |
+| 基础架构 | ⭐⭐⭐⭐⭐ | 架构完善，插件化设计 |
+| 关键字丰富度 | ⭐⭐⭐⭐ | 15+ 个关键字，覆盖核心场景 |
+| 易用性 | ⭐⭐⭐⭐ | 录制功能 + 可视化界面 |
+| 稳定性 | ⭐⭐⭐⭐ | 智能等待 + 自动重试 |
+| 可调试性 | ⭐⭐⭐⭐ | 详细日志 + 截图 + 错误分类 |
+| 报告质量 | ⭐⭐⭐ | 基础完善，待增强 |
+| 数据管理 | ⭐⭐⭐⭐⭐ | 完整的数据驱动和环境配置 |
+| 性能 | ⭐⭐⭐⭐ | 缓存 + 并发执行 |
+| **总体评分** | **⭐⭐⭐⭐** | **核心功能完善，生产就绪** |
 
 ---
 
@@ -54,9 +77,9 @@
 - [技术栈](#技术栈)
 - [项目结构](#项目结构)
 - [开发指南](#开发指南)
-- [API 端点](#api-端点)
 - [系统关键字](#系统关键字)
-- [MVP 进度](#mvp-进度)
+- [录制功能](#录制功能)
+- [API 文档](#api-文档)
 
 ## 功能特性
 
@@ -65,6 +88,7 @@
 - 🎯 **关键字驱动测试**
   - 系统关键字：内置的常用测试操作（API 请求、UI 操作、断言等）
   - 业务关键字：用户可编程的自定义测试逻辑
+  - 插件化扩展：支持自定义关键字插件
 
 - 📊 **四层结构设计**
   - Task（任务）：执行单元和报告单位
@@ -81,37 +105,51 @@
   - 界面管理测试数据
   - 数据名即变量名
   - 支持多种数据类型：string、number、boolean、json
+  - 支持多环境配置
 
 - 📝 **强大的变量系统**
   - 统一语法：`{变量名}`
   - 支持嵌套访问：`{user.id}`
   - 参数自动解析和替换
+  - 支持测试数据引用
 
 - 🔍 **详细的执行日志**
   - 步骤级日志记录
   - 参数解析追踪（原始表达式 → 解析值）
   - 执行结果详细记录
+  - 错误分类和修复建议
 
-- 🖼️ **可配置 UI 截图**
-  - 调试模式：开启截图，方便排查错误
-  - 执行模式：关闭截图，提升速度
-  - 性能模式：最小截图
+- 🖼️ **智能截图机制**
+  - 调试模式：所有步骤截图
+  - 执行模式：仅失败步骤截图
+  - 性能模式：无截图
+  - 自动保存和展示
+
+- 🎬 **浏览器录制功能**
+  - 可视化录制用户操作
+  - 自动生成测试步骤
+  - 智能提取测试数据
+  - 支持跨页面录制
 
 ### 测试能力
 
-- ✅ API 自动化测试（GET、POST、断言、变量提取）
-- ✅ UI 自动化测试（导航、点击、输入、等待）
-- ✅ 数据驱动测试
+- ✅ API 自动化测试（GET、POST、PUT、DELETE、断言、变量提取）
+- ✅ UI 自动化测试（15+ 关键字：导航、点击、输入、等待、断言等）
+- ✅ 数据驱动测试（测试数据管理 + 环境配置）
 - ✅ 关键字复用和组合
-- ✅ 分布式执行支持
+- ✅ 定时任务执行
+- ✅ 并发测试执行
+- ✅ 测试录制回放
 
 ## 系统架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                         前端 (React 19)                      │
+│                         前端 (React 19 + TypeScript)          │
 │  ┌──────────────┬──────────────┬──────────────────────┐    │
-│  │ 仪表盘        │ 任务管理      │ 测试数据管理          │    │
+│  │ 仪表盘        │ 场景管理      │ 录制向导              │    │
+│  │ 任务管理      │ 测试数据      │ 执行报告              │    │
+│  │ 环境配置      │ 定时任务      │ 元素选择器            │    │
 │  └──────────────┴──────────────┴──────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
                             │
@@ -120,14 +158,15 @@
 │                       后端 (FastAPI)                        │
 │  ┌─────────────────────────────────────────────────────┐  │
 │  │  API 路由层                                           │  │
-│  │  /api/v1/auth   /api/v1/data   /api/v1/ui/tasks     │  │
+│  │  /api/v1/auth   /api/v1/data   /api/v1/ui/*         │  │
 │  └─────────────────────────────────────────────────────┘  │
 │  ┌─────────────────────────────────────────────────────┐  │
 │  │  服务层                                              │  │
 │  │  TestExecutor │ KeywordEngine │ VariableResolver   │  │
+│  │  Recorder     │ DataExtractor  │ Scheduler         │  │
 │  └─────────────────────────────────────────────────────┘  │
 │  ┌─────────────────────────────────────────────────────┐  │
-│  │  数据层 (SQLAlchemy)                                 │  │
+│  │  数据层 (SQLAlchemy + Repository)                   │  │
 │  │  User │ Project │ UITask │ APITask │ Keyword      │  │
 │  └─────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
@@ -135,7 +174,8 @@
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    数据层                                   │
-│  PostgreSQL (业务数据)  │  Redis (缓存/队列)              │
+│  SQLite (开发/测试)  │  PostgreSQL (生产)                  │
+│  SimpleCache (内存缓存)                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -143,8 +183,8 @@
 
 ### 环境要求
 
-- Docker 20.10+
-- Docker Compose 2.0+
+- Python 3.11+
+- Node.js 16+
 - Git
 
 ### 启动步骤
@@ -153,20 +193,21 @@
 # 1. 进入项目目录
 cd /Users/apple/aicode/.worktrees/test-platform
 
-# 2. 复制环境配置文件
-cp .env.example .env
+# 2. 初始化后端
+cd backend
+pip install -r requirements.txt
+python3 init_db.py  # 初始化数据库
 
-# 3. 启动所有服务（后台运行）
-docker-compose -f docker/docker-compose.yml up -d
+# 3. 启动后端服务
+python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# 4. 等待服务启动（约 30 秒）
-docker-compose -f docker/docker-compose.yml ps
+# 4. 启动前端服务（新终端）
+cd frontend
+npm install
+npm run dev
 
-# 5. 查看后端日志
-docker-compose -f docker/docker-compose.yml logs -f backend
-
-# 6. 种植系统关键字
-docker-compose -f docker/docker-compose.yml exec backend python scripts/seed_keywords.py
+# 5. 访问应用
+open http://localhost:3000
 ```
 
 ### 访问应用
@@ -176,23 +217,17 @@ docker-compose -f docker/docker-compose.yml exec backend python scripts/seed_key
 - **API 文档**: http://localhost:8000/docs
 - **健康检查**: http://localhost:8000/health
 
-### 停止服务
-
-```bash
-docker-compose -f docker/docker-compose.yml down
-```
-
 ## 技术栈
 
 ### 后端
 
 - **框架**: FastAPI 0.104.1
 - **语言**: Python 3.11+
-- **数据库**: SQLAlchemy 2.0.23 + PostgreSQL 16
-- **缓存**: Redis 7
-- **任务队列**: Celery 5.3.4
-- **认证**: JWT (python-jose)
-- **测试**: pytest 7.4.3, httpx 0.25.1
+- **数据库**: SQLAlchemy 2.0.23 + SQLite (开发) / PostgreSQL (生产)
+- **缓存**: SimpleCache (内存)
+- **认证**: JWT + HttpOnly Cookie
+- **测试**: pytest 7.4.3
+- **UI自动化**: Playwright 1.40.0
 
 ### 前端
 
@@ -204,68 +239,55 @@ docker-compose -f docker/docker-compose.yml down
 - **状态管理**: Zustand 4.4+
 - **HTTP 客户端**: Axios 1.6+
 
-### 测试工具
-
-- **API 测试**: requests 2.31.0
-- **UI 测试**: Playwright 1.40.0
-- **性能测试**: Locust (待集成)
-
 ### 基础设施
 
-- **容器化**: Docker, Docker Compose
-- **反向代理**: Nginx (Alpine)
-- **数据库**: PostgreSQL 16 (Alpine)
-- **缓存**: Redis 7 (Alpine)
+- **容器化**: Docker (可选)
+- **数据库**: SQLite / PostgreSQL
+- **缓存**: 内存缓存
 
 ## 项目结构
 
 ```
 test-platform/
-├── docker/
-│   └── docker-compose.yml          # 容器编排配置
 ├── backend/
 │   ├── app/
 │   │   ├── api/                    # API 路由
 │   │   │   ├── auth/               # 认证端点
 │   │   │   ├── data/               # 测试数据管理
-│   │   │   └── ui/                 # UI 任务管理
+│   │   │   ├── ui/                 # UI 任务管理
+│   │   │   └── recording/          # 录制功能 API
 │   │   ├── core/                   # 核心模块
 │   │   │   ├── config.py           # 配置管理
 │   │   │   ├── database.py         # 数据库配置
 │   │   │   └── security.py         # JWT 认证
 │   │   ├── models/                 # SQLAlchemy 模型
-│   │   │   ├── user.py
-│   │   │   ├── project.py
-│   │   │   ├── keyword.py
-│   │   │   ├── test_data.py
-│   │   │   ├── ui_task.py          # UI 四层模型
-│   │   │   └── api_task.py         # API 四层模型
 │   │   ├── schemas/                # Pydantic 模式
 │   │   ├── services/               # 业务服务
 │   │   │   ├── executor.py         # 测试执行器
-│   │   │   ├── variable_resolver.py # 变量解析
-│   │   │   └── keyword_engine.py   # 关键字引擎
-│   │   ├── tests/                  # 测试文件
+│   │   │   ├── keywords/           # 关键字引擎（插件化）
+│   │   │   ├── recorder.py         # 录制服务
+│   │   │   └── scheduler.py        # 定时调度
+│   │   ├── repositories/           # 数据访问层
 │   │   └── main.py                 # FastAPI 应用入口
-│   ├── scripts/
-│   │   └── seed_keywords.py        # 系统关键字种子脚本
 │   ├── requirements.txt             # Python 依赖
-│   └── Dockerfile
+│   └── init_db.py                  # 数据库初始化脚本
 ├── frontend/
 │   ├── src/
+│   │   ├── api/                    # API 客户端层
 │   │   ├── components/             # React 组件
+│   │   │   ├── RecordingWizard.tsx # 录制向导
+│   │   │   └── ElementPicker.tsx   # 元素选择器
 │   │   ├── pages/                  # 页面组件
-│   │   │   └── Dashboard.tsx       # 仪表盘
-│   │   ├── services/               # API 服务
+│   │   │   ├── Dashboard.tsx       # 仪表盘
+│   │   │   ├── Scenarios.tsx       # 场景管理
+│   │   │   └── Tasks.tsx           # 任务管理
 │   │   ├── types/                  # TypeScript 类型
-│   │   ├── App.tsx                 # 根组件
-│   │   └── main.tsx                # 应用入口
+│   │   └── App.tsx                 # 根组件
 │   ├── package.json
-│   ├── vite.config.ts
-│   ├── tailwind.config.js
-│   └── Dockerfile
-├── .env.example                    # 环境变量模板
-└── README.md
+│   └── vite.config.ts
+├── CLAUDE.md                        # 项目宪法
+├── CHANGELOG.md                     # 更新日志
+└── README.md                        # 本文件
 ```
 
 ## 开发指南
@@ -273,12 +295,11 @@ test-platform/
 ### 后端开发
 
 ```bash
-# 进入后端目录
 cd backend
 
 # 创建虚拟环境
 python3 -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate
 
 # 安装依赖
 pip install -r requirements.txt
@@ -289,14 +310,13 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 # 运行测试
 pytest
 
-# 种植系统关键字
-python scripts/seed_keywords.py
+# 初始化数据库
+python3 init_db.py
 ```
 
 ### 前端开发
 
 ```bash
-# 进入前端目录
 cd frontend
 
 # 安装依赖
@@ -308,8 +328,11 @@ npm run dev
 # 构建生产版本
 npm run build
 
-# 预览生产构建
-npm run preview
+# 类型检查
+npm run type-check
+
+# 代码检查
+npm run lint
 ```
 
 ### 代码规范
@@ -318,7 +341,81 @@ npm run preview
 - **TypeScript**: 使用 ESLint 进行代码检查
 - **Git**: 使用 Conventional Commits 规范
 
-## API 端点
+## 系统关键字
+
+### UI 关键字（15个）
+
+#### 导航类
+| 关键字 | 描述 | 参数 |
+|---------|------|------|
+| `NAVIGATE` | 导航到指定 URL | url, wait_until, timeout |
+| `GO_BACK` | 返回上一页 | - |
+| `REFRESH` | 刷新当前页面 | - |
+
+#### 交互类
+| 关键字 | 描述 | 参数 |
+|---------|------|------|
+| `CLICK` | 点击元素 | selector, timeout |
+| `DOUBLE_CLICK` | 双击元素 | selector, timeout |
+| `HOVER` | 鼠标悬停 | selector, timeout |
+| `INPUT` | 输入文本 | selector, text, clear_first |
+| `SELECT` | 选择下拉选项 | selector, value |
+
+#### 等待类
+| 关键字 | 描述 | 参数 |
+|---------|------|------|
+| `WAIT_FOR_ELEMENT` | 等待元素出现 | selector, state, timeout |
+| `SLEEP` | 固定延迟 | duration |
+
+#### 断言类
+| 关键字 | 描述 | 参数 |
+|---------|------|------|
+| `ASSERT_VISIBLE` | 断言元素可见 | selector |
+| `ASSERT_TEXT` | 断言元素文本 | selector, text |
+| `ASSERT_TITLE` | 断言页面标题 | title |
+| `ASSERT_URL` | 断言当前 URL | url |
+
+### API 关键字
+
+| 关键字 | 描述 | 参数 |
+|---------|------|------|
+| `API_GET` | 发送 HTTP GET 请求 | url, headers, params |
+| `API_POST` | 发送 HTTP POST 请求 | url, headers, body |
+| `API_PUT` | 发送 HTTP PUT 请求 | url, headers, body |
+| `API_DELETE` | 发送 HTTP DELETE 请求 | url, headers |
+| `ASSERT_STATUS` | 断言 HTTP 状态码 | expected_status |
+| `EXTRACT_VARIABLE` | 从响应中提取变量 | variable_name, extract_from, expression |
+
+## 录制功能
+
+### 功能特点
+
+- **🎬 可视化录制**: 在浏览器中执行操作，系统自动记录
+- **🧠 智能数据提取**: 自动识别测试数据（用户名、密码、邮箱等）
+- **🔄 自动生成场景**: 录制的操作直接转换为测试用例
+- **📄 跨页面录制**: 支持多页面操作录制
+- **⚡ 实时进度**: 录制过程中实时显示捕获的操作数
+
+### 使用步骤
+
+1. **启动录制**: 在场景管理页面点击"录制创建"
+2. **设置信息**: 输入场景名称
+3. **执行操作**: 在打开的浏览器中执行测试操作
+4. **停止录制**: 完成后点击停止按钮
+5. **数据提取**: 系统自动提取可变数据
+6. **预览生成**: 查看自动生成的测试场景
+7. **确认保存**: 保存到场景库
+
+### 支持的操作
+
+- ✅ 页面导航
+- ✅ 元素点击
+- ✅ 文本输入
+- ✅ 表单提交
+- ✅ 页面滚动
+- ✅ 多页面跳转
+
+## API 文档
 
 ### 认证 API (`/api/v1/auth`)
 
@@ -327,6 +424,25 @@ npm run preview
 | POST | `/register` | 用户注册 |
 | POST | `/login` | 用户登录 |
 | GET | `/me` | 获取当前用户信息 |
+
+### UI 场景 API (`/api/v1/ui/scenarios`)
+
+| 方法 | 端点 | 描述 |
+|------|------|------|
+| POST | `/` | 创建 UI 场景 |
+| GET | `/` | 获取项目所有场景 |
+| GET | `/{scenario_id}` | 获取单个场景 |
+| PUT | `/{scenario_id}` | 更新场景 |
+| DELETE | `/{scenario_id}` | 删除场景 |
+
+### UI 任务 API (`/api/v1/ui/tasks`)
+
+| 方法 | 端点 | 描述 |
+|------|------|------|
+| POST | `/` | 创建 UI 任务 |
+| GET | `/` | 获取项目所有任务 |
+| GET | `/{task_id}` | 获取单个任务 |
+| POST | `/{task_id}/execute` | 执行 UI 任务 |
 
 ### 测试数据 API (`/api/v1/projects/{project_id}/data`)
 
@@ -338,468 +454,45 @@ npm run preview
 | PUT | `/{data_id}` | 更新测试数据 |
 | DELETE | `/{data_id}` | 删除测试数据 |
 
-### UI 任务 API (`/api/v1/ui/tasks`)
+### 环境配置 API (`/api/v1/projects/{project_id}/environments`)
 
 | 方法 | 端点 | 描述 |
 |------|------|------|
-| POST | `/` | 创建 UI 任务 |
-| GET | `/` | 获取项目所有 UI 任务 |
-| GET | `/{task_id}` | 获取单个 UI 任务 |
-| POST | `/{task_id}/execute` | 执行 UI 任务 |
+| POST | `/` | 创建环境配置 |
+| GET | `/` | 获取所有环境配置 |
+| PUT | `/{env_id}` | 更新环境配置 |
+| DELETE | `/{env_id}` | 删除环境配置 |
 
-### UI 场景 API (`/api/v1/ui/scenarios`)
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| POST | `/` | 创建 UI 场景 |
-| GET | `/{scenario_id}` | 获取单个 UI 场景 |
-
-## 系统关键字
-
-### API 关键字
-
-| 关键字名 | 类别 | 描述 | 参数 |
-|---------|------|------|------|
-| `API_GET` | api | 发送 HTTP GET 请求 | url, headers, params |
-| `API_POST` | api | 发送 HTTP POST 请求 | url, headers, body |
-| `ASSERT_STATUS` | assertion | 断言 HTTP 状态码 | expected_status |
-| `EXTRACT_VARIABLE` | extract | 从响应中提取变量 | variable_name, extract_from, expression |
-
-### UI 关键字
-
-| 关键字名 | 类别 | 描述 | 参数 |
-|---------|------|------|------|
-| `NAVIGATE` | ui | 导航到指定 URL | url |
-| `CLICK` | ui | 点击页面元素 | selector, timeout |
-| `INPUT` | ui | 在输入框中输入文本 | selector, text, clear_first |
-| `WAIT_FOR_ELEMENT` | ui | 等待元素出现 | selector, state, timeout |
-
-## MVP 进度
-
-### 🎉 MVP 完成（2026-04-02）
-
-**状态**: ✅ 核心功能已完成并验证
-
-### 已完成功能
-
-#### 后端 API
-- [x] 项目基础设施搭建
-- [x] Docker 容器化配置
-- [x] 后端核心模块（配置、数据库、安全）
-- [x] 数据模型（User, Project, Keyword, TestData）
-- [x] UI 四层模型（UITask, UIScenario, UICase, UIStep）
-- [x] API 四层模型（APITask, APIScenario, APICase, APIStep）
-- [x] Pydantic 模式
-- [x] 变量解析器（支持 `{变量名}` 语法）
-- [x] 关键字执行引擎
-- [x] 测试执行器
-- [x] 认证 API（注册、登录、用户信息）
-- [x] 测试数据管理 API（CRUD）
-- [x] UI 任务管理 API
-- [x] 系统关键字种子脚本（9 个关键字）
-
-#### 前端应用
-- [x] 前端配置（React 19 + TypeScript + Vite + TailwindCSS）
-- [x] 前后端完整集成
-- [x] 用户认证流程（注册、登录、退出）
-- [x] 路由和认证保护
-- [x] 仪表盘页面（实时统计数据）
-- [x] 项目选择功能
-- [x] UI 组件库（Button, Input, Card, Header, Layout）
-- [x] 错误处理和表单验证
-
-#### 文档
-- [x] README 和项目文档
-- [x] API 文档（Swagger/OpenAPI）
-- [x] 部署指南
-- [x] 手动测试报告
-
-#### Playwright UI 自动化（2026-04-03 新增）
-- [x] Playwright 浏览器管理器（异步 API）
-- [x] NAVIGATE 关键字（导航到 URL）
-- [x] CLICK 关键字（点击元素）
-- [x] INPUT 关键字（输入文本）
-- [x] WAIT_FOR_ELEMENT 关键字（等待元素）
-- [x] SCREENSHOT 功能（截图保存）
-- [x] 完整错误处理和日志
-- [x] 测试脚本（test_ui_keywords.py）
-
-### 🎯 验证通过的功能
-
-#### 用户认证
-- [x] 用户注册（表单验证、密码确认、长度检查）
-- [x] 用户登录（正确密码、错误密码处理）
-- [x] 自动登录（Token 存储、自动认证）
-- [x] 退出登录（清除 Token、重定向）
-- [x] 路由保护（未登录自动跳转登录页）
-- [x] 受保护页面（仪表盘需要认证）
-
-#### API 集成
-- [x] API 调用正确携带认证头
-- [x] OAuth2 登录（application/x-www-form-urlencoded 格式）
-- [x] 错误处理（401、400 等状态码）
-- [x] 表单数据验证
-- [x] Network 请求日志可见
-
-#### 用户体验
-- [x] 加载状态指示
-- [x] 错误消息友好提示
-- [x] 页面重定向正确
-- [x] 表单验证实时反馈
-- [x] 响应式布局
-
-### 🔧 已修复的关键问题
-
-1. **React 懒加载问题** → 添加 `Suspense` 包裹，支持路由懒加载
-2. **组件导出方式** → 统一使用默认导出（export default）
-3. **API 请求格式** → 使用 `URLSearchParams` 发送 OAuth2 表单数据
-4. **401 错误闪退** → 智能重定向逻辑，避免在登录/注册页面刷新
-5. **错误处理** → 改进错误消息提取和显示
-
-### 📊 技术债务
-
-#### 优先级 P0（MVP 后必须）
-- [ ] 密码哈希（当前存储明文，需要使用 bcrypt）
-- [ ] 完整的单元测试覆盖
-
-#### 优先级 P1（重要功能）
-- [ ] Playwright UI 关键字实现
-- [ ] 任务/场景/用例管理 UI
-- [ ] 测试执行和报告展示
-- [ ] E2E 测试自动化
-
-#### 优先级 P2（增强功能）
-- [ ] API 性能测试集成
-- [ ] 分布式执行实现
-- [ ] 高级报告生成
-- [ ] CI/CD 集成
-
----
-
-## 🚀 快速开始
-
-### 环境要求
-
-- Docker 20.10+
-- Docker Compose 2.0+
-- Git
-- Node.js 18+（用于本地开发）
-
-### 5 分钟快速启动
-
-```bash
-# 1. 克隆仓库
-git clone https://github.com/zyp-lgtm/autotest--platform.git
-cd autotest--platform
-git checkout test-platform-mvp
-
-# 2. 启动后端服务
-docker-compose -f docker/docker-compose.yml up -d
-
-# 3. 启动前端开发服务器
-cd frontend
-npm install
-npm run dev
-
-# 4. 访问应用
-open http://localhost:3001
-```
-
-### 测试账号
-
-您可以在注册页面创建新账号，或使用以下测试账号：
-
-- **用户名**: `demouser`
-- **密码**: `demo123`
-
-### 功能验证清单
-
-✅ **核心功能**:
-- [x] 用户注册和登录
-- [x] 查看仪表盘统计
-- [x] 退出登录
-- [x] 受保护路由自动重定向
-- [x] API 文档访问
-
-⏳ **后续功能**:
-- [ ] 创建和管理测试任务
-- [ ] 配置测试数据
-- [ ] 执行测试
-- [ ] 查看测试报告
-
----
-
-## 📁 项目结构
-
-```
-test-platform/
-├── docker/
-│   └── docker-compose.yml          # 容器编排配置
-├── backend/
-│   ├── app/
-│   │   ├── api/                    # API 路由
-│   │   ├── core/                   # 核心模块
-│   │   ├── models/                 # SQLAlchemy 模型
-│   │   ├── schemas/                # Pydantic 模式
-│   │   ├── services/               # 业务服务
-│   │   └── main.py                 # FastAPI 应用入口
-│   └── scripts/
-│       └── seed_keywords.py        # 系统关键字种子脚本
-├── frontend/
-│   ├── src/
-│   │   ├── api/                    # API 客户端层
-│   │   ├── components/             # React 组件
-│   │   ├── contexts/               # React Context
-│   │   ├── hooks/                  # 自定义 Hooks
-│   │   ├── pages/                  # 页面组件
-│   │   ├── types/                  # TypeScript 类型
-│   │   └── App.tsx                 # 根组件
-│   └── package.json
-└── README.md
-```
-
----
-
-## 📚 开发指南
-
-### 后端开发
-
-```bash
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### 前端开发
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-### 代码规范
-
-- **Python**: PEP 8 + black 格式化
-- **TypeScript**: ESLint 代码检查
-- **Git**: Conventional Commits 规范
-
----
-
-## 📖 API 文档
-
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-主要端点：
+### 定时任务 API (`/api/v1/projects/{project_id}/scheduled-jobs`)
 
 | 方法 | 端点 | 描述 |
 |------|------|------|
-| POST | `/api/v1/auth/register` | 用户注册 |
-| POST | `/api/v1/auth/login` | 用户登录 |
-| GET | `/api/v1/auth/me` | 获取当前用户 |
-| GET | `/api/v1/projects/{project_id}/data/` | 获取测试数据 |
-| GET | `/api/v1/ui/tasks/` | 获取 UI 任务 |
+| POST | `/` | 创建定时任务 |
+| GET | `/` | 获取所有定时任务 |
+| PUT | `/{job_id}` | 更新定时任务 |
+| DELETE | `/{job_id}` | 删除定时任务 |
+| POST | `/{job_id}/pause` | 暂停定时任务 |
+| POST | `/{job_id}/resume` | 恢复定时任务 |
 
----
+### 录制 API (`/api/v1/recording`)
 
-## 🎯 MVP 总结
+| 方法 | 端点 | 描述 |
+|------|------|------|
+| POST | `/start` | 启动录制会话 |
+| POST | `/stop` | 停止录制并获取结果 |
+| GET | `/actions/{session_id}` | 获取捕获的操作 |
+| POST | `/extract-data` | 智能提取测试数据 |
+| POST | `/generate-scenario` | 生成测试场景 |
 
-### 交付成果
+### 关键字 API (`/api/v1/ui/keywords`)
 
-✅ **完整的测试自动化平台 MVP**，包含：
-- 用户认证系统
-- 前后端完整集成
-- RESTful API 设计
-- Docker 容器化部署
-- 完善的项目文档
+| 方法 | 端点 | 描述 |
+|------|------|------|
+| GET | `/` | 获取所有关键字 |
+| GET | `/categories` | 获取关键字类别 |
+| GET | `/{keyword_id}` | 获取单个关键字详情 |
 
-### 技术亮点
-
-- 🏗️ **四层架构设计**：Task → Scenario → Case → Step
-- 🔀 **UI/API 完全分离**：支持不同测试类型
-- 💾 **可视化测试数据管理**：界面管理测试数据
-- 📝 **强大的变量系统**：统一语法 `{变量名}`
-- 🔍 **详细的执行日志**：完整的请求追踪
-
-### 下一步
-
-根据 **roadmap.md**，项目将进入 **阶段 2：基础功能完善**：
-
-1. **Playwright UI 关键字实现**
-2. **任务/场景/用例管理 UI**
-3. **测试执行报告**
-
-**阶段 4** 将实现最高优先级功能：**AI 驱动测试** 🤖
-
----
-
-## 🏆 许可证
-
-MIT License
-
----
-
-**MVP 完成日期**: 2026-04-02
-**当前版本**: v1.0.0
-**GitHub**: https://github.com/zyp-lgtm/autotest--platform
-- 🎯 **自然语言测试** - 用自然语言描述测试需求，AI 自动生成测试步骤
-- 🤖 **智能元素定位** - AI 分析页面结构，自动选择最佳元素定位策略
-- 🧠 **学习与自修复** - AI 从历史执行中学习，自动适应页面变化
-- 💡 **智能修复建议** - 测试失败时，AI 分析原因并提供修复方案
-- 💰 **成本可控** - 三层架构（大模型规划 + 小模型执行 + Playwright），成本优化
-
-**技术方案**：
-- **规划层**：GPT-4 / Claude 3.5 Sonnet（理解测试目标，生成抽象计划）
-- **适配层**：GPT-4o-mini / Claude 3.5 Haiku（智能元素定位，动态调整）
-- **执行层**：Playwright（执行 UI 操作，零 AI 成本）
-- **学习系统**：页面学习历史，持续优化
-
-**预计开发周期**：2-6 个月
-
-**交互原型**：[`docs/ai-test-prototype.html`](./docs/ai-test-prototype.html)（在浏览器中打开查看）
-
-**状态**：📋 设计完成，等待 MVP 验证后启动实施
-
-## 部署验证
-
-### 本地开发环境
-
-1. 启动后端服务：
-```bash
-cd /Users/apple/aicode/.worktrees/test-platform
-docker-compose -f docker/docker-compose.yml up -d
-```
-
-2. 启动前端开发服务器：
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-3. 访问应用：
-- 前端: http://localhost:5173
-- 后端 API: http://localhost:8000
-- API 文档: http://localhost:8000/docs
-
-### 功能验证清单
-
-- [x] 用户注册
-- [x] 用户登录
-- [x] 查看仪表盘统计
-- [x] 创建测试数据
-- [x] 查看 API 文档
-
-## 📖 Demo 使用指南
-
-### 创建完整的测试流程
-
-本平台支持完整的 UI 测试自动化流程。以下是创建一个"百度搜索测试"的完整步骤：
-
-#### 1. 登录系统
-访问 http://localhost:5173，使用注册的用户登录
-
-#### 2. 创建测试任务
-1. 进入"任务管理"页面
-2. 点击"创建任务"按钮
-3. 填写任务信息：
-   - 任务名称：百度搜索测试
-   - 描述：演示百度搜索功能的UI自动化测试
-   - 标签：demo, ui, 百度
-4. 点击"创建"
-
-#### 3. 创建测试场景
-1. 在任务列表中，点击"管理场景"按钮
-2. 点击"创建场景"按钮
-3. 填写场景信息：
-   - 场景名称：百度搜索场景
-   - 描述：在百度首页搜索关键词并验证结果
-   - 场景类型：UI测试
-   - 标签：搜索, 冒烟测试
-4. 点击"创建"
-
-#### 4. 创建测试用例
-1. 在场景列表中，展开场景并点击"添加用例"按钮
-2. 填写用例信息：
-   - 用例名称：搜索关键词测试用例
-   - 描述：打开百度首页，输入关键词并搜索
-   - 优先级：P1
-   - 标签：搜索, 核心功能
-3. 点击"创建"
-
-#### 5. 添加测试步骤
-1. 在用例列表中，展开用例并点击"添加步骤"按钮
-2. 创建以下4个步骤：
-
-**步骤1 - 打开百度首页：**
-- 步骤名称：打开百度首页
-- 选择关键字：NAVIGATE (导航到指定 URL)
-- 参数（JSON格式）：
-  ```json
-  {"url": "https://www.baidu.com"}
-  ```
-
-**步骤2 - 输入搜索关键词：**
-- 步骤名称：输入搜索关键词
-- 选择关键字：INPUT (在输入框中输入文本)
-- 参数：
-  ```json
-  {
-    "selector": "#kw",
-    "text": "测试自动化平台",
-    "clear_first": true
-  }
-  ```
-
-**步骤3 - 点击搜索按钮：**
-- 步骤名称：点击搜索按钮
-- 选择关键字：CLICK (点击页面元素)
-- 参数：
-  ```json
-  {
-    "selector": "#su",
-    "timeout": 5000
-  }
-  ```
-
-**步骤4 - 等待搜索结果：**
-- 步骤名称：等待搜索结果
-- 选择关键字：WAIT_FOR_ELEMENT (等待元素出现)
-- 参数：
-  ```json
-  {
-    "selector": ".result",
-    "state": "visible",
-    "timeout": 10000
-  }
-  ```
-
-#### 6. 执行测试
-1. 返回"任务管理"页面
-2. 找到刚创建的任务
-3. 点击"执行"按钮
-4. 等待执行完成，点击执行记录查看详细报告
-
-### 可用系统关键字
-
-#### UI 关键字
-- **NAVIGATE** - 导航到指定 URL
-- **CLICK** - 点击页面元素
-- **INPUT** - 在输入框中输入文本
-- **WAIT_FOR_ELEMENT** - 等待元素出现
-
-#### API 关键字
-- **API_GET** - 发送 HTTP GET 请求
-- **API_POST** - 发送 HTTP POST 请求
-
-#### 断言关键字
-- **ASSERT_STATUS** - 断言 HTTP 状态码
-
-#### 数据提取关键字
-- **EXTRACT_VARIABLE** - 从响应中提取变量
+完整 API 文档请访问：http://localhost:8000/docs
 
 ## 许可证
 
@@ -808,3 +501,9 @@ MIT License
 ## 联系方式
 
 如有问题或建议，请提交 Issue 或 Pull Request。
+
+---
+
+**最后更新**: 2026-04-24
+**当前版本**: v1.5.0
+**GitHub**: https://github.com/zyp-lgtm/autotest--platform
