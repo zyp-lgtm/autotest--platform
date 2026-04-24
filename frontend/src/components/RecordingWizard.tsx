@@ -37,7 +37,7 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
 
   // 启动轮询
   useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null
+    let intervalId: ReturnType<typeof setInterval> | null = null
 
     if (isRecording && sessionId) {
       intervalId = setInterval(() => {

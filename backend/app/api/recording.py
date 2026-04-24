@@ -6,14 +6,14 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 
-from ...core.database import get_db
-from ...models.user import User
-from ...core.security import get_authenticated_user
-from ..utils import validate_and_fetch
+from ..core.database import get_db
+from ..models.user import User
+from ..core.security import get_authenticated_user
+from .utils import validate_and_fetch
 
-from ...services.recorder import browser_recorder, CapturedAction
-from ...services.recording.converter import recording_converter, GeneratedScenario
-from ...services.recording.data_extractor import data_extractor, DataPattern
+from ..services.recorder import browser_recorder, CapturedAction
+from ..services.recording.converter import recording_converter, GeneratedScenario
+from ..services.recording.data_extractor import data_extractor, DataPattern
 
 router = APIRouter(prefix="/recording", tags=["录制管理"])
 

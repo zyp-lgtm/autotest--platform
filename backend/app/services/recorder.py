@@ -88,7 +88,7 @@ class BrowserRecorder:
             document.addEventListener('click', function(e) {
                 var selector = window.__recording.getSelector(e.target);
                 window.__recording.captureAction({
-                    type: 'click',
+                    action_type: 'click',
                     selector: selector,
                     element_tag: e.target.tagName,
                     element_text: e.target.textContent ? e.target.textContent.trim().substring(0, 50) : null,
@@ -101,7 +101,7 @@ class BrowserRecorder:
             document.addEventListener('input', function(e) {
                 var selector = window.__recording.getSelector(e.target);
                 window.__recording.captureAction({
-                    type: 'input',
+                    action_type: 'input',
                     selector: selector,
                     value: e.target.value,
                     element_tag: e.target.tagName,
@@ -117,7 +117,7 @@ class BrowserRecorder:
                 if (location.href !== lastUrl) {
                     lastUrl = location.href;
                     window.__recording.captureAction({
-                        type: 'navigate',
+                        action_type: 'navigate',
                         selector: '',
                         page_url: location.href,
                         page_title: document.title
@@ -154,11 +154,11 @@ class BrowserRecorder:
                 timezone_id='Asia/Shanghai'
             )
 
+            # ⚠️ 关键修复：在 context 级别注入脚本，确保所有页面都有效
+            await context.add_init_script(self._recording_script)
+
             # 创建新页面
             page = await context.new_page()
-
-            # 注入录制脚本
-            await page.add_init_script(self._recording_script)
 
             # 创建录制会话
             session = RecordingSession(
@@ -176,13 +176,21 @@ class BrowserRecorder:
 
             # 打开一个空白页面开始
             await page.goto("about:blank")
-            await page.evaluate("""
+            await page.evaluate(f"""
                 document.body.innerHTML = `
                     <div style="font-family: Arial; padding: 40px; text-align: center;">
                         <h1>🎬 测试录制已启动</h1>
                         <p style="font-size: 16px; color: #666; margin: 20px 0;">
                             请在地址栏输入您要测试的网页URL
                         </p>
+                        <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; display: inline-block; margin: 20px 0;">
+                            <p style="margin: 10px 0; color: #2e7d32; font-weight: bold;">
+                                ✅ 录制脚本已加载
+                            </p>
+                            <p style="margin: 5px 0; color: #666; font-size: 14px;">
+                                Session ID: {session_id}
+                            </p>
+                        </div>
                         <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; display: inline-block;">
                             <p style="margin: 10px 0; color: #666;">
                                 <strong>💡 使用提示：</strong>
@@ -195,26 +203,63 @@ class BrowserRecorder:
                             </ul>
                         </div>
                         <p style="margin-top: 20px; color: #999;">
-                            已捕获 <span id="action-count">0</span> 个操作
+                            已捕获 <span id="action-count" style="font-size: 24px; font-weight: bold; color: #2e7d32;">0</span> 个操作
                         </p>
+                        <button onclick="testCapture()" style="margin-top: 20px; padding: 10px 20px; background: #2e7d32; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                            🧪 测试捕获功能
+                        </button>
+                        <p id="test-result" style="margin-top: 10px; color: #666;"></p>
                     </div>
                 `;
 
+                // 添加测试捕获功能
+                window.testCapture = function() {{
+                    const testEl = document.getElementById('test-result');
+                    if (window.__recording) {{
+                        const beforeCount = window.__recording.actions.length;
+                        window.__recording.captureAction({{
+                            action_type: 'test',
+                            selector: '#test-button',
+                            page_url: window.location.href,
+                            page_title: document.title
+                        }});
+                        const afterCount = window.__recording.actions.length;
+                        testEl.innerHTML = '<span style="color: #2e7d32;">✅ 测试成功！捕获功能正常工作</span>';
+                        testEl.style.fontWeight = 'bold';
+                    }} else {{
+                        testEl.innerHTML = '<span style="color: #c62828;">❌ 测试失败！录制脚本未加载</span>';
+                        testEl.style.fontWeight = 'bold';
+                    }}
+                }};
+
                 // 添加停止录制的全局函数
-                window.stopRecording = function() {
-                    fetch('/api/recording/stop', {
+                window.stopRecording = function() {{
+                    fetch('/api/recording/stop', {{
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ session_id: '${session_id}' })
-                    });
-                };
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{ session_id: '{session_id}' }})
+                    }});
+                }};
 
                 // 定期更新操作计数
-                setInterval(() => {
+                setInterval(() => {{
                     const count = window.__recording ? window.__recording.actions.length : 0;
                     const countEl = document.getElementById('action-count');
                     if (countEl) countEl.textContent = count;
-                }, 1000);
+                }}, 1000);
+
+                // 立即检查录制脚本状态
+                setTimeout(() => {{
+                    const statusEl = document.getElementById('test-result');
+                    if (window.__recording) {{
+                        console.log('[录制] ✅ 录制脚本已正确加载');
+                    }} else {{
+                        console.error('[录制] ❌ 录制脚本未加载！');
+                        if (statusEl) {{
+                            statusEl.innerHTML = '<span style="color: #c62828;">⚠️ 警告：录制脚本未加载</span>';
+                        }}
+                    }}
+                }}, 500);
             """)
 
             print(f"✅ 录制会话已启动: {session_id}")
@@ -236,16 +281,22 @@ class BrowserRecorder:
                 window.__recording ? window.__recording.actions : []
             """)
 
+            print(f"📊 从浏览器获取到 {len(actions_data)} 个原始操作")
+
             # 解析操作
-            session.captured_actions = [
-                CapturedAction(**action) for action in actions_data
-            ]
+            session.captured_actions = []
+            for action_data in actions_data:
+                try:
+                    action = CapturedAction(**action_data)
+                    session.captured_actions.append(action)
+                except Exception as e:
+                    print(f"⚠️ 解析操作失败: {e}, 数据: {action_data}")
 
             # 更新会话状态
             session.status = "processing"
             session.completed_at = datetime.now()
 
-            print(f"📹 录制已完成，捕获 {len(session.captured_actions)} 个操作")
+            print(f"📹 录制已完成，成功捕获 {len(session.captured_actions)} 个操作")
 
             # 关闭浏览器
             if session.browser:
@@ -261,6 +312,8 @@ class BrowserRecorder:
 
         except Exception as e:
             print(f"❌ 停止录制失败: {e}")
+            import traceback
+            traceback.print_exc()
             session.status = "error"
             raise
 

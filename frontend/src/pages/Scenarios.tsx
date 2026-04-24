@@ -467,6 +467,63 @@ export default function Scenarios() {
         </div>
       )}
 
+      {/* 创建方式选择对话框 */}
+      {showCreationModeSelector && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-3xl w-full p-6">
+            <h2 className="text-2xl font-bold mb-2">选择场景创建方式</h2>
+            <p className="text-gray-600 mb-6">选择适合您的创建方式，录制创建后可继续手工调整</p>
+
+            <div className="grid grid-cols-2 gap-6">
+              {/* 手动创建 */}
+              <div
+                onClick={() => selectCreationMode('manual')}
+                className="border-2 border-gray-200 rounded-lg p-6 cursor-pointer hover:border-blue-500 hover:shadow-lg transition"
+              >
+                <div className="text-5xl mb-3">✏️</div>
+                <h3 className="text-xl font-semibold mb-2">手动创建</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  逐步创建用例和步骤，精确控制每个细节
+                </p>
+                <ul className="text-sm space-y-1 text-gray-700">
+                  <li>✓ 完全控制每个步骤</li>
+                  <li>✓ 适合复杂测试逻辑</li>
+                  <li>✓ 支持所有高级功能</li>
+                  <li>✓ 可复用测试数据</li>
+                </ul>
+              </div>
+
+              {/* 录制创建 */}
+              <div
+                onClick={() => selectCreationMode('recording')}
+                className="border-2 border-gray-200 rounded-lg p-6 cursor-pointer hover:border-green-500 hover:shadow-lg transition"
+              >
+                <div className="text-5xl mb-3">🎬</div>
+                <h3 className="text-xl font-semibold mb-2">录制创建</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  在浏览器中操作流程，自动生成测试步骤
+                </p>
+                <ul className="text-sm space-y-1 text-gray-700">
+                  <li>✓ 快速生成基础步骤</li>
+                  <li>✓ 自动识别元素选择器</li>
+                  <li>✓ 智能提取测试数据</li>
+                  <li>✓ 可后续手工调整</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={() => setShowCreationModeSelector(false)}
+                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 模态框 */}
       {modalType && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -477,63 +534,6 @@ export default function Scenarios() {
                 {modalType === 'case' && (editingCase ? '编辑用例' : '创建用例')}
                 {modalType === 'step' && (editingStep ? '编辑步骤' : '创建步骤')}
               </h2>
-
-              {/* 创建方式选择对话框 */}
-              {showCreationModeSelector && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                  <div className="bg-white rounded-lg max-w-3xl w-full p-6">
-                    <h2 className="text-2xl font-bold mb-2">选择场景创建方式</h2>
-                    <p className="text-gray-600 mb-6">选择适合您的创建方式，录制创建后可继续手工调整</p>
-
-                    <div className="grid grid-cols-2 gap-6">
-                      {/* 手动创建 */}
-                      <div
-                        onClick={() => selectCreationMode('manual')}
-                        className="border-2 border-gray-200 rounded-lg p-6 cursor-pointer hover:border-blue-500 hover:shadow-lg transition"
-                      >
-                        <div className="text-5xl mb-3">✏️</div>
-                        <h3 className="text-xl font-semibold mb-2">手动创建</h3>
-                        <p className="text-sm text-gray-600 mb-4">
-                          逐步创建用例和步骤，精确控制每个细节
-                        </p>
-                        <ul className="text-sm space-y-1 text-gray-700">
-                          <li>✓ 完全控制每个步骤</li>
-                          <li>✓ 适合复杂测试逻辑</li>
-                          <li>✓ 支持所有高级功能</li>
-                          <li>✓ 可复用测试数据</li>
-                        </ul>
-                      </div>
-
-                      {/* 录制创建 */}
-                      <div
-                        onClick={() => selectCreationMode('recording')}
-                        className="border-2 border-gray-200 rounded-lg p-6 cursor-pointer hover:border-green-500 hover:shadow-lg transition"
-                      >
-                        <div className="text-5xl mb-3">🎬</div>
-                        <h3 className="text-xl font-semibold mb-2">录制创建</h3>
-                        <p className="text-sm text-gray-600 mb-4">
-                          在浏览器中操作流程，自动生成测试步骤
-                        </p>
-                        <ul className="text-sm space-y-1 text-gray-700">
-                          <li>✓ 快速生成基础步骤</li>
-                          <li>✓ 自动识别元素选择器</li>
-                          <li>✓ 智能提取测试数据</li>
-                          <li>✓ 可后续手工调整</li>
-                        </ul>
-                      </div>
-                    </div>
-
-                    <div className="mt-6 flex justify-center">
-                      <button
-                        onClick={() => setShowCreationModeSelector(false)}
-                        className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                      >
-                        取消
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {modalType === 'recording' && taskId && (
                 <RecordingWizard
