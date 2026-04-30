@@ -223,6 +223,13 @@ async def delete_scenario(
             task.scenario_ids = [sid for sid in scenario_ids_list if sid != str(scenario_id_uuid)]
             db.commit()
 
+        # 清除场景列表缓存 - 🔥 修复缓存问题
+        try:
+            invalidate_pattern("list_scenarios*")
+            logger.info(f"已清除场景列表缓存，删除场景: {scenario_id}")
+        except Exception as e:
+            logger.warning(f"清除缓存失败: {e}")
+
         return {"message": "场景已删除"}
     except HTTPException:
         raise
@@ -397,6 +404,13 @@ async def delete_case(
             scenario.case_ids = [cid for cid in case_ids_list if cid != str(case_id_uuid)]
             db.commit()
 
+        # 清除用例列表缓存 - 🔥 修复缓存问题
+        try:
+            invalidate_pattern("list_cases*")
+            logger.info(f"已清除用例列表缓存，删除用例: {case_id}")
+        except Exception as e:
+            logger.warning(f"清除缓存失败: {e}")
+
         return {"message": "用例已删除"}
     except HTTPException:
         raise
@@ -563,6 +577,13 @@ async def delete_step(
             # 移除删除的步骤 ID
             case_item.step_ids = [sid for sid in step_ids_list if sid != str(step_id_uuid)]
             db.commit()
+
+        # 清除步骤列表缓存 - 🔥 修复缓存问题
+        try:
+            invalidate_pattern("list_steps*")
+            logger.info(f"已清除步骤列表缓存，删除步骤: {step_id}")
+        except Exception as e:
+            logger.warning(f"清除缓存失败: {e}")
 
         return {"message": "步骤已删除"}
     except HTTPException:
