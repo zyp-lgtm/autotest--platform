@@ -1,13 +1,19 @@
 """
 录制管理 API
 """
+import uuid
+import json
+import logging
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 
+logger = logging.getLogger(__name__)
+
 from ..core.database import get_db
 from ..models.user import User
+from ..models.ui_task import UITask
 from ..core.security import get_authenticated_user
 from .utils import validate_and_fetch
 
@@ -207,8 +213,21 @@ async def generate_scenario(
             },
             "test_data": test_data
         }
+    except NameError as ne:
+        # 捕获NameError并输出详细信息
+        import traceback
+        import sys
+        print(f"❌ NameError: {ne}", file=sys.stderr)
+        print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
+        error_detail = f"NameError: {str(ne)}\n\n{traceback.format_exc()}"
+        raise HTTPException(status_code=500, detail=error_detail)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"生成场景失败: {str(e)}")
+        import traceback
+        import sys
+        print(f"❌ Exception: {e}", file=sys.stderr)
+        print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
+        error_detail = f"生成场景失败: {str(e)}\n\n{traceback.format_exc()}"
+        raise HTTPException(status_code=500, detail=error_detail)
 
 
 @router.get("/sessions")
@@ -262,3 +281,226 @@ async def health_check():
         "active_sessions": len(browser_recorder.sessions),
         "available": True
     }
+
+
+class SaveScenarioRequest(BaseModel):
+    """保存录制的场景请求"""
+    task_id: str
+    project_id: str
+    scenario_name: str
+    scenario_description: str
+    scenario_type: str
+    cases: List[Dict[str, Any]]
+
+
+@router.post("/save-scenario")
+async def save_recorded_scenario(
+    request: SaveScenarioRequest,
+    user: User = Depends(get_authenticated_user),
+    db: Session = Depends(get_db)
+):
+    """保存录制的场景到数据库"""
+    try:
+        from ..models.ui_task import UIScenario, UICase, UIStep
+        from ..models.keyword import Keyword
+
+        # 验证 task_id 和获取任务信息
+        task = validate_and_fetch(db, UITask, request.task_id, "任务")
+
+        # 验证 project_id
+        try:
+            project_id_uuid = uuid.UUID(request.project_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="无效的项目ID格式")
+
+        if task.project_id != project_id_uuid:
+            raise HTTPException(status_code=400, detail="项目ID不匹配")
+
+        # 验证并转换 task_id
+        task_id_uuid = uuid.UUID(request.task_id)
+
+        # 创建场景
+        scenario = UIScenario(
+            task_id=task_id_uuid,
+            project_id=project_id_uuid,
+            name=request.scenario_name,
+            description=request.scenario_description,
+            scenario_type=request.scenario_type,
+            execution_order=0,
+            case_ids=[],
+            tags=[]
+        )
+        db.add(scenario)
+        db.flush()  # 获取 scenario.id
+
+        # 创建用例和步骤
+        case_ids = []
+        for case_data in request.cases:
+            # 创建用例
+            ui_case = UICase(
+                project_id=project_id_uuid,
+                scenario_id=scenario.id,
+                name=case_data["name"],
+                description=case_data.get("description", ""),
+                case_type="ui",
+                step_ids=[],
+                priority="medium",
+                tags=[],
+                data_bindings={},
+                browser_config={}
+            )
+            db.add(ui_case)
+            db.flush()  # 获取 case.id
+
+            # 创建步骤
+            step_ids = []
+            total_steps = len(case_data.get("steps", []))
+            skipped_steps = 0
+            for step_data in case_data.get("steps", []):
+                # 跳过没有 keyword_id 的步骤（这些是自动生成的断言步骤，尚未实现）
+                if not step_data.get("keyword_id"):
+                    skipped_steps += 1
+                    continue
+
+                # 查找关键字ID（从名称映射到ID）
+                keyword_name = step_data["keyword_id"].replace("kw_", "")
+                keyword = db.query(Keyword).filter(
+                    Keyword.name == keyword_name
+                ).first()
+
+                print(f"DEBUG: 处理步骤: keyword_name={keyword_name}, found={keyword is not None}")
+
+                if not keyword:
+                    # 如果关键字不存在，使用默认关键字
+                    keyword = db.query(Keyword).filter(Keyword.name == "CLICK").first()
+                    if not keyword:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"关键字 {keyword_name} 不存在"
+                        )
+
+                step = UIStep(
+                    case_id=ui_case.id,
+                    scenario_id=scenario.id,
+                    task_id=task_id_uuid,
+                    step_order=step_data["step_order"],
+                    keyword_id=keyword.id,
+                    step_name=step_data["step_name"],
+                    step_type="action",
+                    parameters=step_data.get("parameters", {}),
+                    enabled=step_data.get("enabled", True),
+                    continue_on_failure=step_data.get("continue_on_failure", False),
+                    screenshot_config={}
+                )
+                db.add(step)
+                db.flush()  # 立即flush以获取step.id
+                step_ids.append(str(step.id))
+
+            print(f"DEBUG: 用例 {case_data['name']}: 总步骤={total_steps}, 跳过={skipped_steps}, 保存={len(step_ids)}")
+
+            # 更新用例的 step_ids
+            ui_case.step_ids = step_ids
+
+            case_ids.append(str(ui_case.id))
+
+        # 更新场景的 case_ids
+        scenario.case_ids = case_ids
+
+        # 更新任务的 scenario_ids
+        # 使用原生 SQL 直接更新，避免 ORM 会话问题
+        from sqlalchemy import text
+
+        scenario_id_str = str(scenario.id)
+
+        logger.info(f"DEBUG: 准备更新任务 {task_id_uuid} 的 scenario_ids，添加场景 {scenario_id_str}")
+
+        # SQLite 存储的 UUID 没有横线，需要去除横线
+        task_id_str = str(task_id_uuid).replace('-', '')
+
+        # 先查询当前的 scenario_ids
+        result = db.execute(
+            text("SELECT scenario_ids FROM ui_tasks WHERE id = :task_id"),
+            {"task_id": task_id_str}
+        )
+        row = result.fetchone()
+
+        if row:
+            current_ids_json = row[0]
+            logger.info(f"DEBUG: 当前 scenario_ids (原始): {current_ids_json}")
+
+            # 解析 JSON
+            try:
+                if isinstance(current_ids_json, str):
+                    current_ids = json.loads(current_ids_json)
+                else:
+                    current_ids = current_ids_json if current_ids_json else []
+            except Exception as e:
+                logger.info(f"DEBUG: JSON 解析失败: {e}，使用空列表")
+                current_ids = []
+
+            # 确保是列表
+            if not isinstance(current_ids, list):
+                current_ids = []
+
+            logger.info(f"DEBUG: 解析后的 scenario_ids: {current_ids}")
+
+            # 添加新场景 ID
+            if scenario_id_str not in current_ids:
+                current_ids.append(scenario_id_str)
+                new_ids_json = json.dumps(current_ids)
+
+                logger.info(f"DEBUG: 准备更新为: {new_ids_json}")
+
+                # 使用原生 SQL 直接更新
+                update_result = db.execute(
+                    text("UPDATE ui_tasks SET scenario_ids = :scenario_ids WHERE id = :task_id"),
+                    {"scenario_ids": new_ids_json, "task_id": task_id_str}
+                )
+
+                logger.info(f"DEBUG: 更新行数: {update_result.rowcount}")
+
+                # 立即提交
+                db.commit()
+                logger.info(f"DEBUG: 数据库已提交")
+
+                # 验证更新
+                verify_result = db.execute(
+                    text("SELECT scenario_ids FROM ui_tasks WHERE id = :task_id"),
+                    {"task_id": task_id_str}
+                )
+                verify_row = verify_result.fetchone()
+                logger.info(f"DEBUG: 验证查询结果: {verify_row[0] if verify_row else 'None'}")
+            else:
+                logger.info(f"DEBUG: 场景 ID 已存在，跳过")
+        else:
+            logger.info(f"DEBUG: 未找到任务 {task_id_uuid}")
+
+        # 一次性提交所有更改（如果还没有提交）
+        db.commit()
+        logger.info(f"DEBUG: 最终提交完成")
+
+        # 重新加载场景数据以返回完整信息
+        db.refresh(scenario)
+
+        return {
+            "id": str(scenario.id),
+            "task_id": str(scenario.task_id),
+            "project_id": str(scenario.project_id),
+            "name": scenario.name,
+            "description": scenario.description,
+            "scenario_type": scenario.scenario_type,
+            "execution_order": scenario.execution_order,
+            "case_ids": scenario.case_ids,
+            "tags": scenario.tags,
+            "created_at": scenario.created_at.isoformat() if scenario.created_at else None
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        raise HTTPException(
+            status_code=500,
+            detail=f"保存场景失败: {str(e)}\n\n{traceback.format_exc()}"
+        )

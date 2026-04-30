@@ -250,7 +250,7 @@ class RecordingConverter:
     async def _get_keyword_id(self, keyword_name: str) -> str:
         """获取关键字ID（从缓存或数据库）"""
         if keyword_name in self.keyword_cache:
-            return self.keyword_cache[key_name]
+            return self.keyword_cache[keyword_name]
 
         # TODO: 从数据库查询
         # from app.core.database import SessionLocal

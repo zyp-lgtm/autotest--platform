@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { scenariosApi, Scenario, Case, Step } from '../api/scenarios'
 import { keywordsApi, Keyword } from '../api/keywords'
+import { tasksApi, UITask } from '../api/tasks'
 import ScenarioForm from '../components/ScenarioForm'
 import CaseForm from '../components/CaseForm'
 import StepForm from '../components/StepForm'
@@ -16,6 +17,7 @@ export default function Scenarios() {
   const [cases, setCases] = useState<Record<string, Case[]>>({})
   const [steps, setSteps] = useState<Record<string, Step[]>>({})
   const [keywords, setKeywords] = useState<Record<string, Keyword>>({})
+  const [task, setTask] = useState<UITask | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedScenarios, setExpandedScenarios] = useState<Record<string, boolean>>({})
@@ -39,6 +41,10 @@ export default function Scenarios() {
     try {
       setLoading(true)
       setError(null)
+
+      // 加载任务信息以获取 project_id
+      const taskData = await tasksApi.getTask(taskId)
+      setTask(taskData)
 
       const scenariosData = await scenariosApi.getScenarios(taskId)
       setScenarios(scenariosData)
@@ -140,15 +146,55 @@ export default function Scenarios() {
   }
 
   // 处理创建/更新成功
-  const handleScenarioSuccess = (scenario: Scenario) => {
-    if (editingScenario) {
-      // 更新
-      setScenarios(prev => prev.map(s => s.id === scenario.id ? scenario : s))
+  const handleScenarioSuccess = async (scenario: any) => {
+    // 检查是否是从录制向导返回的完整场景数据
+    if (scenario.cases && Array.isArray(scenario.cases)) {
+      // 这是录制场景，需要调用保存API
+      if (!task) {
+        alert('任务信息未加载，请刷新页面重试')
+        return
+      }
+
+      try {
+        const response = await fetch('/api/v1/recording/save-scenario', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include', // 发送Cookie
+          body: JSON.stringify({
+            task_id: taskId,
+            project_id: task.project_id,
+            scenario_name: scenario.name,
+            scenario_description: scenario.description || '',
+            scenario_type: scenario.scenario_type || 'recorded',
+            cases: scenario.cases
+          })
+        })
+
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.detail || '保存失败')
+        }
+
+        const savedScenario = await response.json()
+
+        // 添加到本地状态
+        setScenarios(prev => [...prev, savedScenario])
+        closeModal()
+      } catch (error: any) {
+        console.error('保存录制场景失败:', error)
+        alert(`保存失败: ${error.message}`)
+      }
     } else {
-      // 创建
-      setScenarios(prev => [...prev, scenario])
+      // 普通场景（表单创建）
+      if (editingScenario) {
+        setScenarios(prev => prev.map(s => s.id === scenario.id ? scenario : s))
+      } else {
+        setScenarios(prev => [...prev, scenario])
+      }
+      closeModal()
     }
-    closeModal()
   }
 
   const handleCaseSuccess = (testCase: Case) => {
@@ -197,9 +243,14 @@ export default function Scenarios() {
     if (!confirm(`确定要删除场景 "${scenarioName}" 吗？`)) return
 
     try {
+      console.log('[删除场景] 开始删除:', scenarioId)
       await scenariosApi.deleteScenario(scenarioId)
-      setScenarios(scenarios.filter(s => s.id !== scenarioId))
+      console.log('[删除场景] 删除成功，刷新列表')
+      // 删除成功后重新加载数据，而不是本地过滤
+      await loadData()
+      console.log('[删除场景] 数据已刷新')
     } catch (err: any) {
+      console.error('[删除场景] 失败:', err)
       alert('删除失败: ' + (err.response?.data?.detail || err.message))
     }
   }

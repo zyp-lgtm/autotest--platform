@@ -5,6 +5,28 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.1] - 2026-04-30
+
+### 🐛 修复
+
+#### 数据库修复
+- 🐛 修复录制场景保存功能的 UUID 格式问题
+- 🐛 修复 SQLite Raw SQL 查询时的 UUID 横线处理
+- 🐛 修复场景执行时用例和步骤为空的问题
+
+#### 技术改进
+- 🔧 更新 CLAUDE.md 数据库架构宪法，添加 SQLite UUID 处理规范
+- 🔧 创建 UUID 修复的详细技术记录和测试脚本
+- 🔧 改进 Raw SQL 查询的 UUID 格式处理
+
+### 📝 文档
+
+- 📝 添加 SQLite UUID 格式修复记录 (uuid-sqlite-fix-2026-04-30.md)
+- 📝 更新录制功能记录，标记 UUID 修复已完成
+- 📝 更新项目记忆，添加最新修复进展
+
+---
+
 ## [1.5.0] - 2026-04-24
 
 ### 🎉 新功能

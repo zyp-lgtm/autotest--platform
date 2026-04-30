@@ -328,7 +328,37 @@ class BaseModel(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 ```
 
-#### **4. 为什么这样设计？**
+#### **4. SQLite UUID 处理注意事项**
+
+**关键发现** (2026-04-30):
+SQLite 存储 UUID 时会**自动去除横线**，这导致 Raw SQL 查询时需要注意格式处理。
+
+```python
+# ✅ 使用 ORM (推荐) - 自动处理格式转换
+task = db.query(UITask).filter(UITask.id == task_id_str).first()
+
+# ⚠️ 使用 Raw SQL - 必须手动去除横线
+task_id_str = str(uuid_obj).replace('-', '')  # 去除横线
+result = db.execute(
+    text("SELECT * FROM ui_tasks WHERE id = :task_id"),
+    {"task_id": task_id_str}
+)
+```
+
+**跨数据库对比**:
+
+| 数据库 | UUID 存储格式 | ORM 处理 | Raw SQL 处理 |
+|--------|--------------|---------|--------------|
+| SQLite | 无横线 `5b5013155d7b47c3b5ba3d805649a87a` | 自动转换 | 需要手动去除横线 |
+| PostgreSQL | 原生 UUID 类型 | 自动转换 | 自动转换 |
+
+**最佳实践**:
+1. **优先使用 ORM**: 避免手动处理 UUID 格式
+2. **Raw SQL 必须格式化**: 使用 `str(uuid).replace('-', '')`
+3. **测试验证**: 使用 Raw SQL 的代码必须测试验证
+4. **统一规范**: 项目中统一使用 ORM 或明确记录 Raw SQL 的格式处理
+
+#### **5. 为什么这样设计？**
 
 **问题案例**: 2026-04-08 登录 API 500 错误
 ```
@@ -611,6 +641,54 @@ def test_cache_reduces_db_queries():
 # ✅ 重构优化
 # ✅ 测试仍然通过
 ```
+
+---
+
+#### **决策 #3: SQLite UUID 格式处理 (2026-04-30)**
+
+**问题**: 录制场景保存成功，但执行时用例和步骤均为空
+
+**分析**:
+- task.scenario_ids 更新代码存在但未生效
+- Raw SQL 查询无法找到记录
+- SQLite 存储 UUID 时自动去除横线
+- ORM 自动处理格式转换，Raw SQL 不会
+
+**决策**:
+- 在 Raw SQL 查询中手动去除 UUID 横线
+- 使用 `str(uuid).replace('-', '')` 处理 UUID 格式
+- 更新 CLAUDE.md 数据库架构宪法，添加 UUID 处理规范
+- 创建测试脚本验证修复有效性
+
+**实施方案**:
+```python
+# ❌ 修复前：直接使用 UUID 字符串
+task_id_str = str(task_id_uuid)  # "5b501315-5d7b-47c3-b5ba-3d805649a87a"
+db.execute(text("SELECT * FROM ui_tasks WHERE id = :task_id"),
+           {"task_id": task_id_str})  # 查询失败
+
+# ✅ 修复后：去除横线
+task_id_str = str(task_id_uuid).replace('-', '')  # "5b5013155d7b47c3b5ba3d805649a87a"
+db.execute(text("SELECT * FROM ui_tasks WHERE id = :task_id"),
+           {"task_id": task_id_str})  # 查询成功
+```
+
+**收益**:
+- ✅ 录制场景保存功能恢复正常
+- ✅ 场景执行时能正确加载用例和步骤
+- ✅ 明确了 SQLite UUID 处理规范
+- ✅ 避免类似问题再次发生
+
+**风险缓解**:
+- 📋 更新数据库架构宪法，添加 UUID 处理规范
+- 📋 创建测试脚本验证修复
+- 📋 检查其他使用 Raw SQL 查询 UUID 的代码
+- 📋 优先使用 ORM 避免 UUID 格式问题
+
+**验证**:
+- ✅ 测试脚本验证 scenario_ids 更新成功
+- ✅ 录制场景执行时能正确加载用例和步骤
+- ✅ 创建专门的技术记录文档
 
 ---
 
