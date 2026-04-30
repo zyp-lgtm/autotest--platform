@@ -57,6 +57,11 @@ export interface GeneratedScenario {
 export interface RecordingStartRequest {
   project_id: string
   scenario_name: string
+  config?: {
+    enableSmartWait: boolean
+    autoExtractVariables: boolean
+    mergeContinuousInputs: boolean
+  }
 }
 
 export interface RecordingStartResponse {
@@ -98,6 +103,11 @@ export interface ScenarioGenerationRequest {
   scenario_name: string
   actions: CapturedAction[]
   data_patterns: DataPattern[]
+  config?: {
+    enableSmartWait: boolean
+    autoExtractVariables: boolean
+    mergeContinuousInputs: boolean
+  }
 }
 
 export interface ScenarioGenerationResponse {

@@ -51,6 +51,13 @@ class RecordingSession:
     # 提取的数据模式
     data_patterns: List[Dict[str, Any]] = field(default_factory=list)
 
+    # 🔥 新增：录制配置
+    config: Dict[str, Any] = field(default_factory=lambda: {
+        "enableSmartWait": True,
+        "autoExtractVariables": True,
+        "mergeContinuousInputs": True
+    })
+
 
 class BrowserRecorder:
     """浏览器录制器"""
@@ -129,18 +136,35 @@ class BrowserRecorder:
                 });
             }, true);
 
-            // 监听输入事件
+            // 监听输入事件 - 🔥 输入去重：基于500ms防抖
+            window.__recording.inputDebounceTimers = {};
+
             document.addEventListener('input', function(e) {
                 var selector = window.__recording.getSelector(e.target);
-                window.__recording.captureAction({
-                    action_type: 'input',
-                    selector: selector,
-                    value: e.target.value,
-                    element_tag: e.target.tagName,
-                    element_text: e.target.placeholder,
-                    page_url: window.location.href,
-                    page_title: document.title
-                });
+                var inputId = selector; // 使用选择器作为唯一标识
+
+                // 清除之前的定时器
+                if (window.__recording.inputDebounceTimers[inputId]) {
+                    clearTimeout(window.__recording.inputDebounceTimers[inputId]);
+                }
+
+                // 设置新的定时器，500ms 后记录最终值
+                window.__recording.inputDebounceTimers[inputId] = setTimeout(function() {
+                    window.__recording.captureAction({
+                        action_type: 'input',
+                        selector: selector,
+                        value: e.target.value,  // 最终值
+                        element_tag: e.target.tagName,
+                        element_text: e.target.placeholder,
+                        element_name: e.target.name,  // 新增：name 属性
+                        page_url: window.location.href,
+                        page_title: document.title
+                    });
+
+                    // 记录后清除定时器引用
+                    delete window.__recording.inputDebounceTimers[inputId];
+                    console.log('[录制] 输入去重完成:', selector, '=>', e.target.value);
+                }, 500);  // 500ms 防抖
             }, true);
 
             // 监听导航事件（使用多种方法确保不遗漏）
@@ -192,7 +216,12 @@ class BrowserRecorder:
         })();
         """
 
-    async def start_session(self, project_id: str, scenario_name: str) -> str:
+    async def start_session(
+        self,
+        project_id: str,
+        scenario_name: str,
+        config: Optional[Dict[str, Any]] = None
+    ) -> str:
         """启动录制会话"""
         session_id = str(uuid.uuid4())
 
@@ -232,7 +261,12 @@ class BrowserRecorder:
                 started_at=datetime.now(),
                 browser=self.browser,
                 context=context,
-                page=page
+                page=page,
+                config=config or {
+                    "enableSmartWait": True,
+                    "autoExtractVariables": True,
+                    "mergeContinuousInputs": True
+                }
             )
 
             self.sessions[session_id] = session

@@ -18,6 +18,13 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // 🔥 新增：录制配置选项
+  const [recordingConfig, setRecordingConfig] = useState({
+    enableSmartWait: true,
+    autoExtractVariables: true,
+    mergeContinuousInputs: true
+  })
+
   const steps = [
     { number: 1, title: '录制准备', description: '设置场景信息' },
     { number: 2, title: '录制中', description: '在浏览器中执行操作' },
@@ -64,7 +71,8 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
     try {
       const response = await recordingApi.startRecording({
         project_id: taskId,
-        scenario_name: scenarioName
+        scenario_name: scenarioName,
+        config: recordingConfig
       })
 
       setSessionId(response.session_id)
@@ -123,7 +131,8 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
         project_id: taskId,
         scenario_name: scenarioName,
         actions: capturedActions,
-        data_patterns: dataPatterns
+        data_patterns: dataPatterns,
+        config: recordingConfig
       })
 
       setGeneratedScenario(response.scenario)
@@ -232,6 +241,50 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder="例如: 用户登录流程"
                 />
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h3 className="font-medium text-gray-900 mb-3">⚙️ 录制配置</h3>
+                <div className="space-y-3">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={recordingConfig.enableSmartWait}
+                      onChange={(e) => setRecordingConfig(prev => ({ ...prev, enableSmartWait: e.target.checked }))}
+                      className="rounded"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-gray-700">启用智能等待</div>
+                      <div className="text-xs text-gray-500">在每个操作前自动等待元素就绪（推荐）</div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={recordingConfig.autoExtractVariables}
+                      onChange={(e) => setRecordingConfig(prev => ({ ...prev, autoExtractVariables: e.target.checked }))}
+                      className="rounded"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-gray-700">自动提取变量</div>
+                      <div className="text-xs text-gray-500">智能识别可参数化的输入字段</div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={recordingConfig.mergeContinuousInputs}
+                      onChange={(e) => setRecordingConfig(prev => ({ ...prev, mergeContinuousInputs: e.target.checked }))}
+                      className="rounded"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-gray-700">合并连续输入</div>
+                      <div className="text-xs text-gray-500">只记录最终输入值，不记录过程</div>
+                    </div>
+                  </label>
+                </div>
               </div>
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

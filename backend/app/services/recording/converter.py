@@ -64,7 +64,8 @@ class RecordingConverter:
         self,
         actions: List[CapturedAction],
         scenario_name: str,
-        project_id: str
+        project_id: str,
+        enable_smart_wait: bool = True  # 🔥 新增：智能等待开关
     ) -> GeneratedScenario:
         """将录制的操作序列转换为测试场景"""
 
@@ -101,14 +102,20 @@ class RecordingConverter:
         # 添加其他操作
         ordered_actions.extend(other_actions)
 
-        # 转换每个操作为步骤
+        # 🔥 新增：转换操作为步骤（支持智能等待）
+        step_counter = 0
         for index, action in enumerate(ordered_actions):
-            step = await self._convert_action_to_step(action, index)
-            main_case.steps.append(step)
+            steps = await self._convert_action_to_step(
+                action,
+                step_counter,
+                enable_smart_wait and index > 0  # 第一个操作（通常是导航）不需要等待
+            )
+            main_case.steps.extend(steps)
+            step_counter += len(steps)
 
-        # 自动生成基础断言
-        assertions = self._generate_assertions(ordered_actions)
-        main_case.steps.extend(assertions)
+        # 自动生成基础断言（暂时禁用，等待后续完善）
+        # assertions = self._generate_assertions(ordered_actions)
+        # main_case.steps.extend(assertions)
 
         scenario.cases.append(main_case)
 
@@ -117,10 +124,32 @@ class RecordingConverter:
     async def _convert_action_to_step(
         self,
         action: CapturedAction,
-        index: int
-    ) -> TestStep:
-        """转换单个操作为测试步骤"""
+        index: int,
+        add_wait_step: bool = False  # 🔥 新增：是否添加等待步骤
+    ) -> List[TestStep]:  # 🔥 修改：返回步骤列表
+        """转换单个操作为测试步骤（可能包含等待步骤）"""
 
+        steps = []
+
+        # 🔥 新增：如果需要，先添加等待步骤
+        if add_wait_step and action.action_type in ['click', 'input', 'select', 'hover', 'double_click']:
+            wait_step = TestStep(
+                id=str(uuid.uuid4()),
+                step_name=f"等待元素就绪: {self._get_element_description(action)}",
+                keyword_id=await self._get_keyword_id("WAIT_FOR_ELEMENT"),
+                parameters={
+                    "selector": action.selector,
+                    "state": "visible",
+                    "timeout": 5000
+                },
+                enabled=True,
+                continue_on_failure=False,
+                step_order=index
+            )
+            steps.append(wait_step)
+            index += 1  # 实际操作步骤序号递增
+
+        # 获取关键字名称
         keyword_name = self.keyword_mapping.get(action.action_type, "CLICK")
 
         # 获取关键字ID
@@ -132,15 +161,19 @@ class RecordingConverter:
         # 生成步骤描述
         step_name = self._generate_step_name(action)
 
-        return TestStep(
+        # 实际操作步骤
+        actual_step = TestStep(
             id=str(uuid.uuid4()),
             step_name=step_name,
             keyword_id=keyword_id,
             parameters=parameters,
             enabled=True,
             continue_on_failure=False,
-            step_order=index + 1
+            step_order=index
         )
+        steps.append(actual_step)
+
+        return steps
 
     async def _build_parameters(self, action: CapturedAction) -> Dict[str, Any]:
         """根据操作类型构建参数"""

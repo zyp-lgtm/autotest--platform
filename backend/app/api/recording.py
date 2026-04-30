@@ -25,9 +25,16 @@ router = APIRouter(prefix="/recording", tags=["录制管理"])
 
 
 # Pydantic 模型
+class RecordingConfig(BaseModel):
+    enableSmartWait: bool = True
+    autoExtractVariables: bool = True
+    mergeContinuousInputs: bool = True
+
+
 class RecordingStartRequest(BaseModel):
     project_id: str
     scenario_name: str
+    config: Optional[RecordingConfig] = None
 
 
 class RecordingStopRequest(BaseModel):
@@ -43,6 +50,7 @@ class ScenarioGenerationRequest(BaseModel):
     scenario_name: str
     actions: List[Dict[str, Any]]
     data_patterns: List[Dict[str, Any]]
+    config: Optional[RecordingConfig] = None
 
 
 @router.post("/start")
@@ -52,9 +60,13 @@ async def start_recording(
 ):
     """启动录制会话"""
     try:
+        # 合并配置，使用默认值如果未提供
+        config = request.config or RecordingConfig()
+
         session_id = await browser_recorder.start_session(
             project_id=request.project_id,
-            scenario_name=request.scenario_name
+            scenario_name=request.scenario_name,
+            config=config
         )
 
         return {
@@ -165,10 +177,12 @@ async def generate_scenario(
         ]
 
         # 生成场景
+        config = request.config or RecordingConfig()
         scenario = await recording_converter.convert_to_scenario(
             actions=actions,
             scenario_name=request.scenario_name,
-            project_id=request.project_id
+            project_id=request.project_id,
+            enable_smart_wait=config.enableSmartWait
         )
 
         # 生成测试数据（如果有选择的模式）
