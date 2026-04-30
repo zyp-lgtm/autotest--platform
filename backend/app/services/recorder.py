@@ -62,11 +62,12 @@ class BrowserRecorder:
             window.__recording = {
                 actions: [],
                 startTime: Date.now(),
+                initialized: false,
 
                 captureAction: function(action) {
                     action.timestamp = Date.now() - window.__recording.startTime;
                     window.__recording.actions.push(action);
-                    console.log('[录制]', action.type, action.selector);
+                    console.log('[录制]', action.action_type, action.selector || action.page_url);
                 },
 
                 getSelector: function(element) {
@@ -81,8 +82,39 @@ class BrowserRecorder:
                     }
                     // 生成CSS选择器
                     return element.tagName.toLowerCase();
+                },
+
+                // 捕获页面导航
+                captureNavigation: function() {
+                    var currentUrl = window.location.href;
+
+                    // 避免重复捕获相同的URL
+                    if (window.__recording.lastCapturedUrl === currentUrl) {
+                        return;
+                    }
+
+                    // 跳过 about:blank 页面
+                    if (currentUrl === 'about:blank') {
+                        return;
+                    }
+
+                    window.__recording.lastCapturedUrl = currentUrl;
+
+                    window.__recording.captureAction({
+                        action_type: 'navigate',
+                        selector: '',
+                        page_url: currentUrl,
+                        page_title: document.title
+                    });
                 }
             };
+
+            // 立即捕获当前页面（如果不是 about:blank）
+            if (window.location.href !== 'about:blank') {
+                setTimeout(function() {
+                    window.__recording.captureNavigation();
+                }, 100);
+            }
 
             // 监听点击事件
             document.addEventListener('click', function(e) {
@@ -111,21 +143,52 @@ class BrowserRecorder:
                 });
             }, true);
 
-            // 监听导航事件
+            // 监听导航事件（使用多种方法确保不遗漏）
+
+            // 方法1: 使用 popstate 监听浏览器前进后退
+            window.addEventListener('popstate', function() {
+                setTimeout(function() {
+                    window.__recording.captureNavigation();
+                }, 100);
+            });
+
+            // 方法2: 监听 hash 变化
+            window.addEventListener('hashchange', function() {
+                window.__recording.captureNavigation();
+            });
+
+            // 方法3: 使用 MutationObserver 监听 URL 变化
             let lastUrl = location.href;
             new MutationObserver(function(mutations) {
                 if (location.href !== lastUrl) {
                     lastUrl = location.href;
-                    window.__recording.captureAction({
-                        action_type: 'navigate',
-                        selector: '',
-                        page_url: location.href,
-                        page_title: document.title
-                    });
+                    setTimeout(function() {
+                        window.__recording.captureNavigation();
+                    }, 200);
                 }
             }).observe(document, { subtree: true, childList: true });
 
-            console.log('[录制] 录制脚本已加载');
+            // 方法4: 拦截 pushState 和 replaceState
+            (function() {
+                var originalPushState = history.pushState;
+                var originalReplaceState = history.replaceState;
+
+                history.pushState = function() {
+                    originalPushState.apply(this, arguments);
+                    setTimeout(function() {
+                        window.__recording.captureNavigation();
+                    }, 100);
+                };
+
+                history.replaceState = function() {
+                    originalReplaceState.apply(this, arguments);
+                    setTimeout(function() {
+                        window.__recording.captureNavigation();
+                    }, 100);
+                };
+            })();
+
+            console.log('[录制] 录制脚本已加载，包含增强的导航捕获');
         })();
         """
 
@@ -241,6 +304,37 @@ class BrowserRecorder:
                     }});
                 }};
 
+                // 🔥 关键修复：监控 URL 变化，确保首次导航被捕获
+                let currentUrl = window.location.href;
+                let checkCount = 0;
+                let maxChecks = 50; // 最多检查5秒
+
+                const urlCheckInterval = setInterval(() => {{
+                    checkCount++;
+                    const newUrl = window.location.href;
+
+                    // 如果 URL 发生变化且不是 about:blank，捕获导航
+                    if (newUrl !== currentUrl && newUrl !== 'about:blank') {{
+                        currentUrl = newUrl;
+
+                        // 延迟一下，确保页面加载完成
+                        setTimeout(() => {{
+                            if (window.__recording && !window.__recording.initialized) {{
+                                window.__recording.captureNavigation();
+                                window.__recording.initialized = true;
+                                console.log('[录制] ✅ 捕获初始导航:', newUrl);
+                            }}
+                        }}, 500);
+
+                        clearInterval(urlCheckInterval);
+                    }}
+
+                    // 超过最大检查次数，停止检查
+                    if (checkCount >= maxChecks) {{
+                        clearInterval(urlCheckInterval);
+                    }}
+                }}, 100);
+
                 // 定期更新操作计数
                 setInterval(() => {{
                     const count = window.__recording ? window.__recording.actions.length : 0;
@@ -253,6 +347,7 @@ class BrowserRecorder:
                     const statusEl = document.getElementById('test-result');
                     if (window.__recording) {{
                         console.log('[录制] ✅ 录制脚本已正确加载');
+                        console.log('[录制] 🔍 监控首次导航中...');
                     }} else {{
                         console.error('[录制] ❌ 录制脚本未加载！');
                         if (statusEl) {{
@@ -289,8 +384,19 @@ class BrowserRecorder:
                 try:
                     action = CapturedAction(**action_data)
                     session.captured_actions.append(action)
+                    # 🔍 调试信息：打印每个操作
+                    print(f"  - {action.action_type}: {action.page_url or action.selector}")
                 except Exception as e:
                     print(f"⚠️ 解析操作失败: {e}, 数据: {action_data}")
+
+            # 🔍 调试信息：检查是否有 navigate 操作
+            navigate_actions = [a for a in session.captured_actions if a.action_type == 'navigate']
+            if navigate_actions:
+                print(f"✅ 捕获到 {len(navigate_actions)} 个导航操作")
+                for nav in navigate_actions:
+                    print(f"  - 导航到: {nav.page_url}")
+            else:
+                print(f"⚠️ 警告：没有捕获到导航操作！")
 
             # 更新会话状态
             session.status = "processing"

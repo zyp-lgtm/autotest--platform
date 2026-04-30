@@ -86,13 +86,28 @@ class RecordingConverter:
             steps=[]
         )
 
+        # 🔥 关键修复：确保 navigate 操作总是第一步
+        # 将操作分为 navigate 操作和其他操作
+        navigate_actions = [a for a in actions if a.action_type == 'navigate']
+        other_actions = [a for a in actions if a.action_type != 'navigate']
+
+        # 如果有 navigate 操作，确保第一个在最前面
+        ordered_actions = []
+        if navigate_actions:
+            # 使用第一个 navigate 操作作为起始
+            ordered_actions.append(navigate_actions[0])
+            # 添加其他 navigate 操作（如果有）
+            ordered_actions.extend(navigate_actions[1:])
+        # 添加其他操作
+        ordered_actions.extend(other_actions)
+
         # 转换每个操作为步骤
-        for index, action in enumerate(actions):
+        for index, action in enumerate(ordered_actions):
             step = await self._convert_action_to_step(action, index)
             main_case.steps.append(step)
 
         # 自动生成基础断言
-        assertions = self._generate_assertions(actions)
+        assertions = self._generate_assertions(ordered_actions)
         main_case.steps.extend(assertions)
 
         scenario.cases.append(main_case)
