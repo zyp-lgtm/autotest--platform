@@ -5,6 +5,34 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.2] - 2026-04-30
+
+### 🐛 修复
+
+#### 录制变量功能修复
+- 🐛 修复变量"添加"按钮无响应问题 - 使用 `getElementById` 替代 `activeElement`
+- 🐛 修改变量保存时报错 - `TypeError: Cannot read properties of null`
+- 🐛 修复添加的变量显示为空 - 初始化为空数组而非包含空字符串
+- 🐛 修复场景保存后显示无用例 - UUID 格式横线处理问题
+- 🐛 修改变量被过度过滤 - 移除 `selected` 状态检查
+
+#### 数据库和序列化修复
+- 🐛 修复 `case_ids` 保存时 UUID 格式 - 去除横线以兼容 SQLite
+- 🐛 修复 `serialize_model` 返回 UUID 格式 - 自动添加横线
+- 🐛 修复用例查询时的 UUID 匹配问题
+
+#### 前端验证和清理
+- 🔧 添加变量值验证 - 过滤空字符串、null、undefined
+- 🔧 添加变量名空值检查 - 防止编辑时应用崩溃
+- 🔧 改进错误处理 - try-catch 保护关键操作
+
+### 📝 文档
+
+- 📝 创建录制变量使用指南 (/tmp/recording_variables_guide.md)
+- 📝 更新项目记忆 - 添加最新修复进展
+
+---
+
 ## [1.5.1] - 2026-04-30
 
 ### 🎉 新功能

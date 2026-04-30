@@ -312,6 +312,7 @@ class SaveScenarioRequest(BaseModel):
     scenario_description: str
     scenario_type: str
     cases: List[Dict[str, Any]]
+    test_data: Optional[Dict[str, Any]] = None  # 添加测试数据字段
 
 
 @router.post("/save-scenario")
@@ -324,6 +325,7 @@ async def save_recorded_scenario(
     try:
         from ..models.ui_task import UIScenario, UICase, UIStep
         from ..models.keyword import Keyword
+        from ..models.test_data import TestData, DataBinding
 
         # 验证 task_id 和获取任务信息
         task = validate_and_fetch(db, UITask, request.task_id, "任务")
@@ -339,6 +341,23 @@ async def save_recorded_scenario(
 
         # 验证并转换 task_id
         task_id_uuid = uuid.UUID(request.task_id)
+
+        # 保存测试数据（如果有）
+        test_data_id = None
+        if request.test_data and request.test_data.get("data"):
+            test_data_record = TestData(
+                project_id=project_id_uuid,
+                name=request.test_data.get("name", f"{request.scenario_name}_测试数据"),
+                description=request.test_data.get("description", f"从录制自动生成"),
+                data_type="json",
+                data=request.test_data.get("data", []),
+                tags=request.test_data.get("tags", ["recording", "auto-generated"]),
+                created_by=user.id
+            )
+            db.add(test_data_record)
+            db.flush()  # 获取 test_data.id
+            test_data_id = test_data_record.id
+            logger.info(f"创建测试数据: {test_data_record.name} (ID: {test_data_id})")
 
         # 创建场景
         scenario = UIScenario(
@@ -422,7 +441,18 @@ async def save_recorded_scenario(
             # 更新用例的 step_ids
             ui_case.step_ids = step_ids
 
-            case_ids.append(str(ui_case.id))
+            # 如果有测试数据，创建数据绑定
+            if test_data_id:
+                binding = DataBinding(
+                    case_id=ui_case.id,
+                    data_id=test_data_id,
+                    enabled=1
+                )
+                db.add(binding)
+                logger.info(f"创建数据绑定: 用例 {ui_case.name} -> 测试数据 {test_data_id}")
+
+            # SQLite 存储 UUID 时会自动去除横线，保持一致
+            case_ids.append(str(ui_case.id).replace('-', ''))
 
         # 更新场景的 case_ids
         scenario.case_ids = case_ids
@@ -431,12 +461,11 @@ async def save_recorded_scenario(
         # 使用原生 SQL 直接更新，避免 ORM 会话问题
         from sqlalchemy import text
 
-        scenario_id_str = str(scenario.id)
-
-        logger.info(f"DEBUG: 准备更新任务 {task_id_uuid} 的 scenario_ids，添加场景 {scenario_id_str}")
-
         # SQLite 存储的 UUID 没有横线，需要去除横线
         task_id_str = str(task_id_uuid).replace('-', '')
+        scenario_id_str = str(scenario.id).replace('-', '')
+
+        logger.info(f"DEBUG: 准备更新任务 {task_id_uuid} 的 scenario_ids，添加场景 {scenario_id_str}")
 
         # 先查询当前的 scenario_ids
         result = db.execute(

@@ -15,6 +15,7 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
   const [capturedActions, setCapturedActions] = useState<CapturedAction[]>([])
   const [dataPatterns, setDataPatterns] = useState<DataPattern[]>([])
   const [generatedScenario, setGeneratedScenario] = useState<any>(null)
+  const [generatedTestData, setGeneratedTestData] = useState<any>(null)  // 保存测试数据
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -126,31 +127,84 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
     setError(null)
 
     try {
+      console.log('[handlePreview] 开始生成场景')
+      console.log('[handlePreview] taskId:', taskId)
+      console.log('[handlePreview] scenarioName:', scenarioName)
+      console.log('[handlePreview] capturedActions:', capturedActions.length)
+      console.log('[handlePreview] dataPatterns:', dataPatterns.length)
+      console.log('[handlePreview] config:', recordingConfig)
+
+      // 🔥 清理 data_patterns：移除无效的变量和值
+      const cleanedDataPatterns = dataPatterns
+        .filter(pattern => {
+          // 过滤掉没有变量名的
+          if (!pattern.field_name || pattern.field_name.trim() === '') return false
+          // 过滤掉没有有效值的变量
+          if (!pattern.values || pattern.values.length === 0) return false
+          return true
+        })
+        .map(pattern => ({
+          ...pattern,
+          // 清理 values 数组：移除空字符串、null、undefined
+          values: pattern.values.filter(v =>
+            v !== null &&
+            v !== undefined &&
+            String(v).trim() !== ''
+          )
+        }))
+        .filter(pattern => {
+          // 再次过滤：清理后如果没有值了，也移除
+          return pattern.values.length > 0
+        })
+
+      console.log('[handlePreview] 清理后的 dataPatterns:', cleanedDataPatterns.length)
+
       // 生成场景
       const response = await recordingApi.generateScenario({
         project_id: taskId,
         scenario_name: scenarioName,
         actions: capturedActions,
-        data_patterns: dataPatterns,
+        data_patterns: cleanedDataPatterns,  // 使用清理后的数据
         config: recordingConfig
       })
 
+      console.log('[handlePreview] API响应成功')
+      console.log('[handlePreview] response.scenario:', response.scenario)
+      console.log('[handlePreview] response.test_data:', response.test_data)
+
       setGeneratedScenario(response.scenario)
+      setGeneratedTestData(response.test_data)
       setCurrentStep(4)
-      console.log('场景已生成:', response.scenario)
     } catch (err: any) {
-      setError(`生成场景失败: ${err.message || err}`)
-      console.error('生成场景失败:', err)
+      console.error('[handlePreview] 生成场景失败:', err)
+      console.error('[handlePreview] 错误详情:', err?.response?.data)
+      setError(`生成场景失败: ${err?.response?.data?.detail || err?.message || err}`)
     } finally {
       setLoading(false)
     }
   }
 
   const handleConfirmSave = () => {
-    if (generatedScenario) {
-      onComplete(generatedScenario)
-    } else {
-      setError('场景未生成，请重新生成')
+    try {
+      if (!generatedScenario) {
+        setError('场景未生成，请重新生成')
+        return
+      }
+
+      console.log('[handleConfirmSave] 准备保存场景')
+      console.log('[handleConfirmSave] generatedScenario:', generatedScenario)
+      console.log('[handleConfirmSave] generatedTestData:', generatedTestData)
+
+      // 将场景和测试数据一起传递
+      onComplete({
+        ...generatedScenario,
+        test_data: generatedTestData || null  // 确保不会传递undefined
+      })
+
+      console.log('[handleConfirmSave] 已调用 onComplete')
+    } catch (err: any) {
+      console.error('[handleConfirmSave] 保存失败:', err)
+      setError(`保存失败: ${err.message || err}`)
     }
   }
 
@@ -353,13 +407,14 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
                   系统已从您的操作中识别出以下可变数据。您可以修改变量名、输入新值或添加额外的测试数据。
                 </p>
 
-                {dataPatterns.length === 0 ? (
-                  <div className="text-sm text-green-700 bg-white p-4 rounded border">
-                    未检测到可变数据模式。您可以直接点击"预览结果"继续。
+                {dataPatterns.length === 0 && (
+                  <div className="text-sm text-green-700 bg-white p-4 rounded border mb-3">
+                    未检测到可变数据模式。您可以点击下方按钮手动添加变量。
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {dataPatterns.map((pattern) => (
+                )}
+
+                <div className="space-y-3">
+                  {dataPatterns.map((pattern) => (
                       <div key={pattern.id} className="bg-white rounded border p-3">
                         {/* 头部：选择开关和基本信息 */}
                         <div className="flex items-center justify-between mb-2">
@@ -378,13 +433,18 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
                             />
                             <input
                               type="text"
-                              value={pattern.field_name}
+                              value={pattern.field_name || ''}
                               onChange={(e) => {
-                                setDataPatterns(prev =>
-                                  prev.map(p =>
-                                    p.id === pattern.id ? { ...p, field_name: e.target.value } : p
+                                try {
+                                  const newValue = e.target.value
+                                  setDataPatterns(prev =>
+                                    prev.map(p =>
+                                      p.id === pattern.id ? { ...p, field_name: newValue || '' } : p
+                                    )
                                   )
-                                )
+                                } catch (err) {
+                                  console.error('[RecordingWizard] 更新变量名失败:', err)
+                                }
                               }}
                               className="text-sm font-medium border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none px-1"
                               placeholder="变量名"
@@ -419,7 +479,7 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
                         <div className="mb-2">
                           <div className="text-xs text-gray-600 mb-1">当前值:</div>
                           <div className="flex flex-wrap gap-1">
-                            {pattern.values.map((value, idx) => (
+                            {pattern.values && pattern.values.map((value, idx) => (
                               <span
                                 key={idx}
                                 className="text-xs px-2 py-1 bg-gray-100 rounded"
@@ -427,6 +487,9 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
                                 "{String(value).slice(0, 20)}{String(value).length > 20 ? '...' : ''}"
                               </span>
                             ))}
+                            {(!pattern.values || pattern.values.length === 0) && (
+                              <span className="text-xs text-gray-400 italic">暂无值</span>
+                            )}
                           </div>
                         </div>
 
@@ -434,33 +497,48 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
                         <div className="flex items-center gap-2">
                           <input
                             type="text"
+                            id={`add-value-${pattern.id}`}
                             className="flex-1 text-sm border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                             placeholder="输入新的测试值..."
                             onKeyPress={(e) => {
-                              if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                                setDataPatterns(prev =>
-                                  prev.map(p =>
-                                    p.id === pattern.id
-                                      ? { ...p, values: [...p.values, e.currentTarget.value.trim()] }
-                                      : p
+                              if (e.key === 'Enter') {
+                                const value = e.currentTarget.value.trim()
+                                // 只有非空值才添加
+                                if (value) {
+                                  setDataPatterns(prev =>
+                                    prev.map(p =>
+                                      p.id === pattern.id
+                                        ? {
+                                            ...p,
+                                            values: [...(p.values || []), value]
+                                          }
+                                        : p
+                                    )
                                   )
-                                )
-                                e.currentTarget.value = ''
+                                  e.currentTarget.value = ''
+                                }
                               }
                             }}
                           />
                           <button
                             onClick={() => {
-                              const input = document.activeElement as HTMLInputElement
-                              if (input && input.value.trim()) {
-                                setDataPatterns(prev =>
-                                  prev.map(p =>
-                                    p.id === pattern.id
-                                      ? { ...p, values: [...p.values, input.value.trim()] }
-                                      : p
+                              const input = document.getElementById(`add-value-${pattern.id}`) as HTMLInputElement
+                              if (input) {
+                                const value = input.value.trim()
+                                // 只有非空值才添加
+                                if (value) {
+                                  setDataPatterns(prev =>
+                                    prev.map(p =>
+                                      p.id === pattern.id
+                                        ? {
+                                            ...p,
+                                            values: [...(p.values || []), value]
+                                          }
+                                        : p
+                                    )
                                   )
-                                )
-                                input.value = ''
+                                  input.value = ''
+                                }
                               }
                             }}
                             className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -471,27 +549,24 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
                       </div>
                     ))}
                   </div>
-                )}
 
-                {/* 添加新变量按钮 */}
-                {dataPatterns.length > 0 && (
-                  <button
-                    onClick={() => {
-                      const newPattern = {
-                        id: `custom_${Date.now()}`,
-                        field_name: 'new_variable',
-                        pattern_type: 'custom',
-                        values: [''],
-                        confidence: 1.0,
-                        selected: true
-                      }
-                      setDataPatterns(prev => [...prev, newPattern])
-                    }}
-                    className="mt-3 px-4 py-2 text-sm border-2 border-dashed border-green-300 text-green-700 rounded-lg hover:bg-green-50 w-full"
-                  >
-                    + 添加自定义变量
-                  </button>
-                )}
+                  {/* 添加新变量按钮 */}
+                <button
+                  onClick={() => {
+                    const newPattern = {
+                      id: `custom_${Date.now()}`,
+                      field_name: 'new_variable',
+                      pattern_type: 'custom',
+                      values: [],  // 修复：初始化为空数组，不是包含空字符串的数组
+                      confidence: 1.0,
+                      selected: true
+                    }
+                    setDataPatterns(prev => [...prev, newPattern])
+                  }}
+                  className="mt-3 px-4 py-2 text-sm border-2 border-dashed border-green-300 text-green-700 rounded-lg hover:bg-green-50 w-full"
+                >
+                  + 添加自定义变量
+                </button>
               </div>
 
               <div className="flex justify-end">
@@ -629,16 +704,6 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
                 >
                   重新录制
                 </button>
-                <button
-                  onClick={handleConfirmSave}
-                  disabled={!generatedScenario}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
-                >
-                  确认保存
-                </button>
-              </div>
-            </div>
-          )}
                 <button
                   onClick={handleConfirmSave}
                   disabled={!generatedScenario}

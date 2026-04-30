@@ -168,7 +168,8 @@ export default function Scenarios() {
             scenario_name: scenario.name,
             scenario_description: scenario.description || '',
             scenario_type: scenario.scenario_type || 'recorded',
-            cases: scenario.cases
+            cases: scenario.cases,
+            test_data: scenario.test_data  // 添加测试数据
           })
         })
 

@@ -137,9 +137,16 @@ def serialize_model(
         # datetime 转 ISO 格式
         elif hasattr(value, 'isoformat'):
             value = value.isoformat() if value else None
-        # JSON 类型处理
+        # JSON 类型处理 - 为 *_ids 字段中的 UUID 添加横线
         elif col_name.endswith('_ids') and isinstance(value, list):
-            value = [str(v) for v in value]
+            formatted_ids = []
+            for v in value:
+                v_str = str(v)
+                # 如果是32字符的十六进制字符串（没有横线），添加横线
+                if len(v_str) == 32 and '-' not in v_str:
+                    v_str = f"{v_str[:8]}-{v_str[8:12]}-{v_str[12:16]}-{v_str[16:20]}-{v_str[20:]}"
+                formatted_ids.append(v_str)
+            value = formatted_ids
         elif col_name.endswith('_ids') and isinstance(value, str):
             # 已经是字符串的 JSON 数组
             import json
