@@ -65,12 +65,23 @@ class RecordingConverter:
         actions: List[CapturedAction],
         scenario_name: str,
         project_id: str,
-        enable_smart_wait: bool = True  # 🔥 新增：智能等待开关
+        enable_smart_wait: bool = True,  # 🔥 新增：智能等待开关
+        data_patterns: List[Any] = None,  # 🔥 新增：数据模式（用于变量替换）
+        selected_patterns: List[str] = None  # 🔥 新增：选中的模式ID列表
     ) -> GeneratedScenario:
-        """将录制的操作序列转换为测试场景"""
+        """将录制的操作序列转换为测试场景（支持变量替换）"""
 
         if not actions:
             raise ValueError("没有可转换的操作")
+
+        # 🔥 构建变量映射表
+        variable_map = {}
+        if data_patterns and selected_patterns:
+            for pattern in data_patterns:
+                if pattern.selected and pattern.id in selected_patterns:
+                    # 创建变量映射：原始值 -> 变量引用
+                    for value in pattern.values:
+                        variable_map[str(value)] = f"${{{pattern.field_name}}}"
 
         # 生成场景
         scenario = GeneratedScenario(
@@ -102,11 +113,15 @@ class RecordingConverter:
         # 添加其他操作
         ordered_actions.extend(other_actions)
 
-        # 🔥 新增：转换操作为步骤（支持智能等待）
+        # 🔥 新增：转换操作为步骤（支持智能等待和变量替换）
         step_counter = 0
         for index, action in enumerate(ordered_actions):
             steps = await self._convert_action_to_step(
                 action,
+                step_counter,
+                enable_smart_wait and index > 0,  # 第一个操作（通常是导航）不需要等待
+                variable_map  # 🔥 传递变量映射
+            )
                 step_counter,
                 enable_smart_wait and index > 0  # 第一个操作（通常是导航）不需要等待
             )
@@ -125,11 +140,14 @@ class RecordingConverter:
         self,
         action: CapturedAction,
         index: int,
-        add_wait_step: bool = False  # 🔥 新增：是否添加等待步骤
+        add_wait_step: bool = False,  # 🔥 新增：是否添加等待步骤
+        variable_map: Dict[str, str] = None  # 🔥 新增：变量映射表
     ) -> List[TestStep]:  # 🔥 修改：返回步骤列表
-        """转换单个操作为测试步骤（可能包含等待步骤）"""
+        """转换单个操作为测试步骤（可能包含等待步骤，支持变量替换）"""
 
         steps = []
+        if variable_map is None:
+            variable_map = {}
 
         # 🔥 新增：如果需要，先添加等待步骤
         if add_wait_step and action.action_type in ['click', 'input', 'select', 'hover', 'double_click']:
@@ -155,8 +173,8 @@ class RecordingConverter:
         # 获取关键字ID
         keyword_id = await self._get_keyword_id(keyword_name)
 
-        # 构建参数
-        parameters = await self._build_parameters(action)
+        # 🔥 修改：构建参数（应用变量替换）
+        parameters = await self._build_parameters(action, variable_map)
 
         # 生成步骤描述
         step_name = self._generate_step_name(action)
@@ -175,8 +193,16 @@ class RecordingConverter:
 
         return steps
 
-    async def _build_parameters(self, action: CapturedAction) -> Dict[str, Any]:
-        """根据操作类型构建参数"""
+    async def _build_parameters(
+        self,
+        action: CapturedAction,
+        variable_map: Dict[str, str] = None  # 🔥 新增：变量映射表
+    ) -> Dict[str, Any]:
+        """根据操作类型构建参数（支持变量替换）"""
+
+        if variable_map is None:
+            variable_map = {}
+
         parameters = {
             "selector": action.selector,
             "timeout": 30000  # 默认30秒超时
@@ -184,7 +210,13 @@ class RecordingConverter:
 
         # 根据操作类型添加特定参数
         if action.action_type == "input":
-            parameters["text"] = action.value or ""
+            # 🔥 应用变量替换
+            input_value = action.value or ""
+            if input_value in variable_map:
+                parameters["text"] = variable_map[input_value]
+                parameters["_original_value"] = input_value  # 保留原始值供参考
+            else:
+                parameters["text"] = input_value
 
         elif action.action_type == "navigate":
             parameters["url"] = action.page_url
@@ -192,7 +224,12 @@ class RecordingConverter:
         elif action.action_type == "select":
             # SELECT_OPTION 需要 value 参数
             if action.value:
-                parameters["value"] = action.value
+                select_value = action.value
+                if select_value in variable_map:
+                    parameters["value"] = variable_map[select_value]
+                    parameters["_original_value"] = select_value
+                else:
+                    parameters["value"] = select_value
 
         return parameters
 

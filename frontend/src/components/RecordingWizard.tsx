@@ -348,9 +348,9 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
           {currentStep === 3 && (
             <div className="space-y-4">
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <h3 className="font-medium text-green-900 mb-2">🧠 智能数据提取</h3>
+                <h3 className="font-medium text-green-900 mb-2">🧠 智能数据提取与变量管理</h3>
                 <p className="text-sm text-green-700 mb-4">
-                  系统已从您的操作中识别出以下可变数据，选择要作为测试数据的字段
+                  系统已从您的操作中识别出以下可变数据。您可以修改变量名、输入新值或添加额外的测试数据。
                 </p>
 
                 {dataPatterns.length === 0 ? (
@@ -358,32 +358,139 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
                     未检测到可变数据模式。您可以直接点击"预览结果"继续。
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {dataPatterns.map((pattern) => (
-                      <div key={pattern.id} className="flex items-center justify-between p-2 bg-white rounded border">
+                      <div key={pattern.id} className="bg-white rounded border p-3">
+                        {/* 头部：选择开关和基本信息 */}
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={pattern.selected}
+                              onChange={(e) => {
+                                setDataPatterns(prev =>
+                                  prev.map(p =>
+                                    p.id === pattern.id ? { ...p, selected: e.target.checked } : p
+                                  )
+                                )
+                              }}
+                              className="rounded w-4 h-4"
+                            />
+                            <input
+                              type="text"
+                              value={pattern.field_name}
+                              onChange={(e) => {
+                                setDataPatterns(prev =>
+                                  prev.map(p =>
+                                    p.id === pattern.id ? { ...p, field_name: e.target.value } : p
+                                  )
+                                )
+                              }}
+                              className="text-sm font-medium border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none px-1"
+                              placeholder="变量名"
+                            />
+                            <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                              {pattern.pattern_type}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {/* 置信度可视化 */}
+                            {pattern.confidence && (
+                              <div className="flex items-center gap-1">
+                                <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full ${
+                                      pattern.confidence >= 0.8 ? 'bg-green-500' :
+                                      pattern.confidence >= 0.6 ? 'bg-yellow-500' :
+                                      'bg-red-500'
+                                    }`}
+                                    style={{ width: `${pattern.confidence * 100}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs text-gray-600">
+                                  {(pattern.confidence * 100).toFixed(0)}%
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 当前值列表 */}
+                        <div className="mb-2">
+                          <div className="text-xs text-gray-600 mb-1">当前值:</div>
+                          <div className="flex flex-wrap gap-1">
+                            {pattern.values.map((value, idx) => (
+                              <span
+                                key={idx}
+                                className="text-xs px-2 py-1 bg-gray-100 rounded"
+                              >
+                                "{String(value).slice(0, 20)}{String(value).length > 20 ? '...' : ''}"
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* 添加新值 */}
                         <div className="flex items-center gap-2">
                           <input
-                            type="checkbox"
-                            checked={pattern.selected}
-                            onChange={(e) => {
-                              setDataPatterns(prev =>
-                                prev.map(p =>
-                                  p.id === pattern.id ? { ...p, selected: e.target.checked } : p
+                            type="text"
+                            className="flex-1 text-sm border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            placeholder="输入新的测试值..."
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                                setDataPatterns(prev =>
+                                  prev.map(p =>
+                                    p.id === pattern.id
+                                      ? { ...p, values: [...p.values, e.currentTarget.value.trim()] }
+                                      : p
+                                  )
                                 )
-                              )
+                                e.currentTarget.value = ''
+                              }
                             }}
-                            className="rounded"
                           />
-                          <span className="text-sm font-medium">{pattern.field_name}</span>
-                          <span className="text-xs text-gray-500">{pattern.pattern_type}</span>
-                        </div>
-                        <div className="text-xs bg-gray-100 px-2 py-1 rounded">
-                          检测到 {pattern.values.length} 个值
-                          {pattern.confidence && ` · 置信度 ${(pattern.confidence * 100).toFixed(0)}%`}
+                          <button
+                            onClick={() => {
+                              const input = document.activeElement as HTMLInputElement
+                              if (input && input.value.trim()) {
+                                setDataPatterns(prev =>
+                                  prev.map(p =>
+                                    p.id === pattern.id
+                                      ? { ...p, values: [...p.values, input.value.trim()] }
+                                      : p
+                                  )
+                                )
+                                input.value = ''
+                              }
+                            }}
+                            className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                          >
+                            添加
+                          </button>
                         </div>
                       </div>
                     ))}
                   </div>
+                )}
+
+                {/* 添加新变量按钮 */}
+                {dataPatterns.length > 0 && (
+                  <button
+                    onClick={() => {
+                      const newPattern = {
+                        id: `custom_${Date.now()}`,
+                        field_name: 'new_variable',
+                        pattern_type: 'custom',
+                        values: [''],
+                        confidence: 1.0,
+                        selected: true
+                      }
+                      setDataPatterns(prev => [...prev, newPattern])
+                    }}
+                    className="mt-3 px-4 py-2 text-sm border-2 border-dashed border-green-300 text-green-700 rounded-lg hover:bg-green-50 w-full"
+                  >
+                    + 添加自定义变量
+                  </button>
                 )}
               </div>
 
@@ -411,23 +518,53 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
                       ，您可以查看和调整
                     </div>
 
-                    {/* 生成的用例和步骤 */}
+                    {/* 生成的用例和步骤 - 增强版 */}
                     <div className="space-y-3">
                       {generatedScenario.cases?.map((testCase: any, caseIndex: number) => (
                         <div key={testCase.id || caseIndex} className="bg-white p-3 rounded border">
-                          <div className="font-medium text-sm mb-2">用例 {caseIndex + 1}: {testCase.name}</div>
+                          <div className="font-medium text-sm mb-2 flex items-center gap-2">
+                            <span>用例 {caseIndex + 1}: {testCase.name}</span>
+                            <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded">
+                              {testCase.steps?.length || 0} 步骤
+                            </span>
+                          </div>
                           {testCase.description && (
-                            <div className="text-xs text-gray-600 mb-2">{testCase.description}</div>
+                            <div className="text-xs text-gray-600 mb-3">{testCase.description}</div>
                           )}
-                          <div className="space-y-1">
+                          <div className="space-y-2">
                             {testCase.steps?.map((step: any, stepIndex: number) => (
-                              <div key={step.id || stepIndex} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                                <span className="text-xs text-gray-500">{stepIndex + 1}.</span>
-                                <span className="text-sm">{step.step_name}</span>
-                                {step.keyword_id && (
-                                  <span className="text-xs bg-blue-100 text-blue-800 px-1 rounded">
-                                    关键字
+                              <div key={step.id || stepIndex} className="border border-gray-200 rounded overflow-hidden">
+                                {/* 步骤头部 */}
+                                <div className="flex items-center gap-2 p-2 bg-gray-50">
+                                  <span className="text-xs font-mono text-gray-500 w-6">
+                                    {stepIndex + 1}.
                                   </span>
+                                  <span className="text-sm font-medium flex-1">{step.step_name}</span>
+                                  <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                                    {step.keyword_id?.replace('kw_', '') || '未知'}
+                                  </span>
+                                  {step.enabled === false && (
+                                    <span className="text-xs px-2 py-1 bg-gray-200 text-gray-600 rounded">
+                                      禁用
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* 步骤参数（可展开） */}
+                                {step.parameters && Object.keys(step.parameters).length > 0 && (
+                                  <div className="p-2 bg-white border-t border-gray-200">
+                                    <div className="text-xs text-gray-500 mb-1">参数:</div>
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                      {Object.entries(step.parameters).map(([key, value]) => (
+                                        <div key={key} className="flex items-center gap-2">
+                                          <span className="font-medium text-gray-700">{key}:</span>
+                                          <span className="text-gray-600 font-mono bg-gray-100 px-1 rounded truncate">
+                                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
                                 )}
                               </div>
                             ))}
@@ -436,11 +573,35 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
                       ))}
                     </div>
 
+                    {/* 变量汇总 */}
+                    {dataPatterns.filter(p => p.selected).length > 0 && (
+                      <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded">
+                        <div className="text-sm font-medium text-purple-900 mb-2">
+                          📝 提取的变量 ({dataPatterns.filter(p => p.selected).length} 个)
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {dataPatterns.filter(p => p.selected).map(pattern => (
+                            <div key={pattern.id} className="text-xs bg-white px-2 py-1 rounded border">
+                              <span className="font-medium">\${pattern.field_name}</span>
+                              <span className="text-gray-500 ml-1">
+                                ({pattern.values.length} 个值)
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {generatedScenario.metadata && (
-                      <div className="mt-3 text-xs text-gray-600 bg-white p-2 rounded">
-                        创建方式: {generatedScenario.metadata.created_by} ·
-                        操作数: {generatedScenario.metadata.actions_count} ·
-                        数据模式: {generatedScenario.metadata.data_patterns_count}
+                      <div className="mt-3 text-xs text-gray-600 bg-white p-2 rounded border">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                          <span>创建方式: <strong>{generatedScenario.metadata.created_by}</strong></span>
+                          <span>操作数: <strong>{generatedScenario.metadata.actions_count}</strong></span>
+                          <span>数据模式: <strong>{generatedScenario.metadata.data_patterns_count}</strong></span>
+                          {recordingConfig.enableSmartWait && (
+                            <span>智能等待: <strong className="text-green-600">✓ 已启用</strong></span>
+                          )}
+                        </div>
                       </div>
                     )}
                   </>
@@ -452,10 +613,13 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
               </div>
 
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <h3 className="font-medium text-yellow-900 mb-2">💡 提示</h3>
-                <p className="text-sm text-yellow-800">
-                  保存后，您可以像编辑手动创建的场景一样继续编辑这些步骤，添加断言、修改参数等
-                </p>
+                <h3 className="font-medium text-yellow-900 mb-2">💡 下一步操作</h3>
+                <ul className="text-sm text-yellow-800 space-y-1">
+                  <li>• 保存后，可以在场景编辑器中继续编辑步骤</li>
+                  <li>• 可以添加断言验证步骤</li>
+                  <li>• 可以创建测试数据集进行数据驱动测试</li>
+                  <li>• 建议先运行测试验证流程是否正确</li>
+                </ul>
               </div>
 
               <div className="flex justify-end gap-2">
@@ -465,6 +629,16 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
                 >
                   重新录制
                 </button>
+                <button
+                  onClick={handleConfirmSave}
+                  disabled={!generatedScenario}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
+                >
+                  确认保存
+                </button>
+              </div>
+            </div>
+          )}
                 <button
                   onClick={handleConfirmSave}
                   disabled={!generatedScenario}

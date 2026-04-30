@@ -165,7 +165,7 @@ async def generate_scenario(
     user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
-    """从录制数据生成测试场景"""
+    """从录制数据生成测试场景（支持变量替换）"""
     try:
         # 转换操作和模式
         actions = [
@@ -176,13 +176,20 @@ async def generate_scenario(
             DataPattern(**pattern) for pattern in request.data_patterns
         ]
 
+        # 🔥 提取选中的模式ID
+        selected_pattern_ids = [
+            p.id for p in patterns if p.selected
+        ]
+
         # 生成场景
         config = request.config or RecordingConfig()
         scenario = await recording_converter.convert_to_scenario(
             actions=actions,
             scenario_name=request.scenario_name,
             project_id=request.project_id,
-            enable_smart_wait=config.enableSmartWait
+            enable_smart_wait=config.enableSmartWait,
+            data_patterns=patterns,  # 🔥 传递数据模式
+            selected_patterns=selected_pattern_ids  # 🔥 传递选中的模式
         )
 
         # 生成测试数据（如果有选择的模式）
