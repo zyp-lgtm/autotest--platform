@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
+import { useProject } from '../contexts/ProjectContext'
 import { tasksApi } from '../api/tasks'
+import { scenariosApi } from '../api/scenarios'
+import { auditApi } from '../api/audit'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { HealthPanel } from '../components/HealthPanel'
@@ -9,50 +13,165 @@ interface DashboardStats {
   totalTasks: number
   totalScenarios: number
   totalCases: number
+  totalSteps: number
+  recentExecutions: number
+}
+
+interface AuditLog {
+  id: string
+  action: string
+  resource_type: string
+  details: string
+  success: boolean
+  timestamp: string
 }
 
 function Dashboard() {
   const { user } = useAuth()
+  const { currentProject } = useProject()
+  const navigate = useNavigate()
   const [stats, setStats] = useState<DashboardStats>({
     totalTasks: 0,
     totalScenarios: 0,
     totalCases: 0,
+    totalSteps: 0,
+    recentExecutions: 0,
   })
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [loading, setLoading] = useState(true)
-
-  // TODO: 从项目列表中获取项目 ID
-  // 暂时使用固定项目 ID
-  const projectId = '550e8400-e29b-41d4-a716-446655440000'
+  const [logsLoading, setLogsLoading] = useState(false)
 
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const tasks = await tasksApi.getTasks(projectId)
-
-        // 计算统计数据
-        let totalScenarios = 0
-        let totalCases = 0
-
-        // TODO: 并行获取场景详情来计算准确数量
-        tasks.forEach(task => {
-          totalScenarios += task.scenario_ids.length
-          totalCases += task.scenario_ids.length * 2 // 假设每个场景 2 个用例
-        })
-
-        setStats({
-          totalTasks: tasks.length,
-          totalScenarios,
-          totalCases,
-        })
-      } catch (error) {
-        console.error('Failed to fetch stats:', error)
-      } finally {
-        setLoading(false)
-      }
+    if (currentProject) {
+      loadStats()
     }
+  }, [currentProject])
 
-    fetchStats()
-  }, [projectId])
+  useEffect(() => {
+    if (user) {
+      loadAuditLogs()
+    }
+  }, [user])
+
+  const loadStats = async () => {
+    if (!currentProject) return
+
+    try {
+      setLoading(true)
+
+      // 获取任务列表
+      const tasks = await tasksApi.getTasks(currentProject.id)
+
+      // 统计场景和用例
+      let totalScenarios = 0
+      let totalCases = 0
+      let totalSteps = 0
+
+      for (const task of tasks) {
+        totalScenarios += task.scenario_ids.length
+
+        // 获取每个场景的用例
+        for (const scenarioId of task.scenario_ids) {
+          try {
+            const cases = await scenariosApi.getCases(scenarioId)
+            totalCases += cases.length
+
+            // 获取每个用例的步骤
+            for (const caseItem of cases) {
+              totalSteps += caseItem.step_ids?.length || 0
+            }
+          } catch (e) {
+            console.error('Failed to load cases:', e)
+          }
+        }
+      }
+
+      // 获取最近的执行记录（统计）
+      // TODO: 后端需要添加获取执行记录统计的 API
+      const recentExecutions = 0
+
+      setStats({
+        totalTasks: tasks.length,
+        totalScenarios,
+        totalCases,
+        totalSteps,
+        recentExecutions,
+      })
+    } catch (error) {
+      console.error('Failed to fetch stats:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadAuditLogs = async () => {
+    if (!user) return
+
+    try {
+      setLogsLoading(true)
+      const response = await auditApi.getUserLogs(user.id, 10)
+      setAuditLogs(response.logs || [])
+    } catch (error) {
+      console.error('Failed to fetch audit logs:', error)
+      // 非管理员用户可能无法访问日志 API，忽略错误
+      setAuditLogs([])
+    } finally {
+      setLogsLoading(false)
+    }
+  }
+
+  const getActionIcon = (action: string) => {
+    const iconMap: Record<string, string> = {
+      'create': '📝',
+      'update': '✏️',
+      'delete': '🗑️',
+      'execute': '▶️',
+      'login': '🔐',
+      'logout': '👋',
+      'read': '👁️',
+    }
+    return iconMap[action] || '📋'
+  }
+
+  const getActionText = (action: string) => {
+    const textMap: Record<string, string> = {
+      'create': '创建了',
+      'update': '更新了',
+      'delete': '删除了',
+      'execute': '执行了',
+      'login': '登录了',
+      'logout': '登出了',
+      'read': '查看了',
+    }
+    return textMap[action] || action
+  }
+
+  const getResourceText = (resourceType: string) => {
+    const typeMap: Record<string, string> = {
+      'task': '任务',
+      'scenario': '场景',
+      'case': '用例',
+      'step': '步骤',
+      'test_data': '测试数据',
+      'project': '项目',
+      'execution': '执行记录',
+    }
+    return typeMap[resourceType] || resourceType
+  }
+
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return '刚刚'
+    if (diffMins < 60) return `${diffMins} 分钟前`
+    if (diffHours < 24) return `${diffHours} 小时前`
+    return `${diffDays} 天前`
+  }
 
   if (loading) {
     return (
@@ -67,62 +186,135 @@ function Dashboard() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">仪表盘</h1>
-          <p className="text-gray-600">欢迎回来，{user?.username}</p>
+          <p className="text-gray-600">
+            欢迎回来，{user?.username} · {currentProject?.name || '未选择项目'}
+          </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      {/* 统计卡片 */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-2">总任务数</h3>
-          <p className="text-3xl font-bold text-blue-600">{stats.totalTasks}</p>
-          <p className="text-sm text-gray-500 mt-2">UI 测试任务</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-medium text-gray-600 mb-1">总任务数</h3>
+              <p className="text-2xl font-bold text-blue-600">{stats.totalTasks}</p>
+            </div>
+            <span className="text-2xl">📋</span>
+          </div>
         </Card>
 
         <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-2">总场景数</h3>
-          <p className="text-3xl font-bold text-green-600">{stats.totalScenarios}</p>
-          <p className="text-sm text-gray-500 mt-2">测试场景</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-medium text-gray-600 mb-1">总场景数</h3>
+              <p className="text-2xl font-bold text-green-600">{stats.totalScenarios}</p>
+            </div>
+            <span className="text-2xl">📑</span>
+          </div>
         </Card>
 
         <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-2">总用例数</h3>
-          <p className="text-3xl font-bold text-purple-600">{stats.totalCases}</p>
-          <p className="text-sm text-gray-500 mt-2">测试用例</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-medium text-gray-600 mb-1">总用例数</h3>
+              <p className="text-2xl font-bold text-purple-600">{stats.totalCases}</p>
+            </div>
+            <span className="text-2xl">📄</span>
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-medium text-gray-600 mb-1">总步骤数</h3>
+              <p className="text-2xl font-bold text-orange-600">{stats.totalSteps}</p>
+            </div>
+            <span className="text-2xl">⚙️</span>
+          </div>
         </Card>
       </div>
 
       {/* 健康状态面板 */}
       <HealthPanel />
 
-      <Card className="p-6">
-        <h2 className="text-xl font-bold mb-4">快捷操作</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <Button>创建新任务</Button>
-          <Button variant="secondary">管理测试数据</Button>
+      {/* 快捷操作 */}
+      <Card className="p-6 mb-6">
+        <h2 className="text-lg font-bold mb-4">快捷操作</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Button
+            onClick={() => navigate('/tasks/new')}
+            className="w-full"
+          >
+            <span className="text-xl mr-2">➕</span>
+            创建任务
+          </Button>
+          <Button
+            onClick={() => navigate('/test-data')}
+            variant="secondary"
+            className="w-full"
+          >
+            <span className="text-xl mr-2">📊</span>
+            测试数据
+          </Button>
+          <Button
+            onClick={() => navigate('/projects')}
+            variant="secondary"
+            className="w-full"
+          >
+            <span className="text-xl mr-2">🗂️</span>
+            项目管理
+          </Button>
+          <Button
+            onClick={() => navigate('/scheduled-jobs')}
+            variant="secondary"
+            className="w-full"
+          >
+            <span className="text-xl mr-2">⏰</span>
+            定时任务
+          </Button>
         </div>
-        <p className="mt-4 text-sm text-gray-500">
-          更多功能即将推出...
-        </p>
       </Card>
 
-      <Card className="mt-6 p-6">
-        <h2 className="text-xl font-bold mb-4">最近活动</h2>
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-            <span className="text-2xl">📋</span>
-            <div>
-              <div className="font-medium">创建了测试任务</div>
-              <div className="text-sm text-gray-500">2 小时前</div>
-            </div>
+      {/* 最近活动 */}
+      <Card className="p-6">
+        <h2 className="text-lg font-bold mb-4">最近活动</h2>
+        {!currentProject ? (
+          <div className="text-center py-8 text-gray-500">
+            请先选择一个项目以查看活动记录
           </div>
-          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-            <span className="text-2xl">🧪</span>
-            <div>
-              <div className="font-medium">执行了测试</div>
-              <div className="text-sm text-gray-500">昨天</div>
-            </div>
+        ) : logsLoading ? (
+          <div className="text-center py-8 text-gray-500">
+            加载中...
           </div>
-        </div>
+        ) : auditLogs.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            暂无活动记录
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {auditLogs.map((log) => (
+              <div key={log.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                <span className="text-xl flex-shrink-0">
+                  {getActionIcon(log.action)}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900">
+                    {getActionText(log.action)} {getResourceText(log.resource_type)}
+                  </div>
+                  {log.details && (
+                    <div className="text-xs text-gray-500 truncate">
+                      {log.details}
+                    </div>
+                  )}
+                </div>
+                <div className="text-xs text-gray-500 flex-shrink-0">
+                  {formatTime(log.timestamp)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   )

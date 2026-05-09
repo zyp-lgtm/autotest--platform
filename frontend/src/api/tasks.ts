@@ -1,6 +1,8 @@
 import apiClient from './client'
 import type { UITask } from '../types'
 
+export type { UITask }
+
 export const tasksApi = {
   getTasks: async (projectId: string): Promise<UITask[]> => {
     const response = await apiClient.get<UITask[]>(`/v1/ui/tasks?project_id=${projectId}`)

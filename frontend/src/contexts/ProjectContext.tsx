@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react'
+import { projectsApi } from '../api/projects'
 
 interface Project {
   id: string
@@ -10,32 +11,59 @@ interface ProjectContextType {
   currentProject: Project | null
   setCurrentProject: (project: Project) => void
   projects: Project[]
+  loading: boolean
+  loadProjects: () => Promise<void>
 }
 
 const ProjectContext = createContext<ProjectContextType | undefined>(undefined)
 
-// TODO: 从 API 获取项目列表
-const MOCK_PROJECTS: Project[] = [
-  {
-    id: '468f7eccc919406082661497eb6a7b2d',
-    name: '测试项目',
-    description: '默认测试项目',
-  },
-]
-
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
-  const [projects] = useState<Project[]>(MOCK_PROJECTS)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // 默认选择第一个项目
+  // 从 API 加载项目列表
   useEffect(() => {
-    if (projects.length > 0 && !currentProject) {
-      setCurrentProject(projects[0])
-    }
+    loadProjects()
   }, [])
 
+  // 当项目列表加载完成后，默认选择第一个项目
+  useEffect(() => {
+    if (projects.length > 0 && !currentProject) {
+      // 优先使用之前选择的项目（从 localStorage）
+      const savedProjectId = localStorage.getItem('selectedProjectId')
+      if (savedProjectId) {
+        const savedProject = projects.find(p => p.id === savedProjectId)
+        if (savedProject) {
+          setCurrentProject(savedProject)
+          return
+        }
+      }
+      // 否则选择第一个有任务的项目
+      const projectWithTasks = projects[0] // 可以后续优化，优先选择有任务的项目
+      setCurrentProject(projectWithTasks)
+    }
+  }, [projects])
+
+  const loadProjects = async () => {
+    try {
+      const data = await projectsApi.getProjects()
+      setProjects(data)
+    } catch (error) {
+      console.error('加载项目列表失败:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 包装 setCurrentProject，保存选择到 localStorage
+  const handleSetCurrentProject = (project: Project) => {
+    setCurrentProject(project)
+    localStorage.setItem('selectedProjectId', project.id)
+  }
+
   return (
-    <ProjectContext.Provider value={{ currentProject, setCurrentProject, projects }}>
+    <ProjectContext.Provider value={{ currentProject, setCurrentProject: handleSetCurrentProject, projects, loading, loadProjects }}>
       {children}
     </ProjectContext.Provider>
   )

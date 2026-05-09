@@ -10,12 +10,16 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token')
+    // 检查是否有 Cookie（通过 document.cookie 无法读取 HttpOnly Cookie，所以使用推断）
+    const hasCookie = document.cookie.includes('access_token') || !token // 如果没有 localStorage token，说明依赖 Cookie
+
     console.log('[apiClient] 请求拦截器:', {
       method: config.method,
       url: config.url,
-      hasToken: !!token,
-      tokenPrefix: token ? token.substring(0, 20) + '...' : 'none'
+      authType: token ? 'localStorage' : (hasCookie ? 'Cookie' : 'none'),
+      withCredentials: config.withCredentials
     })
+
     // 只在有有效的Bearer token时才添加Authorization头
     // 如果使用Cookie认证（token为'cookie-based'或不存在），不添加Authorization头
     if (token && token !== 'cookie-based') {
@@ -50,25 +54,31 @@ apiClient.interceptors.response.use(
 
       // 处理 401 未授权错误
       if (error.response.status === 401) {
-        console.log('[apiClient] 检测到 401 错误，清除认证信息')
-        console.log('[apiClient] 当前路径:', window.location.pathname)
-        console.log('[apiClient] 清除前 localStorage 有 token:', !!localStorage.getItem('access_token'))
+        console.log('[apiClient] 检测到 401 错误，检查请求URL')
 
-        // 清除 token
-        localStorage.removeItem('access_token')
+        // 如果不是在验证当前会话的请求，才清除并重定向
+        const isMeRequest = error.config?.url?.includes('/me')
 
-        console.log('[apiClient] Token 已清除，localStorage 现在有 token:', !!localStorage.getItem('access_token'))
+        if (!isMeRequest) {
+          console.log('[apiClient] 401错误 - 清除认证信息')
+          console.log('[apiClient] 当前路径:', window.location.pathname)
 
-        // 触发自定义事件，通知 AuthContext 更新状态
-        window.dispatchEvent(new CustomEvent('auth:logout'))
+          // 清除 token
+          localStorage.removeItem('access_token')
 
-        // 延迟重定向，让日志有时间输出
-        setTimeout(() => {
-          if (!window.location.pathname.match(/^(\/login|\/register)/)) {
-            console.log('[apiClient] 重定向到登录页面')
-            window.location.href = '/login'
-          }
-        }, 100)
+          // 触发自定义事件，通知 AuthContext 更新状态
+          window.dispatchEvent(new CustomEvent('auth:logout'))
+
+          // 延迟重定向，让日志有时间输出
+          setTimeout(() => {
+            if (!window.location.pathname.match(/^(\/login|\/register)/)) {
+              console.log('[apiClient] 重定向到登录页面')
+              window.location.href = '/login'
+            }
+          }, 100)
+        } else {
+          console.log('[apiClient] 401错误 - /me请求，不重定向（由AuthContext处理）')
+        }
       }
     }
     return Promise.reject(error)

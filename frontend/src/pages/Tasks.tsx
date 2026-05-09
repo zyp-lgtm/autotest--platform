@@ -9,7 +9,7 @@ import type { TestExecution } from '../types'
 
 export default function Tasks() {
   const navigate = useNavigate()
-  const { currentProject } = useProject()
+  const { currentProject, projects, setCurrentProject } = useProject()
   const [tasks, setTasks] = useState<UITask[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -18,11 +18,28 @@ export default function Tasks() {
   const [showHistory, setShowHistory] = useState<Record<string, boolean>>({})
   const [keywords, setKeywords] = useState<Record<string, Keyword>>({})
   const [taskKeywords, setTaskKeywords] = useState<Record<string, string[]>>({})
+  const [allProjectTasks, setAllProjectTasks] = useState<Record<string, UITask[]>>({})
+  const [showAllTasks, setShowAllTasks] = useState(false)
 
   useEffect(() => {
     loadTasks()
     loadKeywords()
+    loadAllProjectTasks()
   }, [currentProject])
+
+  const loadAllProjectTasks = async () => {
+    // 加载所有项目的任务，用于统计显示
+    const allTasks: Record<string, UITask[]> = {}
+    for (const project of projects) {
+      try {
+        const projectTasks = await tasksApi.getTasks(project.id)
+        allTasks[project.id] = projectTasks
+      } catch {
+        allTasks[project.id] = []
+      }
+    }
+    setAllProjectTasks(allTasks)
+  }
 
   const loadKeywords = async () => {
     try {
@@ -101,7 +118,27 @@ export default function Tasks() {
 
     try {
       await tasksApi.deleteTask(taskId)
-      setTasks(tasks.filter(t => t.id !== taskId))
+      // 从当前项目任务列表中移除
+      setTasks(prev => prev.filter(t => t.id !== taskId))
+      // 从所有项目任务缓存中移除，避免"显示所有项目"时仍出现
+      setAllProjectTasks(prev => {
+        const updated = { ...prev }
+        for (const projectId of Object.keys(updated)) {
+          updated[projectId] = updated[projectId].filter(t => t.id !== taskId)
+        }
+        return updated
+      })
+      // 清除已删除任务的执行历史
+      setExecutions(prev => {
+        const updated = { ...prev }
+        delete updated[taskId]
+        return updated
+      })
+      setShowHistory(prev => {
+        const updated = { ...prev }
+        delete updated[taskId]
+        return updated
+      })
     } catch (err: any) {
       alert('删除失败: ' + (err.response?.data?.detail || err.message))
     }
@@ -156,7 +193,10 @@ export default function Tasks() {
     }
   }
 
-  const filteredTasks = tasks.filter(task =>
+  const filteredTasks = (showAllTasks
+    ? Object.values(allProjectTasks).flat()
+    : tasks
+  ).filter(task =>
     task.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (task.description && task.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
     task.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -193,16 +233,47 @@ export default function Tasks() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">任务管理</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            项目: {currentProject.name} · 共 {tasks.length} 个任务
-          </p>
+          <div className="flex items-center gap-4 mt-1">
+            {/* 项目选择器 */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">项目:</span>
+              <select
+                value={currentProject?.id || ''}
+                onChange={(e) => {
+                  const project = projects.find(p => p.id === e.target.value)
+                  if (project) setCurrentProject(project)
+                }}
+                className="px-3 py-1 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {projects.map((project) => {
+                  const taskCount = allProjectTasks[project.id]?.length || 0
+                  return (
+                    <option key={project.id} value={project.id}>
+                      {project.name} ({taskCount} 个任务)
+                    </option>
+                  )
+                })}
+              </select>
+            </div>
+            <span className="text-sm text-gray-500">
+              当前显示: {showAllTasks ? '所有项目' : currentProject?.name} · {filteredTasks.length} 个任务
+            </span>
+          </div>
         </div>
-        <button
-          onClick={() => navigate('/tasks/new')}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-        >
-          创建任务
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowAllTasks(!showAllTasks)}
+            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+          >
+            {showAllTasks ? '显示当前项目' : '显示所有项目'}
+          </button>
+          <button
+            onClick={() => navigate('/tasks/new')}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+          >
+            创建任务
+          </button>
+        </div>
       </div>
 
       {/* 搜索栏 */}
@@ -239,14 +310,31 @@ export default function Tasks() {
         </div>
       ) : (
         <div className="grid gap-4">
-          {filteredTasks.map((task) => (
-            <div key={task.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <h3 className="text-lg font-medium text-gray-900">{task.name}</h3>
-                  {task.description && (
-                    <p className="text-sm text-gray-600 mt-1">{task.description}</p>
-                  )}
+          {filteredTasks.map((task) => {
+            // 找到任务所属的项目
+            const taskProject = showAllTasks
+              ? projects.find(p => p.id === task.project_id)
+              : currentProject
+
+            return (
+              <div key={task.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    {/* 任务名称 */}
+                    <h3 className="text-lg font-medium text-gray-900">{task.name}</h3>
+
+                    {/* 项目名称（仅在显示所有项目时） */}
+                    {showAllTasks && taskProject && (
+                      <div className="mt-1">
+                        <span className="inline-flex items-center px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
+                          📁 {taskProject.name}
+                        </span>
+                      </div>
+                    )}
+
+                    {task.description && (
+                      <p className="text-sm text-gray-600 mt-1">{task.description}</p>
+                    )}
 
                   {/* 标签 */}
                   {task.tags && task.tags.length > 0 && (
@@ -374,7 +462,8 @@ export default function Tasks() {
                 </div>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

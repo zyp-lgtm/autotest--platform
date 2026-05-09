@@ -3,9 +3,11 @@ import { projectsApi } from '../api/projects'
 import { environmentsApi } from '../api/environments'
 import { testDataApi } from '../api/testData'
 import { tasksApi } from '../api/tasks'
+import { useProject } from '../contexts/ProjectContext'
 import type { Project } from '../types/models'
 
 const ProjectsPage: React.FC = () => {
+  const { currentProject, setCurrentProject, loadProjects: loadProjectsGlobal } = useProject()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null)
@@ -76,7 +78,8 @@ const ProjectsPage: React.FC = () => {
       })
 
       showMessage('success', '项目创建成功')
-      await loadProjects()
+      await loadProjects()  // 刷新本地项目列表
+      await loadProjectsGlobal()  // 刷新全局项目上下文
       resetForm()
       setShowCreateModal(false)
     } catch (error: any) {
@@ -99,7 +102,8 @@ const ProjectsPage: React.FC = () => {
       })
 
       showMessage('success', '项目更新成功')
-      await loadProjects()
+      await loadProjects()  // 刷新本地项目列表
+      await loadProjectsGlobal()  // 刷新全局项目上下文
       resetForm()
       setShowEditModal(false)
       setEditingProject(null)
@@ -127,7 +131,8 @@ const ProjectsPage: React.FC = () => {
     try {
       await projectsApi.deleteProject(projectId)
       showMessage('success', '项目删除成功')
-      await loadProjects()
+      await loadProjects()  // 刷新本地项目列表
+      await loadProjectsGlobal()  // 刷新全局项目上下文
     } catch (error: any) {
       console.error('删除项目失败:', error)
       const errorMsg = error?.response?.data?.detail || error?.message || '删除项目失败'
@@ -228,13 +233,31 @@ const ProjectsPage: React.FC = () => {
                   <span className="text-xs text-gray-500">
                     创建时间: {new Date(project.created_at).toLocaleDateString()}
                   </span>
-                  <button
-                    onClick={() => handleDeleteProject(project.id)}
-                    className="text-red-500 hover:text-red-700 text-sm"
-                  >
-                    删除
-                  </button>
+                  <div className="flex gap-2">
+                    {currentProject?.id !== project.id && (
+                      <button
+                        onClick={() => {
+                          setCurrentProject(project)
+                          showMessage('success', `已切换到项目: ${project.name}`)
+                        }}
+                        className="text-green-500 hover:text-green-700 text-sm"
+                      >
+                        切换
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDeleteProject(project.id)}
+                      className="text-red-500 hover:text-red-700 text-sm"
+                    >
+                      删除
+                    </button>
+                  </div>
                 </div>
+                {currentProject?.id === project.id && (
+                  <div className="mt-2 text-xs text-green-600 bg-green-50 rounded px-2 py-1">
+                    ✓ 当前项目
+                  </div>
+                )}
               </div>
             )
           })}

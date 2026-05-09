@@ -139,18 +139,30 @@ async def delete_test_data(
     try:
         test_data = validate_and_fetch(db, TestData, data_id, "测试数据")
 
-        # 检查是否有关联的绑定
-        bindings = db.query(DataBinding).filter(DataBinding.data_id == test_data.id).all()
-        if bindings:
+        # 检查是否有关联的有效绑定（case 仍然存在的）
+        valid_bindings = db.query(DataBinding).join(
+            UICase, DataBinding.case_id == UICase.id
+        ).filter(DataBinding.data_id == test_data.id).all()
+
+        if valid_bindings:
+            # 获取用例名称用于提示
+            case_names = [db.query(UICase).filter(UICase.id == b.case_id).first().name
+                          for b in valid_bindings]
             raise HTTPException(
                 status_code=400,
-                detail=f"测试数据被 {len(bindings)} 个用例使用，无法删除"
+                detail=f"测试数据被以下用例使用，无法删除: {', '.join(case_names)}"
             )
 
+        # 删除所有相关的绑定记录（包括孤立的绑定）
+        all_bindings = db.query(DataBinding).filter(DataBinding.data_id == test_data.id).all()
+        for binding in all_bindings:
+            db.delete(binding)
+
+        # 删除测试数据
         db.delete(test_data)
         db.commit()
 
-        logger.info(f"用户 {user.username} 删除测试数据: {test_data.name}")
+        logger.info(f"用户 {user.username} 删除测试数据: {test_data.name}, 清理了 {len(all_bindings)} 条绑定记录")
         return {"message": "测试数据已删除"}
 
     except HTTPException:

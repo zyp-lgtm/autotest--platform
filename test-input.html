@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>输入测试页面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .test-section {
+            border: 2px solid #4CAF50;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            background: #f9f9f9;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            font-size: 16px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        #log {
+            background: #333;
+            color: #0f0;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .instruction {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 输入捕获测试页面</h1>
+
+    <div class="instruction">
+        <strong>使用说明：</strong><br>
+        1. 在下方输入框中输入任何文字（中文或英文）<br>
+        2. 点击"检查捕获结果"按钮<br>
+        3. 查看下方日志区域，确认是否捕获到输入操作
+    </div>
+
+    <div class="test-section">
+        <h2>测试输入框</h2>
+        <input type="text" id="testInput1" placeholder="在这里输入文字...">
+        <input type="text" id="testInput2" placeholder="或者在这里输入...">
+
+        <button onclick="checkCapture()">检查捕获结果</button>
+        <button onclick="clearLog()">清空日志</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        // 检查录制脚本是否加载
+        function log(message) {
+            var logDiv = document.getElementById('log');
+            var time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += '[' + time + '] ' + message + '<br>';
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function checkCapture() {
+            log('=== 开始检查 ===');
+
+            // 检查录制脚本
+            if (window.__recording) {
+                log('✅ 录制脚本已加载');
+                log('当前捕获的操作数: ' + window.__recording.actions.length);
+
+                var inputActions = window.__recording.actions.filter(a => a.action_type === 'input');
+                log('输入操作数: ' + inputActions.length);
+
+                if (inputActions.length > 0) {
+                    log('✅ 成功捕获输入操作！');
+                    inputActions.forEach((action, index) => {
+                        log('  输入 ' + (index + 1) + ': ' + action.selector + ' = "' + action.value + '"');
+                    });
+                } else {
+                    log('❌ 未捕获到任何输入操作');
+                }
+
+                // 显示所有操作
+                log('所有操作详情:');
+                window.__recording.actions.forEach((action, index) => {
+                    log('  操作 ' + (index + 1) + ': ' + action.action_type);
+                });
+            } else {
+                log('❌ 录制脚本未加载');
+                log('请确保在录制模式下打开此页面');
+            }
+
+            log('=== 检查完成 ===');
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        // 页面加载时的提示
+        window.addEventListener('load', function() {
+            log('页面已加载');
+            log('当前URL: ' + window.location.href);
+
+            if (window.__recording) {
+                log('✅ 检测到录制环境');
+            } else {
+                log('⚠️  未检测到录制环境');
+                log('请通过录制功能打开此页面');
+            }
+        });
+
+        // 监听输入事件用于调试
+        document.addEventListener('input', function(e) {
+            log('[事件] 检测到 input 事件: ' + e.target.id + ' = "' + e.target.value + '"');
+        });
+
+        // 监听compositionend事件（中文输入法）
+        document.addEventListener('compositionend', function(e) {
+            log('[事件] 检测到 compositionend 事件: ' + e.target.id + ' = "' + e.target.value + '"');
+        });
+    </script>
+</body>
+</html>

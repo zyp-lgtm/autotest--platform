@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>认证状态检查</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .success { color: #10b981; }
+        .error { color: #ef4444; }
+        .info { color: #3b82f6; }
+        pre {
+            background: #f3f4f6;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 认证状态诊断工具</h1>
+
+    <div class="card">
+        <h2>1. 当前用户状态</h2>
+        <div id="userStatus">检查中...</div>
+        <button onclick="checkUser()">重新检查</button>
+        <button onclick="location.href='/'">返回首页</button>
+    </div>
+
+    <div class="card">
+        <h2>2. 项目列表测试</h2>
+        <div id="projectStatus">检查中...</div>
+        <button onclick="checkProjects()">重新检查</button>
+    </div>
+
+    <div class="card">
+        <h2>3. Cookie 状态</h2>
+        <div id="cookieStatus">检查中...</div>
+        <button onclick="checkCookies()">重新检查</button>
+    </div>
+
+    <div class="card">
+        <h2>4. 操作建议</h2>
+        <div id="suggestions"></div>
+        <button onclick="clearCache()">清除缓存并重新加载</button>
+        <button onclick="location.href='/login'">去登录页面</button>
+    </div>
+
+    <script>
+        async function checkUser() {
+            const status = document.getElementById('userStatus');
+            status.innerHTML = '<p class="info">检查中...</p>';
+
+            try {
+                const response = await fetch('/api/v1/auth/me', {
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const user = await response.json();
+                    status.innerHTML = `
+                        <p class="success">✓ 已登录</p>
+                        <pre>${JSON.stringify(user, null, 2)}</pre>
+                    `;
+                    updateSuggestions('authenticated');
+                } else {
+                    const error = await response.json();
+                    status.innerHTML = `
+                        <p class="error">✗ 未认证 (${response.status})</p>
+                        <pre>${JSON.stringify(error, null, 2)}</pre>
+                    `;
+                    updateSuggestions('not_authenticated');
+                }
+            } catch (error) {
+                status.innerHTML = `<p class="error">✗ 网络错误: ${error.message}</p>`;
+                updateSuggestions('network_error');
+            }
+        }
+
+        async function checkProjects() {
+            const status = document.getElementById('projectStatus');
+            status.innerHTML = '<p class="info">检查中...</p>';
+
+            try {
+                const response = await fetch('/api/v1/projects/', {
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const projects = await response.json();
+                    status.innerHTML = `
+                        <p class="success">✓ 成功获取 ${projects.length} 个项目</p>
+                        <pre>${JSON.stringify(projects.map(p => ({id: p.id, name: p.name})), null, 2)}</pre>
+                    `;
+                } else {
+                    const error = await response.json();
+                    status.innerHTML = `
+                        <p class="error">✗ 获取项目失败 (${response.status})</p>
+                        <pre>${JSON.stringify(error, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                status.innerHTML = `<p class="error">✗ 网络错误: ${error.message}</p>`;
+            }
+        }
+
+        function checkCookies() {
+            const status = document.getElementById('cookieStatus');
+
+            // 检查 cookies
+            const cookies = document.cookie;
+            if (cookies) {
+                const hasAccessToken = cookies.includes('access_token');
+                status.innerHTML = `
+                    <p class="${hasAccessToken ? 'success' : 'info'}">
+                        ${hasAccessToken ? '✓' : '!'} Cookie 状态: ${hasAccessToken ? '存在 access_token' : '无 access_token'}
+                    </p>
+                    <pre>${cookies}</pre>
+                `;
+            } else {
+                status.innerHTML = '<p class="error">✗ 没有 Cookie</p>';
+            }
+
+            // 检查 localStorage
+            const localStorageItems = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                localStorageItems[key] = localStorage.getItem(key);
+            }
+
+            status.innerHTML += `
+                <h3>LocalStorage:</h3>
+                <pre>${JSON.stringify(localStorageItems, null, 2)}</pre>
+            `;
+        }
+
+        function updateSuggestions(status) {
+            const suggestions = document.getElementById('suggestions');
+
+            const messages = {
+                'authenticated': '<p class="success">✓ 认证正常，如果项目列表仍然为空，请检查项目列表 API</p>',
+                'not_authenticated': '<p class="error">✗ 需要重新登录。点击下方"去登录页面"按钮</p>',
+                'network_error': '<p class="error">✗ 网络连接问题，请检查后端是否运行在 http://localhost:8000</p>'
+            };
+
+            suggestions.innerHTML = messages[status] || '<p>未知状态</p>';
+        }
+
+        function clearCache() {
+            localStorage.clear();
+            sessionStorage.clear();
+            alert('缓存已清除，页面即将重新加载...');
+            location.reload();
+        }
+
+        // 页面加载时自动检查
+        window.onload = function() {
+            checkUser();
+            checkProjects();
+            checkCookies();
+        };
+    </script>
+</body>
+</html>

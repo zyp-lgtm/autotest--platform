@@ -9,6 +9,7 @@ import { lazy, Suspense } from 'react'
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const LoginPage = lazy(() => import('./pages/Login'))
 const RegisterPage = lazy(() => import('./pages/Register'))
+const DiagnosticPage = lazy(() => import('./pages/Diagnostic'))
 const Tasks = lazy(() => import('./pages/Tasks'))
 const TaskForm = lazy(() => import('./components/TaskForm'))
 const ExecutionReportPage = lazy(() => import('./pages/ExecutionReport'))
@@ -47,6 +48,7 @@ function App() {
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
+                <Route path="/diagnostic" element={<DiagnosticPage />} />
                 <Route
                   path="/*"
                   element={

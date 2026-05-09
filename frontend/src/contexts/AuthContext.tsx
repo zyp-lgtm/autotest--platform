@@ -9,6 +9,7 @@ interface AuthContextType {
   register: (username: string, email: string, password: string) => Promise<void>
   logout: () => void
   loading: boolean
+  isAuthenticated: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -17,6 +18,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   // 监听登出事件（由响应拦截器触发）
   useEffect(() => {
@@ -24,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('[AuthContext] 收到登出事件，清除状态')
       setUser(null)
       setToken(null)
+      setIsAuthenticated(false)
       setLoading(false)
     }
 
@@ -48,15 +51,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('[AuthContext] 当前会话有效，用户:', userData)
       setUser(userData)
       setToken('cookie-based')  // 标记使用 Cookie
+      setIsAuthenticated(true)
       setLoading(false)
     } catch (error: any) {
       console.log('[AuthContext] 当前会话无效或未登录:', error?.response?.status)
-      // 401 表示未认证，这是正常的
+      // 临时修复：忽略401错误，避免频繁重定向
       if (error?.response?.status !== 401) {
         console.error('[AuthContext] 验证会话时发生错误:', error)
       }
       setUser(null)
       setToken(null)
+      setIsAuthenticated(false)
       setLoading(false)
     }
   }
@@ -81,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('[AuthContext] 登录成功，用户信息:', response.user)
         setUser(response.user)
         setToken('cookie-based')  // 标记使用 Cookie
+        setIsAuthenticated(true)
       } else {
         // 如果后端没有返回 user（向后兼容），从 JWT 解码
         if (response.access_token) {
@@ -98,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
             setUser(userData)
             setToken('cookie-based')
+            setIsAuthenticated(true)
           }
         } else {
           throw new Error('Invalid login response')
@@ -130,11 +137,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // 清除本地状态
       setUser(null)
       setToken(null)
+      setIsAuthenticated(false)
     }
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, token, login, register, logout, loading, isAuthenticated }}>
       {children}
     </AuthContext.Provider>
   )

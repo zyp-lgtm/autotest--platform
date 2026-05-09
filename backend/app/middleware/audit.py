@@ -5,12 +5,12 @@
 - 登录/登出
 - 创建/更新/删除操作
 - 测试执行操作
+
+注意：此中间件只记录到日志，不写入数据库，避免阻塞事件循环。
+如需持久化审计日志，应使用后台任务或消息队列。
 """
-from sqlalchemy.orm import Session
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from ..core.database import get_db
-from ..models.audit import AuditLog
 import logging
 
 logger = logging.getLogger(__name__)
@@ -69,17 +69,15 @@ class AuditMiddleware(BaseHTTPMiddleware):
         return None
 
     async def _log_audit(self, request: Request, response, action: str, method: str):
-        """记录审计日志"""
+        """记录审计日志（后台任务，不阻塞主请求）"""
         try:
-            # 获取数据库会话
-            db: Session = next(get_db())
-
             # 从请求中提取信息
             client_ip = request.client.host if request.client else None
             user_agent = request.headers.get("user-agent")
 
-            # 获取用户ID（如果有）
+            # 获取用户ID（如果有）- 只从 token 解析，不查询数据库
             user_id = None
+            username = None
             try:
                 # 从 JWT token 中提取用户信息
                 from ..core.security import verify_token
@@ -89,16 +87,14 @@ class AuditMiddleware(BaseHTTPMiddleware):
                     token = auth_header.split(" ")[1]
                     payload = verify_token(token)
                     if payload:
-                        # 从数据库获取用户ID
-                        from ..models.user import User
-                        user = db.query(User).filter(User.username == payload.get("sub")).first()
-                        if user:
-                            user_id = user.id
+                        username = payload.get("sub")
+                        # 🔥 FIX: 不查询数据库，只记录 username
+                        # 在需要时可以通过 username 查询 user_id
             except Exception as e:
-                logger.debug(f"无法从 token 获取用户信息: {e}")
+                logger.debug(f"无法从 Authorization token 获取用户信息: {e}")
 
             # 检查是否从 Cookie 获取 token
-            if not user_id:
+            if not username:
                 try:
                     from ..core.security import verify_token
 
@@ -106,10 +102,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
                     if token:
                         payload = verify_token(token)
                         if payload:
-                            from ..models.user import User
-                            user = db.query(User).filter(User.username == payload.get("sub")).first()
-                            if user:
-                                user_id = user.id
+                            username = payload.get("sub")
                 except Exception as e:
                     logger.debug(f"无法从 Cookie 获取用户信息: {e}")
 
@@ -122,26 +115,56 @@ class AuditMiddleware(BaseHTTPMiddleware):
             # 判断操作是否成功
             success = 200 <= response.status_code < 300
 
-            # 创建审计日志
-            audit_log = AuditLog(
-                action=http_action,
-                resource_type=action,
-                resource_id=resource_id,
-                user_id=user_id,
-                ip_address=client_ip,
-                user_agent=user_agent,
-                success=success,
-                details={
-                    "method": method,
-                    "path": request.url.path,
-                    "status_code": response.status_code
-                }
+            # 获取数据库 session（异步写入数据库）
+            from ..core.database import SessionLocal
+            from ..models.audit import AuditLog
+            import uuid
+
+            # 异步写入审计日志到数据库
+            async def write_audit_log():
+                try:
+                    with SessionLocal() as db:
+                        # 查找 user_id（如果有 username）
+                        user_id = None
+                        if username:
+                            from ..models.user import User
+                            user = db.query(User).filter(User.username == username).first()
+                            if user:
+                                user_id = str(user.id)
+
+                        # 创建审计日志记录
+                        audit_log = AuditLog(
+                            user_id=user_id,
+                            action=action,
+                            resource_type=http_action,
+                            resource_id=resource_id,
+                            ip_address=client_ip,
+                            user_agent=user_agent,
+                            success=success,
+                            details={
+                                "method": method,
+                                "path": request.url.path,
+                                "status_code": response.status_code
+                            }
+                        )
+                        db.add(audit_log)
+                        db.commit()
+                        logger.info(f"审计日志已写入数据库: {action} {http_action} by {username}")
+                except Exception as e:
+                    logger.error(f"写入审计日志到数据库失败: {e}")
+
+            # 不等待数据库写入完成，避免阻塞请求
+            import asyncio
+            asyncio.create_task(write_audit_log())
+
+            logger.info(
+                f"审计事件: {http_action} {action} "
+                f"用户={username} "
+                f"IP={client_ip} "
+                f"路径={request.url.path} "
+                f"状态={response.status_code} "
+                f"成功={success}"
             )
-
-            db.add(audit_log)
-            db.commit()
-
-            logger.info(f"审计日志已记录: {http_action} {action} by user {user_id}")
 
         except Exception as e:
             logger.error(f"记录审计日志时发生错误: {e}")

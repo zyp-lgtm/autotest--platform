@@ -122,9 +122,6 @@ class RecordingConverter:
                 enable_smart_wait and index > 0,  # 第一个操作（通常是导航）不需要等待
                 variable_map  # 🔥 传递变量映射
             )
-                step_counter,
-                enable_smart_wait and index > 0  # 第一个操作（通常是导航）不需要等待
-            )
             main_case.steps.extend(steps)
             step_counter += len(steps)
 

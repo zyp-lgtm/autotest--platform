@@ -53,6 +53,7 @@ class AuditLog(Base):
             "resource_type": self.resource_type,
             "resource_id": self.resource_id,
             "user_id": str(self.user_id) if self.user_id else None,
+            "username": self.user.username if self.user else None,
             "details": self.details,
             "ip_address": self.ip_address,
             "user_agent": self.user_agent,
