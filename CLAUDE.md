@@ -32,104 +32,26 @@
 
 所有代码优化和新功能开发**必须**遵循 TDD 模式：`Red → Green → Refactor`
 
-**何时使用 TDD**:
-```markdown
-✅ 必须使用 TDD:
-   - 性能优化（缓存、查询优化）
-   - 新功能开发
-   - Bug 修复（先写失败用例）
-   - API 端点开发
-   - 数据模型变更
+| 场景 | 要求 |
+|------|------|
+| 性能优化、新功能、Bug修复、API、数据模型 | **必须** TDD |
+| 配置、文档、格式调整 | 可灵活处理 |
 
-⚠️  可以灵活处理:
-   - 配置文件修改
-   - 文档更新
-   - 代码格式调整
-```
-
-**禁止直接生产优化**:
-```markdown
-❌ 禁止行为:
-   - 直接在生产环境测试优化
-   - 优化后不编写测试
-   - 忽略回归测试
-   - 跳过性能基准测试
-
-✅ 正确做法:
-   - 先写测试，再优化
-   - 使用测试环境验证
-   - 对比优化前后性能
-   - 记录优化效果
-```
+**禁止**: 生产环境直接测试、优化后不写测试、跳过回归测试、跳过性能基准
 
 ---
 
 ## ⚡ 缓存策略宪法
 
-### 缓存使用原则
+### 缓存策略
 
-**必须缓存的场景**:
-```markdown
-✅ 高频读取、低频修改的数据:
-   - 关键字列表
-   - 场景列表
-   - 用户信息
-   - 配置数据
-   - 类别/枚举数据
-```
+| 缓存 | 不缓存 |
+|------|--------|
+| 关键字/场景/用户/配置/枚举等低频修改数据 | 实时状态、计数器、会话、Token |
+| TTL: 静态 30min / 半静态 10min / 动态 5min / 实时 30s | 敏感数据(密码/Token/隐私) |
 
-**不应缓存的场景**:
-```markdown
-❌ 频繁修改的数据:
-   - 实时执行状态
-   - 计数器
-   - 临时数据
-❌ 个性化数据:
-   - 用户会话（使用 HttpOnly Cookie）
-   - 临时令牌
-```
-
-### 缓存 TTL 标准
-
-```python
-# 静态数据：10-30 分钟
-@cache_response(ttl=1800)  # 30 分钟
-
-# 半静态数据：5-10 分钟
-@cache_response(ttl=600)   # 10 分钟
-
-# 动态数据：1-5 分钟
-@cache_response(ttl=300)   # 5 分钟
-
-# 实时数据：不缓存或 30 秒
-@cache_response(ttl=30)    # 30 秒
-```
-
-### 缓存失效策略
-
-**主动失效（修改操作后）**:
-```python
-@router.post("/")
-async def create_task(task: TaskCreate):
-    new_task = db.add(task)
-    db.commit()
-    invalidate_pattern("list_tasks*")  # 必须清除相关缓存
-    return new_task
-```
-
-### 性能目标
-
-- 缓存命中率 ≥ 60%
-- 数据库查询减少 ≥ 70%
-- 响应时间减少 ≥ 50%
-
-### 禁止事项
-
-```markdown
-❌ 禁止缓存敏感数据: 密码、Token、个人隐私信息
-❌ 禁止过度缓存: 不要为所有 API 都添加缓存
-❌ 禁止忽略缓存失效: 修改数据后必须清除缓存
-```
+**修改数据后必须调用** `invalidate_pattern("list_*")` **清除缓存**
+**目标**: 命中率 ≥ 60%，DB查询减少 ≥ 70%
 
 ---
 
@@ -231,80 +153,32 @@ hotfix/*      - 紧急修复分支
 
 ## 🚀 部署宪法
 
-### 开发环境
+### 环境
 
-- SQLite 数据库
-- 本地文件存储
-- DEBUG 模式开启
-
-**启动命令**:
-```bash
-# 后端
-cd backend && python3 init_db.py && python3 -m uvicorn app.main:app --reload
-
-# 前端
-cd frontend && npm run dev
-
-# Agent
-cd agent && python3 agent.py
-```
-
-### 生产环境
-
-- PostgreSQL 14+ 数据库
-- Redis 缓存
-- Gunicorn/Nginx 部署
-- 环境变量配置
-
-**禁止事项**:
-```markdown
-❌ 禁止使用 SQLite in production
-❌ 禁止 DEBUG=True in production
-❌ 禁止硬编码密钥
-❌ 禁止直接暴露后端端口
-```
+| 开发 | 生产 |
+|------|------|
+| SQLite + DEBUG + reload | PostgreSQL 14+ + Redis + Gunicorn/Nginx |
+| `cd backend && python3 -m uvicorn app.main:app --reload` | 全部通过环境变量配置 |
+| `cd frontend && npm run dev` | 禁止 SQLite / DEBUG=True / 硬编码密钥 / 暴露后端端口 |
 
 ---
 
 ## 🎓 新成员上手指南
 
-### 快速启动 (30 分钟内)
+### 快速启动
 
-**1. 环境准备** (5 分钟):
 ```bash
-python3 --version  # 需要 3.11+
-node --version      # 需要 16+
-git --version
-```
+python3 --version   # 需要 3.11+
+node --version       # 需要 16+
 
-**2. 项目设置** (5 分钟):
-```bash
-git clone <repository>
-cd backend && pip install -r requirements.txt
+cd backend && pip install -r requirements.txt && python3 init_db.py
 cd frontend && npm install
-```
 
-**3. 初始化数据库** (5 分钟):
-```bash
-cd backend && python3 init_db.py
-```
+# 终端1: cd backend && python3 -m uvicorn app.main:app --reload
+# 终端2: cd frontend && npm run dev
+# 终端3: cd agent && python3 agent.py (可选)
 
-**4. 启动服务** (5 分钟):
-```bash
-# 终端1: 后端
-cd backend && python3 -m uvicorn app.main:app --reload
-
-# 终端2: 前端
-cd frontend && npm run dev
-
-# 可选: 终端3: Agent
-cd agent && python3 agent.py
-```
-
-**5. 测试验证** (10 分钟):
-```bash
-# 访问 http://localhost:3000
-# 使用 demo/demo123 登录
+# 访问 http://localhost:3000  使用 demo/demo123 登录
 ```
 
 ---
