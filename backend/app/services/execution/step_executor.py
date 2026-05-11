@@ -15,6 +15,7 @@ from ...services.keyword_engine import KeywordEngine
 from ...services.playwright_browser import PlaywrightBrowser
 from ...services.debug_collector import DebugInfoCollector
 from ...services.error_classifier import ErrorClassifier
+from ...services.variable_resolver import VariableResolver
 from ...core.interfaces import IKeywordEngine, IBrowserManager, IDebugCollector
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,8 @@ class StepExecutor:
         step: UIStep,
         case_execution,
         scenario_execution,
-        task_execution
+        task_execution,
+        case: Optional[UICase] = None
     ) -> StepExecution:
         """
         执行单个步骤
@@ -75,6 +77,25 @@ class StepExecutor:
 
             # 解析参数
             parameters = step.parameters or {}
+
+            # 🔥 变量替换：解析步骤参数中的变量引用
+            if case:
+                try:
+                    resolver = VariableResolver(self.db)
+                    logger.info(f"🔥 [变量解析] 准备解析步骤: {step.step_name}")
+                    logger.info(f"🔥 [变量解析] 原始参数: {parameters}")
+
+                    parameters = resolver.resolve_step_parameters(
+                        step_parameters=parameters,
+                        case=case,
+                        data_row_index=0
+                    )
+
+                    logger.info(f"✅ [变量解析] 解析后参数: {parameters}")
+                except Exception as e:
+                    logger.error(f"❌ [变量解析] 失败: {e}，使用原始参数")
+                    import traceback
+                    logger.error(f"❌ 错误详情: {traceback.format_exc()}")
 
             # 记录开始时间
             from datetime import datetime, timezone

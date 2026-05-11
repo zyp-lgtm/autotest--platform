@@ -64,189 +64,117 @@ class BrowserRecorder:
 
     def __init__(self):
         self.sessions: Dict[str, RecordingSession] = {}
-        self._recording_script = """
-        (function() {
-            window.__recording = {
-                actions: [],
-                startTime: Date.now(),
-                initialized: false,
+        self._recording_script = """(function() {
+    window.__recording = {
+        actions: [],
+        startTime: Date.now(),
+        initialized: false,
 
-                captureAction: function(action) {
-                    action.timestamp = Date.now() - window.__recording.startTime;
-                    window.__recording.actions.push(action);
-                    console.log('[录制]', action.action_type, action.selector || action.page_url);
-                },
-
-                getSelector: function(element) {
-                    if (element.id) {
-                        return '#' + element.id;
-                    }
-                    if (element.className) {
-                        return '.' + element.className.split(' ')[0];
-                    }
-                    if (element.name) {
-                        return '[name=' + element.name + ']';
-                    }
-                    // 生成CSS选择器
-                    return element.tagName.toLowerCase();
-                },
-
-                // 捕获页面导航
-                captureNavigation: function() {
-                    var currentUrl = window.location.href;
-
-                    // 避免重复捕获相同的URL
-                    if (window.__recording.lastCapturedUrl === currentUrl) {
-                        return;
-                    }
-
-                    // 跳过 about:blank 页面
-                    if (currentUrl === 'about:blank') {
-                        return;
-                    }
-
-                    window.__recording.lastCapturedUrl = currentUrl;
-
-                    window.__recording.captureAction({
-                        action_type: 'navigate',
-                        selector: '',
-                        page_url: currentUrl,
-                        page_title: document.title
-                    });
-                }
-            };
-
-            // 立即捕获当前页面（如果不是 about:blank）
-            if (window.location.href !== 'about:blank') {
-                setTimeout(function() {
-                    window.__recording.captureNavigation();
-                }, 100);
+        captureAction: function(action) {
+            if (!action.timestamp) {
+                action.timestamp = Date.now() - window.__recording.startTime;
             }
+            window.__recording.actions.push(action);
+            console.log('[录制] ' + action.action_type + ' @' + action.timestamp.toFixed(0) + 'ms: ' + (action.selector || action.page_url));
+        },
 
-            // 监听点击事件
-            document.addEventListener('click', function(e) {
-                var selector = window.__recording.getSelector(e.target);
-                window.__recording.captureAction({
-                    action_type: 'click',
-                    selector: selector,
-                    element_tag: e.target.tagName,
-                    element_text: e.target.textContent ? e.target.textContent.trim().substring(0, 50) : null,
-                    page_url: window.location.href,
-                    page_title: document.title
-                });
-            }, true);
+        getSelector: function(element) {
+            if (element.id) {
+                return '#' + element.id;
+            }
+            if (element.name) {
+                return '[name=' + element.name + ']';
+            }
+            if (element.className) {
+                // 获取第一个类名
+                var className = element.className.split(' ')[0];
+                // 🔥 转义特殊字符（方括号、点等）
+                return '.' + className.replace(/([\[\]\\.])/g, '\\$1');
+            }
+            return element.tagName.toLowerCase();
+        },
 
-            // 监听输入事件 - 带防抖和中文输入法支持
-            (function() {
-                var inputTimeouts = {};  // 存储每个输入框的定时器
-                var isComposing = {};    // 跟踪每个输入框的中文输入状态
-
-                // 监听中文输入开始
-                document.addEventListener('compositionstart', function(e) {
-                    var selector = window.__recording.getSelector(e.target);
-                    isComposing[selector] = true;
-                }, true);
-
-                // 监听中文输入结束
-                document.addEventListener('compositionend', function(e) {
-                    var selector = window.__recording.getSelector(e.target);
-                    isComposing[selector] = false;
-
-                    // 中文输入完成，立即捕获
-                    window.__recording.captureAction({
-                        action_type: 'input',
-                        selector: selector,
-                        value: e.target.value,
-                        element_tag: e.target.tagName,
-                        element_text: e.target.placeholder,
-                        page_url: window.location.href,
-                        page_title: document.title
-                    });
-
-                    // 清除防抖定时器
-                    if (inputTimeouts[selector]) {
-                        clearTimeout(inputTimeouts[selector]);
-                        delete inputTimeouts[selector];
-                    }
-                }, true);
-
-                // 监听普通输入事件（英文等）
-                document.addEventListener('input', function(e) {
-                    var selector = window.__recording.getSelector(e.target);
-
-                    // 如果正在使用中文输入法，跳过
-                    if (isComposing[selector]) {
-                        return;
-                    }
-
-                    // 清除之前的定时器
-                    if (inputTimeouts[selector]) {
-                        clearTimeout(inputTimeouts[selector]);
-                    }
-
-                    // 设置新的定时器，300ms 后捕获输入
-                    inputTimeouts[selector] = setTimeout(function() {
-                        window.__recording.captureAction({
-                            action_type: 'input',
-                            selector: selector,
-                            value: e.target.value,
-                            element_tag: e.target.tagName,
-                            element_text: e.target.placeholder,
-                            page_url: window.location.href,
-                            page_title: document.title
-                        });
-                    }, 300);
-                }, true);
-            })();
-
-            // 监听导航事件（使用多种方法确保不遗漏）
-
-            // 方法1: 使用 popstate 监听浏览器前进后退
-            window.addEventListener('popstate', function() {
-                setTimeout(function() {
-                    window.__recording.captureNavigation();
-                }, 100);
+        captureNavigation: function() {
+            var currentUrl = window.location.href;
+            if (window.__recording.lastCapturedUrl === currentUrl) {
+                return;
+            }
+            if (currentUrl === 'about:blank') {
+                return;
+            }
+            window.__recording.lastCapturedUrl = currentUrl;
+            window.__recording.captureAction({
+                action_type: 'navigate',
+                selector: '',
+                page_url: currentUrl,
+                page_title: document.title
             });
+        }
+    };
 
-            // 方法2: 监听 hash 变化
-            window.addEventListener('hashchange', function() {
-                window.__recording.captureNavigation();
+    if (window.location.href !== 'about:blank') {
+        setTimeout(function() {
+            window.__recording.captureNavigation();
+        }, 100);
+    }
+
+    // 监听点击事件
+    document.addEventListener('click', function(e) {
+        var selector = window.__recording.getSelector(e.target);
+        window.__recording.captureAction({
+            action_type: 'click',
+            selector: selector,
+            element_tag: e.target.tagName,
+            element_text: e.target.textContent ? e.target.textContent.trim().substring(0, 50) : null,
+            page_url: window.location.href,
+            page_title: document.title
+        });
+    }, true);
+
+    // 监听输入事件 - 立即捕获版本
+    (function() {
+        var isComposing = {};
+
+        document.addEventListener('compositionstart', function(e) {
+            var selector = window.__recording.getSelector(e.target);
+            isComposing[selector] = true;
+        }, true);
+
+        document.addEventListener('compositionend', function(e) {
+            var selector = window.__recording.getSelector(e.target);
+            isComposing[selector] = false;
+            window.__recording.captureAction({
+                action_type: 'input',
+                selector: selector,
+                value: e.target.value,
+                element_tag: e.target.tagName,
+                element_text: e.target.placeholder,
+                page_url: window.location.href,
+                page_title: document.title
             });
+        }, true);
 
-            // 方法3: 使用 MutationObserver 监听 URL 变化
-            let lastUrl = location.href;
-            new MutationObserver(function(mutations) {
-                if (location.href !== lastUrl) {
-                    lastUrl = location.href;
-                    setTimeout(function() {
-                        window.__recording.captureNavigation();
-                    }, 200);
-                }
-            }).observe(document, { subtree: true, childList: true });
+        document.addEventListener('input', function(e) {
+            var selector = window.__recording.getSelector(e.target);
+            // 如果正在使用中文输入法，跳过
+            if (isComposing[selector]) {
+                return;
+            }
+            // 🔥 立即捕获输入，不延迟
+            window.__recording.captureAction({
+                action_type: 'input',
+                selector: selector,
+                value: e.target.value,
+                element_tag: e.target.tagName,
+                element_text: e.target.placeholder,
+                page_url: window.location.href,
+                page_title: document.title
+            });
+        }, true);
+    })();
 
-            // 方法4: 拦截 pushState 和 replaceState
-            (function() {
-                var originalPushState = history.pushState;
-                var originalReplaceState = history.replaceState;
-
-                history.pushState = function() {
-                    originalPushState.apply(this, arguments);
-                    setTimeout(function() {
-                        window.__recording.captureNavigation();
-                    }, 100);
-                };
-
-                history.replaceState = function() {
-                    originalReplaceState.apply(this, arguments);
-                    setTimeout(function() {
-                        window.__recording.captureNavigation();
-                    }, 100);
-                };
-            })();
-
-            console.log('[录制] 录制脚本已加载，包含增强的导航捕获');
-        })();
-        """
+    console.log('[录制] 录制脚本已加载（立即捕获版本）');
+})();"""
 
     async def start_session(
         self,
@@ -302,7 +230,7 @@ class BrowserRecorder:
                     sessionId: '{session_id}',
 
                     captureAction: function(action) {{
-                        action.timestamp = Date.now() - window.__recording.startTime;
+                        action.timestamp = Date.now();
                         window.__recording.actions.push(action);
                         console.log('[录制]', action.action_type, action.selector || action.page_url);
 
@@ -314,15 +242,81 @@ class BrowserRecorder:
 
                     getSelector: function(element) {{
                         if (element.id) {{
-                            return '#' + element.id;
-                        }}
-                        if (element.className) {{
-                            return '.' + element.className.split(' ')[0];
+                            return '#' + CSS.escape(element.id);
                         }}
                         if (element.name) {{
-                            return '[name=' + element.name + ']';
+                            return '[name="' + CSS.escape(element.name) + '"]';
                         }}
-                        return element.tagName.toLowerCase();
+                        var tag = element.tagName.toLowerCase();
+                        // 获取直接文本（不含子元素）
+                        var ownText = '';
+                        for (var c = element.firstChild; c; c = c.nextSibling) {{
+                            if (c.nodeType === 3) ownText += c.textContent;
+                        }}
+                        ownText = ownText.trim();
+                        // 如果无直接文本，用 aria-label/title
+                        if (!ownText) {{
+                            ownText = (element.getAttribute('aria-label') || element.getAttribute('title') || '').trim();
+                        }}
+                        ownText = ownText.substring(0, 30);
+                        // 提取类名（最多3个，排除通用工具类）
+                        var skipSet = {{'cursor-pointer':1,'flex':1,'block':1,'inline':1,
+                            'relative':1,'absolute':1,'w-full':1,'h-full':1,
+                            'line-clamp-1':1,'line-clamp-2':1,'truncate':1,
+                            'flex-1':1,'flex-col':1,'flex-wrap':1,'flex-row':1,
+                            'justify-start':1,'justify-between':1,'justify-center':1,
+                            'items-center':1,'items-start':1,'items-end':1,
+                            'rounded':1,'rounded-sm':1,'rounded-md':1,'rounded-lg':1,
+                            'shadow':1,'shadow-sm':1,'shadow-md':1,
+                            'p-1':1,'p-2':1,'p-3':1,'p-4':1,
+                            'm-1':1,'m-2':1,'m-3':1,'m-4':1,
+                            'px-1':1,'px-2':1,'px-3':1,'px-4':1,
+                            'py-1':1,'py-2':1,'py-3':1,'py-4':1,
+                            'text-sm':1,'text-xs':1,'text-lg':1,'text-base':1}};
+                        var usefulClasses = [];
+                        if (element.className && typeof element.className === 'string') {{
+                            var classNames = element.className.trim().split(/\\s+/);
+                            for (var i = 0; i < classNames.length && usefulClasses.length < 3; i++) {{
+                                var cn = classNames[i];
+                                if (cn && !skipSet[cn]) {{
+                                    usefulClasses.push(CSS.escape(cn));
+                                }}
+                            }}
+                        }}
+                        // 🔥 策略1：input/textarea 用 placeholder 或 name
+                        if (tag === 'input' || tag === 'textarea') {{
+                            var placeholder = element.getAttribute('placeholder') || '';
+                            if (placeholder) {{
+                                return 'input[placeholder="' + placeholder.trim().substring(0, 30) + '"]';
+                            }}
+                            var inputType = element.getAttribute('type') || 'text';
+                            if (usefulClasses.length > 0) {{
+                                return 'input[type="' + inputType + '"].' + usefulClasses.join('.');
+                            }}
+                            return 'input[type="' + inputType + '"]';
+                        }}
+                        // 🔥 策略2：有直接文本 → tag.class:has-text("text")，必须有类名
+                        if (ownText) {{
+                            if (usefulClasses.length > 0) {{
+                                return tag + '.' + usefulClasses[0] + ':has-text("' + ownText + '")';
+                            }}
+                            // 无类名但有兄弟上下文：尝试用父元素的类名
+                            var parent = element.parentElement;
+                            if (parent && parent.className && typeof parent.className === 'string') {{
+                                var pClasses = parent.className.trim().split(/\\s+/);
+                                for (var i = 0; i < pClasses.length; i++) {{
+                                    if (pClasses[i] && !skipSet[pClasses[i]]) {{
+                                        return tag + ':has-text("' + ownText + '")';
+                                    }}
+                                }}
+                            }}
+                            return tag + ':has-text("' + ownText + '")';
+                        }}
+                        // 🔥 策略3：无文本，用类名组合
+                        if (usefulClasses.length > 0) {{
+                            return tag + '.' + usefulClasses.join('.');
+                        }}
+                        return tag;
                     }},
 
                     captureNavigation: function() {{
@@ -356,22 +350,39 @@ class BrowserRecorder:
                     }}, 100);
                 }}
 
-                // 监听点击事件
+                // 监听点击事件 - 智能目标识别
                 document.addEventListener('click', function(e) {{
-                    var selector = window.__recording.getSelector(e.target);
+                    var target = e.target;
+                    // 🔥 向上查找有意义的可交互元素
+                    var skipTags = {{'svg':1,'path':1,'circle':1,'rect':1,'line':1,'polygon':1,'polyline':1,'ellipse':1,'g':1,'use':1}};
+                    var skipClasses = {{'anticon':1}};  // Ant Design 图标包裹器
+                    while (target && target !== document.body) {{
+                        var t = target.tagName.toLowerCase();
+                        // 跳过 SVG 元素和纯图标包裹器
+                        if (skipTags[t]) {{ target = target.parentElement; continue; }}
+                        // 跳过 anticon span（只含 SVG 图标的空壳）
+                        if (t === 'span' && target.className && typeof target.className === 'string') {{
+                            var cls = target.className;
+                            var isIconOnly = /\\banticon\\b/.test(cls) || /\\bicon-\\b/.test(cls);
+                            var hasText = target.textContent && target.textContent.trim().length > 2;
+                            if (isIconOnly && !hasText) {{ target = target.parentElement; continue; }}
+                        }}
+                        break;
+                    }}
+                    if (!target || target === document.body) target = e.target;
+                    var selector = window.__recording.getSelector(target);
                     window.__recording.captureAction({{
                         action_type: 'click',
                         selector: selector,
-                        element_tag: e.target.tagName,
-                        element_text: e.target.textContent ? e.target.textContent.trim().substring(0, 50) : null,
+                        element_tag: target.tagName,
+                        element_text: target.textContent ? target.textContent.trim().substring(0, 50) : null,
                         page_url: window.location.href,
                         page_title: document.title
                     }});
                 }}, true);
 
-                // 监听输入事件 - 带防抖和中文输入法支持
+                // 监听输入事件 - 中文输入法支持和立即捕获
                 (function() {{
-                    var inputTimeouts = {{}};  // 存储每个输入框的定时器
                     var isComposing = {{}};    // 跟踪每个输入框的中文输入状态
 
                     // 监听中文输入开始
@@ -393,17 +404,12 @@ class BrowserRecorder:
                             element_tag: e.target.tagName,
                             element_text: e.target.placeholder,
                             page_url: window.location.href,
-                            page_title: document.title
+                            page_title: document.title,
+                            timestamp: Date.now()
                         }});
-
-                        // 清除防抖定时器
-                        if (inputTimeouts[selector]) {{
-                            clearTimeout(inputTimeouts[selector]);
-                            delete inputTimeouts[selector];
-                        }}
                     }}, true);
 
-                    // 监听普通输入事件（英文等）
+                    // 监听普通输入事件（英文等）- 🔥 立即捕获，无延迟
                     document.addEventListener('input', function(e) {{
                         var selector = window.__recording.getSelector(e.target);
 
@@ -412,23 +418,17 @@ class BrowserRecorder:
                             return;
                         }}
 
-                        // 清除之前的定时器
-                        if (inputTimeouts[selector]) {{
-                            clearTimeout(inputTimeouts[selector]);
-                        }}
-
-                        // 设置新的定时器，300ms 后捕获输入
-                        inputTimeouts[selector] = setTimeout(function() {{
-                            window.__recording.captureAction({{
-                                action_type: 'input',
-                                selector: selector,
-                                value: e.target.value,
-                                element_tag: e.target.tagName,
-                                element_text: e.target.placeholder,
-                                page_url: window.location.href,
-                                page_title: document.title
-                            }});
-                        }}, 300);
+                        // 🔥 立即捕获输入，不使用延迟
+                        window.__recording.captureAction({{
+                            action_type: 'input',
+                            selector: selector,
+                            value: e.target.value,
+                            element_tag: e.target.tagName,
+                            element_text: e.target.placeholder,
+                            page_url: window.location.href,
+                            page_title: document.title,
+                            timestamp: Date.now()
+                        }});
                     }}, true);
                 }})();
 
@@ -649,6 +649,11 @@ class BrowserRecorder:
 
             print(f"📊 从会话存储获取到 {len(captured_actions)} 个操作")
 
+            # 🔥 去重和排序：先按时间戳排序，再合并重复输入
+            captured_actions = sorted(captured_actions, key=lambda x: x.timestamp)
+            captured_actions = self._merge_duplicate_inputs(captured_actions)
+            print(f"📊 去重后剩余 {len(captured_actions)} 个操作")
+
             # 🔍 调试信息：打印每个操作
             for action in captured_actions:
                 print(f"  - {action.action_type}: {action.page_url or action.selector}")
@@ -719,6 +724,46 @@ class BrowserRecorder:
             "page_url": action.page_url,
             "page_title": action.page_title
         }
+
+    def _merge_duplicate_inputs(self, actions: List[CapturedAction]) -> List[CapturedAction]:
+        """去重和合并输入操作（跨越等待步骤）"""
+        if not actions:
+            return actions
+
+        # 按选择器分组所有输入操作
+        input_groups = {}
+        input_indices = set()
+
+        for i, action in enumerate(actions):
+            if action.action_type == 'input' and action.selector:
+                if action.selector not in input_groups:
+                    input_groups[action.selector] = []
+                input_groups[action.selector].append((i, action))
+
+        for selector, input_list in input_groups.items():
+            if len(input_list) > 1:
+                print(f"🔍 发现选择器 {selector} 有 {len(input_list)} 个输入操作")
+                best_index, best_action = max(input_list, key=lambda x: len(x[1].value or ''))
+                print(f"  ✓ 保留: '{best_action.value}'")
+                for idx, action in input_list:
+                    if idx != best_index:
+                        print(f"  ✗ 移除: '{action.value}'")
+                        input_indices.add(idx)
+                        if idx > 0:
+                            prev_idx = idx - 1
+                            while prev_idx >= 0 and prev_idx in input_indices:
+                                prev_idx -= 1
+                            if prev_idx >= 0:
+                                prev_action = actions[prev_idx]
+                                if (prev_action.action_type == 'wait' and
+                                    prev_action.selector == action.selector):
+                                    input_indices.add(prev_idx)
+
+        merged = [action for i, action in enumerate(actions) if i not in input_indices]
+        removed_count = len(actions) - len(merged)
+        if removed_count > 0:
+            print(f"📊 去重完成: 移除了 {removed_count} 个重复操作")
+        return merged
 
     async def close_session(self, session_id: str):
         """关闭录制会话（清理资源）"""

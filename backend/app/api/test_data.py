@@ -240,8 +240,11 @@ async def get_case_bindings(
     db: Session = Depends(get_db)
 ):
     """获取用例的所有数据绑定"""
+    from ..api.utils import validate_uuid
+    case_uuid = validate_uuid(case_id, "用例")
+
     bindings = db.query(DataBinding).filter(
-        DataBinding.case_id == case_id,
+        DataBinding.case_id == case_uuid,
         DataBinding.enabled == 1
     ).all()
 
@@ -264,8 +267,11 @@ async def unbind_data(
     db: Session = Depends(get_db)
 ):
     """解除数据绑定"""
+    from ..api.utils import validate_uuid
+    binding_uuid = validate_uuid(binding_id, "绑定")
+
     try:
-        binding = db.query(DataBinding).filter(DataBinding.id == binding_id).first()
+        binding = db.query(DataBinding).filter(DataBinding.id == binding_uuid).first()
         if not binding:
             raise HTTPException(status_code=404, detail="绑定不存在")
 

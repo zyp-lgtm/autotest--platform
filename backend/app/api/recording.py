@@ -16,6 +16,7 @@ from ..models.user import User
 from ..models.ui_task import UITask
 from ..core.security import get_authenticated_user
 from .utils import validate_and_fetch
+from ..utils.cache import invalidate_pattern
 
 from ..services.recorder import browser_recorder, CapturedAction
 from ..services.recording.converter import recording_converter, GeneratedScenario
@@ -189,7 +190,8 @@ async def generate_scenario(
             project_id=request.project_id,
             enable_smart_wait=config.enableSmartWait,
             data_patterns=patterns,  # 🔥 传递数据模式
-            selected_patterns=selected_pattern_ids  # 🔥 传递选中的模式
+            selected_patterns=selected_pattern_ids,  # 🔥 传递选中的模式
+            filter_auto_navigate=True  # 🔥 智能过滤：只保留主动导航，过滤自动跳转
         )
 
         # 生成测试数据（如果有选择的模式）
@@ -360,13 +362,19 @@ async def save_recorded_scenario(
             logger.info(f"创建测试数据: {test_data_record.name} (ID: {test_data_id})")
 
         # 创建场景
+        # 🔥 获取当前最大的执行顺序
+        from sqlalchemy import func
+        max_order = db.query(func.max(UIScenario.execution_order)).filter(
+            UIScenario.task_id == task_id_uuid
+        ).scalar() or -1
+
         scenario = UIScenario(
             task_id=task_id_uuid,
             project_id=project_id_uuid,
             name=request.scenario_name,
             description=request.scenario_description,
             scenario_type=request.scenario_type,
-            execution_order=0,
+            execution_order=max_order + 1,  # 🔥 设置为最大值+1
             case_ids=[],
             tags=[]
         )
@@ -529,8 +537,23 @@ async def save_recorded_scenario(
         db.commit()
         logger.info(f"DEBUG: 最终提交完成")
 
+        # 🔥 清除场景列表缓存
+        try:
+            invalidate_pattern("list_scenarios*")
+            logger.info(f"已清除场景列表缓存")
+        except Exception as e:
+            logger.warning(f"清除缓存失败: {e}")
+
         # 重新加载场景数据以返回完整信息
         db.refresh(scenario)
+
+        # 🔥 确保 case_ids 返回正确的格式（处理 JSON 字符串情况）
+        case_ids = scenario.case_ids
+        if isinstance(case_ids, str):
+            try:
+                case_ids = json.loads(case_ids)
+            except:
+                case_ids = []
 
         return {
             "id": str(scenario.id),
@@ -540,8 +563,8 @@ async def save_recorded_scenario(
             "description": scenario.description,
             "scenario_type": scenario.scenario_type,
             "execution_order": scenario.execution_order,
-            "case_ids": scenario.case_ids,
-            "tags": scenario.tags,
+            "case_ids": case_ids,
+            "tags": list(scenario.tags) if scenario.tags else [],
             "created_at": scenario.created_at.isoformat() if scenario.created_at else None
         }
 

@@ -24,6 +24,7 @@ from ..services.keyword_engine import KeywordEngine
 from ..services.playwright_browser import PlaywrightBrowser
 from ..services.debug_collector import DebugInfoCollector
 from ..services.error_classifier import ErrorClassifier
+from ..services.variable_resolver import VariableResolver
 from ..schemas.execution import ExecutionRequest
 from ..api import agent as agent_manager
 
@@ -419,7 +420,8 @@ class TaskExecutor:
                     logger.info(f"Step {step.step_name} is disabled, skipping")
                     continue
 
-                step_result = await self._execute_step(case_execution, step)
+                # 🔥 传递 case 对象以支持变量替换
+                step_result = await self._execute_step(case_execution, step, case)
                 total_steps += 1
 
                 if step_result["result"] == "pass":
@@ -473,6 +475,7 @@ class TaskExecutor:
         self,
         case_execution: CaseExecution,
         step: UIStep,
+        case: UICase = None,  # 🔥 新增：用例对象，用于变量解析
         step_execution: StepExecution = None,
         is_retry: bool = False
     ) -> Dict[str, Any]:
@@ -542,20 +545,52 @@ class TaskExecutor:
                 execution_logs.append({
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "level": "info",
-                    "message": f"参数: {json.dumps(step.parameters, ensure_ascii=False)}"
+                    "message": f"原始参数: {json.dumps(step.parameters, ensure_ascii=False)}"
                 })
-                # 记录每个参数的解析
-                for param_name, param_value in (step.parameters or {}).items():
-                    self.debug_collector.log_parameter_resolution(
-                        param_name=param_name,
-                        raw_value=str(param_value),
-                        resolved_value=param_value
+
+            # 🔥 变量替换：解析步骤参数中的变量引用
+            resolved_params = step.parameters or {}
+            logger.info(f"🔍 [变量解析] case对象: {case is not None}, case类型: {type(case) if case else 'None'}")
+            if case:
+                logger.info(f"🔍 [变量解析] case ID: {case.id if hasattr(case, 'id') else 'No id'}")
+                try:
+                    # 创建变量解析器
+                    resolver = VariableResolver(self.db)
+                    # 解析并替换变量
+                    resolved_params = resolver.resolve_step_parameters(
+                        step_parameters=step.parameters or {},
+                        case=case,
+                        data_row_index=0  # TODO: 支持多行数据驱动测试
                     )
 
-            # 执行关键字
+                    execution_logs.append({
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "level": "info",
+                        "message": f"解析后参数: {json.dumps(resolved_params, ensure_ascii=False)}"
+                    })
+
+                    # 记录每个参数的解析
+                    for param_name, param_value in (step.parameters or {}).items():
+                        raw_value = str(param_value)
+                        resolved_value = resolved_params.get(param_name, param_value)
+                        self.debug_collector.log_parameter_resolution(
+                            param_name=param_name,
+                            raw_value=raw_value,
+                            resolved_value=resolved_value
+                        )
+                except Exception as e:
+                    logger.error(f"变量解析失败: {e}", exc_info=True)
+                    execution_logs.append({
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "level": "warning",
+                        "message": f"变量解析失败: {str(e)}，使用原始参数"
+                    })
+                    resolved_params = step.parameters or {}
+
+            # 执行关键字（使用解析后的参数）
             result = await self.keyword_engine.execute(
                 keyword_def=keyword,
-                parameters=step.parameters or {},
+                parameters=resolved_params,
                 context={}
             )
 
@@ -866,8 +901,36 @@ class TaskExecutor:
                     if not keyword:
                         continue
 
-                    # 转换为 Agent 步骤格式
-                    agent_step = self._convert_step_to_agent_format(keyword, step.parameters)
+                    # 🔥🔥 强制日志：追踪变量替换流程
+                    logger.info(f"🔥🔥 [DEBUG] 准备执行步骤: {step.step_name}")
+                    logger.info(f"🔥🔥 [DEBUG] 原始参数: {step.parameters}")
+                    logger.info(f"🔥🔥 [DEBUG] case对象: {case is not None}")
+
+                    # 🔥 变量替换：解析步骤参数中的变量引用
+                    resolved_params = step.parameters or {}
+                    if case:
+                        logger.info(f"🔥🔥 [DEBUG] case对象存在，开始变量解析")
+                        try:
+                            resolver = VariableResolver(self.db)
+                            logger.info(f"🔥🔥 [DEBUG] VariableResolver创建成功")
+                            resolved_params = resolver.resolve_step_parameters(
+                                step_parameters=step.parameters or {},
+                                case=case,
+                                data_row_index=0
+                            )
+                            logger.info(f"✅ Agent 执行: 参数变量替换成功")
+                            logger.info(f"   原始参数: {step.parameters}")
+                            logger.info(f"   解析后参数: {resolved_params}")
+                        except Exception as e:
+                            logger.error(f"❌ Agent 执行: 变量解析失败: {e}，使用原始参数")
+                            import traceback
+                            logger.error(f"❌ 错误详情: {traceback.format_exc()}")
+                            resolved_params = step.parameters or {}
+                    else:
+                        logger.warning(f"⚠️ case对象为None，无法进行变量替换")
+
+                    # 转换为 Agent 步骤格式（使用解析后的参数）
+                    agent_step = self._convert_step_to_agent_format(keyword, resolved_params)
                     if agent_step:
                         agent_steps.append(agent_step)
                         step_mappings.append({

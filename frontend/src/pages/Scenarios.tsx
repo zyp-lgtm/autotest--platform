@@ -51,8 +51,13 @@ export default function Scenarios() {
 
       const casesData: Record<string, Case[]> = {}
       for (const scenario of scenariosData) {
-        if (scenario.case_ids.length > 0) {
+        // 🔥 修复：无论 case_ids 是否为空，都尝试加载用例
+        // 后端会通过 scenario_id 查询，不依赖 case_ids 字段
+        try {
           casesData[scenario.id] = await scenariosApi.getCases(scenario.id)
+        } catch (e) {
+          console.error(`加载场景 ${scenario.id} 的用例失败:`, e)
+          casesData[scenario.id] = []
         }
       }
       setCases(casesData)
@@ -180,8 +185,14 @@ export default function Scenarios() {
 
         const savedScenario = await response.json()
 
-        // 添加到本地状态
-        setScenarios(prev => [...prev, savedScenario])
+        console.log('[保存成功] 场景已保存:', savedScenario)
+
+        // 🔥 保存成功后重新加载数据，确保用例正确显示
+        await loadData()
+
+        // 🔥 显示成功提示
+        alert(`场景 "${savedScenario.name}" 保存成功！`)
+
         closeModal()
       } catch (error: any) {
         console.error('保存录制场景失败:', error)

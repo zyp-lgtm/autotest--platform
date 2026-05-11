@@ -207,7 +207,7 @@ class TaskOrchestrator:
             # 2. 按顺序执行步骤
             for step in steps:
                 step_execution = await self.step_executor.execute_step(
-                    step, case_execution, scenario_execution, task_execution
+                    step, case_execution, scenario_execution, task_execution, case
                 )
 
                 # 更新统计

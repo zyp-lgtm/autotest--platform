@@ -44,6 +44,9 @@ function Dashboard() {
   useEffect(() => {
     if (currentProject) {
       loadStats()
+    } else {
+      // 没有项目时，不显示加载状态
+      setLoading(false)
     }
   }, [currentProject])
 
@@ -177,6 +180,17 @@ function Dashboard() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-gray-600">加载中...</div>
+      </div>
+    )
+  }
+
+  if (!currentProject) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64">
+        <div className="text-gray-600 mb-4">请先创建或选择一个项目</div>
+        <Button onClick={() => navigate('/projects')}>
+          前往项目管理
+        </Button>
       </div>
     )
   }

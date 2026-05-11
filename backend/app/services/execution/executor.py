@@ -23,6 +23,7 @@ from ...models.keyword import Keyword
 from ...services.playwright_browser import PlaywrightBrowser
 from ...services.debug_collector import DebugInfoCollector
 from ...services.keyword_engine import KeywordEngine
+from ...services.variable_resolver import VariableResolver
 from ...schemas.execution import ExecutionRequest
 from ...api import agent as agent_manager
 from .task_orchestrator import TaskOrchestrator
@@ -488,7 +489,27 @@ class TaskExecutor:
                     ).first()
 
                     if keyword:
-                        step_data = self._convert_step_to_agent_format(keyword, step.parameters or {})
+                        # 🔥🔥 变量替换：解析步骤参数中的变量引用
+                        step_params = step.parameters or {}
+                        logger.info(f"🔥🔥 [DEBUG] 准备执行步骤: {step.step_name}")
+                        logger.info(f"🔥🔥 [DEBUG] 原始参数: {step_params}")
+
+                        try:
+                            resolver = VariableResolver(self.db)
+                            logger.info(f"🔥🔥 [DEBUG] case对象: {case is not None}, case.id: {case.id if case else 'None'}")
+                            step_params = resolver.resolve_step_parameters(
+                                step_parameters=step.parameters or {},
+                                case=case,
+                                data_row_index=0
+                            )
+                            logger.info(f"✅ Agent 执行: 参数变量替换成功")
+                            logger.info(f"   解析后参数: {step_params}")
+                        except Exception as e:
+                            logger.error(f"❌ Agent 执行: 变量解析失败: {e}，使用原始参数")
+                            import traceback
+                            logger.error(f"❌ 错误详情: {traceback.format_exc()}")
+
+                        step_data = self._convert_step_to_agent_format(keyword, step_params)
                         if step_data:
                             step_data["step_order"] = step.step_order
                             step_data["step_name"] = step.step_name

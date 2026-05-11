@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime, timedelta
+import uuid
 from ..core.database import get_db
 from ..models.audit import AuditLog
 from ..models.user import User
@@ -44,7 +45,12 @@ async def get_audit_logs(
     if resource_type:
         query = query.filter(AuditLog.resource_type == resource_type)
     if user_id:
-        query = query.filter(AuditLog.user_id == user_id)
+        # 将字符串 user_id 转换为 UUID
+        try:
+            user_uuid = uuid.UUID(user_id)
+            query = query.filter(AuditLog.user_id == user_uuid)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="无效的用户ID格式")
     if start_date:
         query = query.filter(AuditLog.timestamp >= start_date)
     if end_date:
@@ -122,8 +128,14 @@ async def get_user_audit_logs(
     if current_user.role != "admin" and str(current_user.id) != user_id:
         raise HTTPException(status_code=403, detail="权限不足")
 
+    # 将字符串 user_id 转换为 UUID
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效的用户ID格式")
+
     # 查询日志
-    query = db.query(AuditLog).filter(AuditLog.user_id == user_id)
+    query = db.query(AuditLog).filter(AuditLog.user_id == user_uuid)
     logs = query.order_by(AuditLog.timestamp.desc()).offset(skip).limit(limit).all()
 
     total = query.count()

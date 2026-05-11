@@ -67,7 +67,8 @@ class RecordingConverter:
         project_id: str,
         enable_smart_wait: bool = True,  # 🔥 新增：智能等待开关
         data_patterns: List[Any] = None,  # 🔥 新增：数据模式（用于变量替换）
-        selected_patterns: List[str] = None  # 🔥 新增：选中的模式ID列表
+        selected_patterns: List[str] = None,  # 🔥 新增：选中的模式ID列表
+        filter_auto_navigate: bool = True  # 🔥 新增：是否过滤自动跳转导航
     ) -> GeneratedScenario:
         """将录制的操作序列转换为测试场景（支持变量替换）"""
 
@@ -103,13 +104,37 @@ class RecordingConverter:
         navigate_actions = [a for a in actions if a.action_type == 'navigate']
         other_actions = [a for a in actions if a.action_type != 'navigate']
 
-        # 如果有 navigate 操作，确保第一个在最前面
+        # 🔥 智能导航过滤：只保留主动导航，过滤掉自动跳转
+        # 规则：只保留第一个导航操作，过滤掉后续连续的导航
+        # 这解决了录制时包含所有页面跳转的问题
         ordered_actions = []
         if navigate_actions:
-            # 使用第一个 navigate 操作作为起始
-            ordered_actions.append(navigate_actions[0])
-            # 添加其他 navigate 操作（如果有）
-            ordered_actions.extend(navigate_actions[1:])
+            if filter_auto_navigate:
+                # 🔥 智能过滤算法
+                # 策略1：只保留第一个导航（最简单有效）
+                ordered_actions.append(navigate_actions[0])
+
+                # 📝 可选优化策略（可以后续根据需要启用）：
+                # 策略2：基于时间间隔 - 如果两个导航间隔<1秒，只保留第一个
+                # if len(navigate_actions) > 1:
+                #     for i in range(1, len(navigate_actions)):
+                #         time_diff = navigate_actions[i].timestamp - navigate_actions[0].timestamp
+                #         if time_diff < 1.0:  # 1秒内的导航认为是自动跳转
+                #             continue  # 跳过这个导航
+                #         ordered_actions.append(navigate_actions[i])
+                #         break
+
+                # 策略3：基于URL模式 - 过滤掉相似URL的导航
+                # first_url = navigate_actions[0].page_url
+                # for nav in navigate_actions[1:]:
+                #     # 如果URL路径相似，可能是子页面跳转
+                #     if nav.page_url.startswith(first_url) or first_url.startswith(nav.page_url):
+                #         continue  # 跳过相似URL的导航
+                #     ordered_actions.append(nav)
+            else:
+                # 不过滤，保留所有导航（兼容模式）
+                ordered_actions.extend(navigate_actions)
+
         # 添加其他操作
         ordered_actions.extend(other_actions)
 
@@ -158,7 +183,7 @@ class RecordingConverter:
                     "timeout": 5000
                 },
                 enabled=True,
-                continue_on_failure=False,
+                continue_on_failure=True,   # 🔥 等待失败不阻断后续步骤
                 step_order=index
             )
             steps.append(wait_step)
@@ -183,7 +208,7 @@ class RecordingConverter:
             keyword_id=keyword_id,
             parameters=parameters,
             enabled=True,
-            continue_on_failure=False,
+            continue_on_failure=True,   # 🔥 点击失败不阻断后续步骤
             step_order=index
         )
         steps.append(actual_step)

@@ -108,7 +108,12 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
         const extractionResult = await recordingApi.extractTestData({
           actions: stopResponse.actions
         })
-        setDataPatterns(extractionResult.patterns)
+        // 🔥 默认选中所有提取的数据模式
+        const patternsWithSelection = extractionResult.patterns.map(p => ({
+          ...p,
+          selected: true  // 默认选中
+        }))
+        setDataPatterns(patternsWithSelection)
       }
 
       setCurrentStep(3)

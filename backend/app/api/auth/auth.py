@@ -141,8 +141,8 @@ async def get_current_user(
 
     username = payload.get("sub")
 
-    # 尝试从缓存获取
-    cache_key = f"user_info:{username}"
+    # 尝试从缓存获取（使用 v2 缓存键）
+    cache_key = f"user_info:v2:{username}"
     cache = get_cache()
     cached_user = cache.get(cache_key)
     if cached_user:
@@ -154,7 +154,7 @@ async def get_current_user(
         raise HTTPException(status_code=404, detail="用户不存在")
 
     user_response = UserResponse(
-        id=str(user.id),
+        id=user.id,
         username=user.username,
         email=user.email,
         full_name=user.full_name,
@@ -164,7 +164,7 @@ async def get_current_user(
     )
 
     # 存入缓存（10 分钟）
-    cache.set(cache_key, user_response.dict(), ttl=600)
+    cache.set(cache_key, user_response.model_dump(), ttl=600)
 
     return user_response
     payload = verify_token(token)
