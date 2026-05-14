@@ -30,6 +30,7 @@ class TestData(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    scenario_id = Column(String(36), ForeignKey("ui_scenarios.id"), nullable=True, index=True)
 
     # Relationships - 使用字符串引用外键避免映射冲突
     creator = relationship("User", foreign_keys="TestData.created_by")
