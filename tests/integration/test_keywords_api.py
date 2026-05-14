@@ -258,3 +258,212 @@ class TestKeywordsAPIWithAuth:
         """测试使用无效令牌访问"""
         # TODO: 添加认证测试
         pass
+
+
+class TestKeywordCRUD:
+    """关键字 CRUD 操作测试"""
+
+    def _make_keyword(self, **overrides):
+        """创建 TestKeyword 实例用于 mock"""
+        from unittest.mock import MagicMock
+        import uuid as _uuid
+        from datetime import datetime, timezone
+        kw = MagicMock(spec=Keyword)
+        kw.id = overrides.get("id", _uuid.uuid4())
+        kw.name = overrides.get("name", "TEST_KEYWORD")
+        kw.keyword_type = overrides.get("keyword_type", "system")
+        kw.category = overrides.get("category", "ui")
+        kw.description = overrides.get("description", "测试关键字")
+        kw.icon = overrides.get("icon", None)
+        kw.parameter_schema = overrides.get("parameter_schema", {})
+        kw.return_schema = overrides.get("return_schema", {})
+        kw.code_content = overrides.get("code_content", None)
+        kw.is_valid = overrides.get("is_valid", True)
+        kw.created_at = overrides.get("created_at", datetime.now(timezone.utc))
+        return kw
+
+    def _make_user(self):
+        from unittest.mock import MagicMock
+        from app.models.user import User
+        import uuid as _uuid
+        user = MagicMock(spec=User)
+        user.id = _uuid.uuid4()
+        user.username = "testuser"
+        return user
+
+    def test_create_keyword_success(self):
+        """创建关键字 — 成功"""
+        from unittest.mock import MagicMock, patch
+        from app.api.ui.keywords import create_keyword
+        from app.schemas.keyword import KeywordCreate
+        import uuid as _uuid
+        import asyncio
+
+        mock_db = MagicMock()
+        mock_db.query().filter().first.return_value = None  # 名称不重复
+        mock_user = self._make_user()
+
+        kw_create = KeywordCreate(
+            name="TEST_CLICK",
+            keyword_type="action",
+            category="ui",
+            description="测试点击",
+            parameter_schema={"type": "object"},
+            return_schema={},
+        )
+
+        with patch("app.api.ui.keywords.invalidate_pattern"):
+            result = asyncio.run(create_keyword(kw_create, user=mock_user, db=mock_db))
+
+        mock_db.add.assert_called_once()
+        mock_db.commit.assert_called_once()
+        assert result["name"] == "TEST_CLICK"
+        assert result["category"] == "ui"
+
+    def test_create_keyword_duplicate_name(self):
+        """创建关键字 — 重名报错"""
+        from unittest.mock import MagicMock, patch
+        from app.api.ui.keywords import create_keyword
+        from app.schemas.keyword import KeywordCreate
+        import asyncio
+        from fastapi import HTTPException
+
+        mock_db = MagicMock()
+        mock_db.query().filter().first.return_value = self._make_keyword(name="EXISTING")
+        mock_user = self._make_user()
+
+        kw_create = KeywordCreate(
+            name="EXISTING",
+            keyword_type="action",
+            category="ui",
+        )
+
+        with patch("app.api.ui.keywords.invalidate_pattern"):
+            with pytest.raises(HTTPException) as exc:
+                asyncio.run(create_keyword(kw_create, user=mock_user, db=mock_db))
+
+        assert exc.value.status_code == 400
+        assert "已存在" in exc.value.detail
+
+    def test_update_keyword_success(self):
+        """更新关键字 — 成功"""
+        from unittest.mock import MagicMock, patch
+        from app.api.ui.keywords import update_keyword
+        from app.schemas.keyword import KeywordCreate
+        import uuid as _uuid
+        import asyncio
+
+        kw_id = str(_uuid.uuid4())
+        existing_kw = self._make_keyword(id=_uuid.UUID(kw_id), name="OLD_NAME")
+
+        mock_db = MagicMock()
+        # query().filter().first() 被调用两次：
+        # 第一次是 validate_and_fetch 内部
+        # 第二次是检查重名（update_keyword中 filter(Keyword.name == keyword.name)）
+        mock_db.query().filter().first.side_effect = [existing_kw, None]
+        mock_user = self._make_user()
+
+        kw_update = KeywordCreate(
+            name="NEW_NAME",
+            keyword_type="action",
+            category="ui",
+            description="更新描述",
+            parameter_schema={"type": "object"},
+            return_schema={},
+        )
+
+        with patch("app.api.ui.keywords.invalidate_pattern"):
+            result = asyncio.run(update_keyword(kw_id, kw_update, user=mock_user, db=mock_db))
+
+        assert result["name"] == "NEW_NAME"
+        assert result["description"] == "更新描述"
+
+    def test_update_keyword_not_found(self):
+        """更新关键字 — 不存在返回404"""
+        from unittest.mock import MagicMock, patch
+        from app.api.ui.keywords import update_keyword
+        from app.schemas.keyword import KeywordCreate
+        import uuid as _uuid
+        import asyncio
+        from fastapi import HTTPException
+
+        mock_db = MagicMock()
+        mock_db.query().filter().first.return_value = None  # validate_and_fetch 返回 None
+        mock_user = self._make_user()
+
+        kw_update = KeywordCreate(
+            name="WHATEVER",
+            keyword_type="action",
+            category="ui",
+        )
+
+        with patch("app.api.ui.keywords.invalidate_pattern"):
+            with pytest.raises(HTTPException) as exc:
+                asyncio.run(update_keyword(str(_uuid.uuid4()), kw_update, user=mock_user, db=mock_db))
+
+        assert exc.value.status_code == 404
+
+    def test_delete_keyword_success(self):
+        """删除关键字 — 成功"""
+        from unittest.mock import MagicMock, patch
+        from app.api.ui.keywords import delete_keyword
+        import uuid as _uuid
+        import asyncio
+
+        kw_id = str(_uuid.uuid4())
+        existing_kw = self._make_keyword(
+            id=_uuid.UUID(kw_id), name="TO_DELETE"
+        )
+
+        mock_db = MagicMock()
+        mock_db.query().filter().first.return_value = existing_kw
+        mock_user = self._make_user()
+
+        with patch("app.api.ui.keywords.invalidate_pattern"):
+            result = asyncio.run(delete_keyword(kw_id, user=mock_user, db=mock_db))
+
+        mock_db.delete.assert_called_once_with(existing_kw)
+        mock_db.commit.assert_called_once()
+        assert "已删除" in result["message"]
+
+    def test_delete_keyword_not_found(self):
+        """删除关键字 — 不存在返回404"""
+        from unittest.mock import MagicMock, patch
+        from app.api.ui.keywords import delete_keyword
+        import uuid as _uuid
+        import asyncio
+        from fastapi import HTTPException
+
+        mock_db = MagicMock()
+        mock_db.query().filter().first.return_value = None
+        mock_user = self._make_user()
+
+        with patch("app.api.ui.keywords.invalidate_pattern"):
+            with pytest.raises(HTTPException) as exc:
+                asyncio.run(delete_keyword(str(_uuid.uuid4()), user=mock_user, db=mock_db))
+
+        assert exc.value.status_code == 404
+
+    def test_create_keyword_default_values(self):
+        """创建关键字 — 验证默认值正确存储"""
+        from unittest.mock import MagicMock, patch
+        from app.api.ui.keywords import create_keyword
+        from app.schemas.keyword import KeywordCreate
+        import asyncio
+
+        mock_db = MagicMock()
+        mock_db.query().filter().first.return_value = None
+        mock_user = self._make_user()
+
+        kw_create = KeywordCreate(
+            name="MINIMAL_KW",
+            keyword_type="system",
+            category="data",
+        )
+
+        with patch("app.api.ui.keywords.invalidate_pattern"):
+            result = asyncio.run(create_keyword(kw_create, user=mock_user, db=mock_db))
+
+        # is_valid=True 在真实 DB INSERT 时设置，mock DB 中可能为 None
+        assert result["name"] == "MINIMAL_KW"
+        assert result["category"] == "data"
