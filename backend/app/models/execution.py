@@ -71,6 +71,11 @@ class ScenarioExecution(Base):
     error_message = Column(Text)
     execution_order = Column(Integer)
 
+    # 迭代信息
+    iteration = Column(Integer, default=0)         # 第几轮迭代
+    data_row_index = Column(Integer, default=0)    # 使用的数据行索引
+    data_row = Column(JSON, default={})            # 当前行数据快照
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # 关联
