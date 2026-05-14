@@ -566,16 +566,8 @@ class DataExtractor:
             if pattern.values:
                 base_row[pattern.field_name] = pattern.values[0]
 
-        # 生成变体数据集
+        # 只保留基准行，不生成变体
         data_sets = [base_row]
-
-        # 为每个模式生成变体
-        for pattern in selected_patterns[:3]:  # 限制前3个模式，避免过多变体
-            if pattern.suggested_variations:
-                for variation in pattern.suggested_variations[:2]:  # 每个模式2个变体
-                    variant_row = base_row.copy()
-                    variant_row[pattern.field_name] = variation
-                    data_sets.append(variant_row)
 
         return {
             "name": f"{scenario_name}_测试数据",
