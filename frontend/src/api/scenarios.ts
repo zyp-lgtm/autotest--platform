@@ -167,4 +167,15 @@ export const scenariosApi = {
   deleteStep: async (stepId: string): Promise<void> => {
     await apiClient.delete(`/v1/ui/scenarios/steps/${stepId}`)
   },
+
+  // ==================== 批量操作 ====================
+  batchInsertSteps: async (caseId: string, data: {
+    after_step_ids: string[]
+    keyword_name: string
+    parameters?: Record<string, any>
+    continue_on_failure?: boolean
+  }): Promise<{ message: string; created_steps: Step[]; inserted_count: number }> => {
+    const response = await apiClient.post(`/v1/ui/scenarios/cases/${caseId}/steps/batch-insert`, data)
+    return response.data
+  },
 }

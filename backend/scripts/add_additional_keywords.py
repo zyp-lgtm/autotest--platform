@@ -167,6 +167,17 @@ ADDITIONAL_KEYWORDS = [
             "selector": {"type": "string", "required": True, "description": "CSS选择器"},
             "file_path": {"type": "string", "required": True, "description": "文件路径"}
         }
+    },
+    {
+        "name": "ASSERT_NO_ERROR",
+        "keyword_type": "system",
+        "category": "断言操作",
+        "description": "断言页面无错误弹窗（轮询检测，加载完成后再等3秒缓冲）",
+        "parameter_schema": {
+            "error_text": {"type": "string", "required": False, "default": "系统错误", "description": "要检测的错误文本"},
+            "timeout": {"type": "integer", "required": False, "default": 15000, "description": "最长等待时间(毫秒)"},
+            "poll_interval": {"type": "integer", "required": False, "default": 500, "description": "轮询间隔(毫秒)"}
+        }
     }
 ]
 

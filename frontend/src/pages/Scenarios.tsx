@@ -23,6 +23,11 @@ export default function Scenarios() {
   const [expandedScenarios, setExpandedScenarios] = useState<Record<string, boolean>>({})
   const [expandedCases, setExpandedCases] = useState<Record<string, boolean>>({})
 
+  // 步骤多选状态
+  const [selectedSteps, setSelectedSteps] = useState<Set<string>>(new Set())
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false)
+  const [batchCaseId, setBatchCaseId] = useState<string | null>(null)
+
   // Modal state
   const [modalType, setModalType] = useState<ModalType>(null)
   const [modalScenarioId, setModalScenarioId] = useState<string | null>(null)
@@ -300,6 +305,70 @@ export default function Scenarios() {
     }
   }
 
+  const toggleStepSelection = (stepId: string) => {
+    setSelectedSteps(prev => {
+      const next = new Set(prev)
+      if (next.has(stepId)) {
+        next.delete(stepId)
+      } else {
+        next.add(stepId)
+      }
+      return next
+    })
+  }
+
+  const clearStepSelection = () => setSelectedSteps(new Set())
+
+  const handleBatchInsertAssertions = async () => {
+    if (!batchCaseId || selectedSteps.size === 0) return
+    try {
+      const result = await scenariosApi.batchInsertSteps(batchCaseId, {
+        after_step_ids: Array.from(selectedSteps),
+        keyword_name: 'ASSERT_NO_ERROR',
+        parameters: { error_text: '系统错误', timeout: 15000, poll_interval: 500 },
+        continue_on_failure: true
+      })
+      alert(`已插入 ${result.inserted_count} 个断言步骤`)
+      clearStepSelection()
+      setBatchDialogOpen(false)
+      setBatchCaseId(null)
+      await loadData()
+    } catch (err: any) {
+      alert('批量插入失败: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  const handleAutoInsertErrorAssertions = async (caseId: string) => {
+    const caseSteps = steps[caseId] || []
+    // 筛选出 CLICK 和 NAVIGATE 类型的步骤
+    const clickNavStepIds = caseSteps
+      .filter(s => {
+        const kw = keywords[s.keyword_id]
+        return kw && (kw.name === 'CLICK' || kw.name === 'NAVIGATE')
+      })
+      .map(s => s.id)
+
+    if (clickNavStepIds.length === 0) {
+      alert('该用例中没有 CLICK 或 NAVIGATE 步骤')
+      return
+    }
+
+    if (!confirm(`将在 ${clickNavStepIds.length} 个点击/导航步骤后插入 ASSERT_NO_ERROR 断言，确认？`)) return
+
+    try {
+      const result = await scenariosApi.batchInsertSteps(caseId, {
+        after_step_ids: clickNavStepIds,
+        keyword_name: 'ASSERT_NO_ERROR',
+        parameters: { error_text: '系统错误', timeout: 15000, poll_interval: 500 },
+        continue_on_failure: true
+      })
+      alert(`已插入 ${result.inserted_count} 个断言步骤`)
+      await loadData()
+    } catch (err: any) {
+      alert('自动插入失败: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'P0': return 'text-red-600 bg-red-50'
@@ -462,6 +531,16 @@ export default function Scenarios() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
+                                handleAutoInsertErrorAssertions(caseItem.id)
+                              }}
+                              className="px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700"
+                              title="在所有CLICK/NAVIGATE步骤后插入ASSERT_NO_ERROR"
+                            >
+                              ⚡一键插入错误断言
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
                                 handleDeleteCase(caseItem.id, caseItem.name, scenario.id)
                               }}
                               className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
@@ -492,9 +571,19 @@ export default function Scenarios() {
                                     key={step.id}
                                     className={`flex items-center justify-between p-2 rounded text-sm ${
                                       step.enabled ? 'bg-white border' : 'bg-gray-100 border border-gray-200 opacity-60'
-                                    }`}
+                                    } ${selectedSteps.has(step.id) ? 'ring-2 ring-blue-400 bg-blue-50' : ''}`}
                                   >
                                     <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedSteps.has(step.id)}
+                                        onChange={() => {
+                                          setBatchCaseId(caseItem.id)
+                                          toggleStepSelection(step.id)
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                      />
                                       <span className="text-gray-400">{step.step_order + 1}.</span>
                                       <span className="font-medium">{step.step_name}</span>
                                       <span className="text-xs text-gray-500">({keyword?.name || step.keyword_id})</span>
@@ -527,6 +616,27 @@ export default function Scenarios() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* 批量操作工具栏 */}
+      {selectedSteps.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white border border-gray-300 shadow-xl rounded-lg px-4 py-3 flex items-center gap-3 z-40">
+          <span className="text-sm font-medium text-gray-700">
+            已选 <span className="text-blue-600">{selectedSteps.size}</span> 个步骤
+          </span>
+          <button
+            onClick={() => handleBatchInsertAssertions()}
+            className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700"
+          >
+            插入断言
+          </button>
+          <button
+            onClick={clearStepSelection}
+            className="px-3 py-1 text-sm border border-gray-300 text-gray-600 rounded hover:bg-gray-50"
+          >
+            取消选择
+          </button>
         </div>
       )}
 

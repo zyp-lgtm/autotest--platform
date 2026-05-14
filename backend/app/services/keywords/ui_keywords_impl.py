@@ -128,7 +128,7 @@ class KeywordEngine:
             }
 
         try:
-            if keyword_name == "打开浏览器":
+            if keyword_name == "打开浏览器" or keyword_name == "OPEN_BROWSER":
                 return await self._open_browser(parameters)
             elif keyword_name == "NAVIGATE":
                 return await self._navigate(parameters)

@@ -237,27 +237,40 @@ class UIKeywordEngine(BaseKeywordEngine):
     # ============ 元素交互关键字 ============
 
     async def _click(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """点击元素"""
+        """点击元素（支持 CSS/XPath 双选择器）"""
         selector = params.get("selector")
+        xpath = params.get("xpath", "")
+        strategy = params.get("selector_strategy", "css")
         if not selector:
             return self._error_response("缺少必需参数: selector")
 
         timeout = params.get("timeout", 5000)
         force = params.get("force", False)
 
-        try:
-            page = await self.browser_manager.get_page()
+        # 优先使用推荐策略的选择器
+        primary = xpath if (strategy == "xpath" and xpath) else selector
+        fallback = selector if primary != selector else (xpath if xpath else None)
+
+        async def try_click(sel):
             wait_result = await self.browser_manager.wait_for_element(
-                selector=selector, state="attached", timeout=timeout
+                selector=sel, state="visible", timeout=timeout
             )
             if not wait_result["success"]:
                 return wait_result
+            await self.browser_manager.get_page()
+            page = await self.browser_manager.get_page()
+            await page.click(sel, force=force, timeout=timeout)
+            return self._success_response({"message": f"已点击: {sel}"})
 
-            await page.click(selector, force=force, timeout=timeout)
-            return self._success_response({"message": f"已点击: {selector}"})
-
-        except Exception as e:
-            return self._error_response(f"点击失败: {str(e)}")
+        try:
+            return await try_click(primary)
+        except Exception as e1:
+            if fallback:
+                try:
+                    return await try_click(fallback)
+                except Exception as e2:
+                    return self._error_response(f"点击失败 (css/xpath均失败): {str(e2)}")
+            return self._error_response(f"点击失败: {str(e1)}")
 
     async def _double_click(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """双击元素"""
@@ -276,8 +289,10 @@ class UIKeywordEngine(BaseKeywordEngine):
             return self._error_response(f"双击失败: {str(e)}")
 
     async def _input(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """输入文本"""
+        """输入文本（支持 CSS/XPath 双选择器）"""
         selector = params.get("selector")
+        xpath = params.get("xpath", "")
+        strategy = params.get("selector_strategy", "css")
         text = params.get("text", "")
         if not selector:
             return self._error_response("缺少必需参数: selector")
@@ -285,28 +300,35 @@ class UIKeywordEngine(BaseKeywordEngine):
         clear_first = params.get("clear_first", True)
         timeout = params.get("timeout", 5000)
 
-        try:
-            page = await self.browser_manager.get_page()
+        primary = xpath if (strategy == "xpath" and xpath) else selector
+        fallback = selector if primary != selector else (xpath if xpath else None)
 
+        async def try_input(sel):
+            page = await self.browser_manager.get_page()
             wait_result = await self.browser_manager.wait_for_element(
-                selector=selector, state="attached", timeout=timeout
+                selector=sel, state="visible", timeout=timeout
             )
             if not wait_result["success"]:
                 return wait_result
-
             if clear_first:
                 try:
-                    await page.click(selector, timeout=2000)
-                    await page.press(selector, "Control+A")
-                    await page.press(selector, "Backspace")
+                    await page.click(sel, timeout=2000)
+                    await page.press(sel, "Control+A")
+                    await page.press(sel, "Backspace")
                 except:
                     pass
+            await page.type(sel, text, delay=50)
+            return self._success_response({"message": f"已输入文本到 {sel}"})
 
-            await page.type(selector, text, delay=50)
-            return self._success_response({"message": f"已输入文本到 {selector}"})
-
-        except Exception as e:
-            return self._error_response(f"输入失败: {str(e)}")
+        try:
+            return await try_input(primary)
+        except Exception as e1:
+            if fallback:
+                try:
+                    return await try_input(fallback)
+                except Exception as e2:
+                    return self._error_response(f"输入失败 (css/xpath均失败): {str(e2)}")
+            return self._error_response(f"输入失败: {str(e1)}")
 
     async def _hover(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """悬停元素"""
@@ -637,6 +659,48 @@ class UIKeywordEngine(BaseKeywordEngine):
             return self._success_response({"message": "元素数量断言通过"})
         except Exception as e:
             return self._error_response(f"元素数量断言失败: {str(e)}")
+
+    async def _assert_no_error(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """轮询断言页面无错误弹窗，感知加载完成 - 加载完成或检测到错误立即结束"""
+        error_text = params.get("error_text", "系统错误")
+        timeout = params.get("timeout", 15000)
+        poll_interval = params.get("poll_interval", 500)
+
+        import asyncio
+        page = await self.browser_manager.get_page()
+        elapsed = 0
+
+        while elapsed < timeout:
+            await asyncio.sleep(poll_interval / 1000)
+            elapsed += poll_interval
+
+            # 1. 检测错误弹窗
+            try:
+                error_locator = page.locator(f'text="{error_text}"')
+                if await error_locator.count() > 0:
+                    is_visible = False
+                    for i in range(await error_locator.count()):
+                        if await error_locator.nth(i).is_visible():
+                            is_visible = True
+                            break
+                    if is_visible:
+                        return self._error_response(f"检测到错误弹窗: {error_text}")
+            except Exception:
+                pass
+
+            # 2. 检测加载状态：spinner消失即加载结束
+            try:
+                spinner_count = await page.locator(".ant-spin-spinning").count()
+                is_loading = spinner_count > 0
+            except Exception:
+                is_loading = False
+
+            if not is_loading:
+                return self._success_response({
+                    "message": f"未检测到错误弹窗，加载已完成 (耗时{elapsed}ms)"
+                })
+
+        return self._error_response(f"等待超时({timeout}ms): 加载未完成")
 
     async def _get_text(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """获取元素文本内容"""

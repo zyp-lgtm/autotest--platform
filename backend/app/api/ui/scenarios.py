@@ -5,6 +5,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from pydantic import BaseModel
 import uuid
 import json
 
@@ -594,3 +595,114 @@ async def delete_step(
             status_code=500,
             detail=f"删除步骤失败: {str(e)}"
         )
+
+
+class BatchInsertStepsRequest(BaseModel):
+    after_step_ids: List[str]
+    keyword_name: str
+    parameters: dict = {}
+    continue_on_failure: bool = True
+
+
+@router.post("/cases/{case_id}/steps/batch-insert")
+async def batch_insert_steps(
+    case_id: str,
+    request: BatchInsertStepsRequest,
+    user: User = Depends(get_authenticated_user),
+    db: Session = Depends(get_db)
+):
+    """批量插入步骤——在指定步骤后各插入一个新步骤"""
+    try:
+        case_id_uuid = validate_uuid(case_id, "用例")
+        case_item = validate_and_fetch(db, UICase, case_id, "用例")
+
+        # 验证关键字存在
+        keyword = db.query(Keyword).filter(Keyword.name == request.keyword_name).first()
+        if not keyword:
+            raise HTTPException(status_code=400, detail=f"关键字不存在: {request.keyword_name}")
+
+        scenario = db.query(UIScenario).filter(UIScenario.id == case_item.scenario_id).first()
+        if not scenario:
+            raise HTTPException(status_code=404, detail="场景不存在")
+
+        # 收集所有 after 步骤并按 step_order 从大到小排序（从后往前插入避免冲突）
+        after_steps = []
+        for step_id_str in request.after_step_ids:
+            step_id = validate_uuid(step_id_str, "步骤")
+            step = db.query(UIStep).filter(
+                UIStep.id == step_id, UIStep.case_id == case_id_uuid
+            ).first()
+            if not step:
+                raise HTTPException(status_code=400, detail=f"步骤不属于该用例: {step_id_str}")
+            after_steps.append(step)
+
+        after_steps.sort(key=lambda s: s.step_order, reverse=True)
+
+        # 提前获取 ASSERT_NO_ERROR 关键字的 ID 用于去重检查
+        assert_kw = db.query(Keyword).filter(Keyword.name == "ASSERT_NO_ERROR").first()
+        assert_kw_id = assert_kw.id if assert_kw else None
+
+        created_steps = []
+        skipped_duplicates = 0
+        for after_step in after_steps:
+            insert_order = after_step.step_order + 1
+
+            # 去重：检查紧邻的下一步是否已经是 ASSECT_NO_ERROR
+            next_step = db.query(UIStep).filter(
+                UIStep.case_id == case_id_uuid,
+                UIStep.step_order == insert_order
+            ).first()
+            if next_step and assert_kw_id and str(next_step.keyword_id) == str(assert_kw_id):
+                skipped_duplicates += 1
+                continue
+            insert_order = after_step.step_order + 1
+
+            # 将该位置及之后的步骤序号 +1
+            db.query(UIStep).filter(
+                UIStep.case_id == case_id_uuid,
+                UIStep.step_order >= insert_order
+            ).update(
+                {UIStep.step_order: UIStep.step_order + 1},
+                synchronize_session=False
+            )
+
+            new_step = UIStep(
+                keyword_id=keyword.id,
+                step_name=f"{request.keyword_name}: {keyword.description}",
+                parameters=request.parameters,
+                enabled=True,
+                continue_on_failure=request.continue_on_failure,
+                screenshot_config={},
+                case_id=case_id_uuid,
+                scenario_id=case_item.scenario_id,
+                task_id=scenario.task_id,
+                step_order=insert_order,
+                step_type=keyword.category
+            )
+            db.add(new_step)
+            db.flush()
+            created_steps.append(new_step)
+
+            append_to_json_ids_field(case_item, 'step_ids', str(new_step.id))
+
+        db.commit()
+
+        # 刷新所有新建步骤
+        for s in created_steps:
+            db.refresh(s)
+
+        invalidate_pattern("list_steps*")
+
+        return {
+            "message": f"已批量插入 {len(created_steps)} 个步骤" + (f"，跳过 {skipped_duplicates} 个重复" if skipped_duplicates > 0 else ""),
+            "created_steps": [serialize_model(s) for s in created_steps],
+            "inserted_count": len(created_steps),
+            "skipped_duplicates": skipped_duplicates
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"批量插入步骤失败: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"批量插入步骤失败: {str(e)}")
