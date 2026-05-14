@@ -9,6 +9,13 @@ import asyncio
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Depends
 from pathlib import Path
+import time
+
+# 延迟导入避免循环引用
+def _invalidate_health_cache():
+    from app.api.health import health_checker
+    health_checker.cached_result = None
+    health_checker.last_check = None
 import socket
 
 from ..core.security import get_authenticated_user
@@ -218,6 +225,14 @@ class ServiceManager:
                 try:
                     actual_pid = int(Path(config["pid_file"]).read_text().strip())
                     print(f"[Agent] Agent 启动，PID: {actual_pid}")
+                    # 🔥 同步 PID 到项目路径下的 PID 文件（健康检查会先查这里）
+                    alt_pid_file = Path("/Users/apple/aicode/autotest-platform/agent/.agent.pid")
+                    try:
+                        alt_pid_file.parent.mkdir(parents=True, exist_ok=True)
+                        alt_pid_file.write_text(str(actual_pid))
+                        print(f"[Agent] PID 已同步到: {alt_pid_file}")
+                    except Exception as e:
+                        print(f"[Agent] 同步PID文件失败: {e}")
                 except:
                     print(f"[Agent] 无法读取PID文件，使用启动的PID: {process.pid}")
             else:
@@ -500,7 +515,9 @@ async def start_service(
     user: User = Depends(get_authenticated_user)
 ):
     """启动服务"""
-    return await service_manager.start_service(service_id)
+    result = await service_manager.start_service(service_id)
+    _invalidate_health_cache()
+    return result
 
 
 @router.post("/services/{service_id}/stop")
@@ -509,7 +526,9 @@ async def stop_service(
     user: User = Depends(get_authenticated_user)
 ):
     """停止服务"""
-    return await service_manager.stop_service(service_id)
+    result = await service_manager.stop_service(service_id)
+    _invalidate_health_cache()
+    return result
 
 
 @router.post("/services/{service_id}/restart")
@@ -518,4 +537,6 @@ async def restart_service(
     user: User = Depends(get_authenticated_user)
 ):
     """重启服务"""
-    return await service_manager.restart_service(service_id)
+    result = await service_manager.restart_service(service_id)
+    _invalidate_health_cache()
+    return result

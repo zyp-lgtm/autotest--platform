@@ -114,15 +114,23 @@ class PlaywrightBrowser:
                 # Firefox 和 Webkit 不支持 --no-sandbox 参数
                 if self.browser_type == "chromium":
                     launch_args["args"] = ['--no-sandbox', '--disable-setuid-sandbox']
+                    if not self.headless:
+                        launch_args["args"].append('--start-maximized')
 
                 logger.info(f"启动 {self.browser_type} 浏览器 (headless={self.headless})")
                 self.browser = await browser_engine.launch(**launch_args)
 
             # 创建浏览器上下文
             context_options = {
-                "viewport": self.viewport,
                 "ignore_https_errors": True,
             }
+
+            if self.headless:
+                # 无头模式使用固定视口
+                context_options["viewport"] = self.viewport
+            else:
+                # 非无头模式：视口跟随窗口大小（配合 --start-maximized 实现最大化）
+                context_options["no_viewport"] = True
 
             if self.user_agent:
                 context_options["user_agent"] = self.user_agent

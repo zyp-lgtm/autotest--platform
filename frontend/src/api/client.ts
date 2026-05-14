@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const apiClient = axios.create({
   baseURL: '/api',
-  timeout: 180000, // 3分钟超时，UI测试执行需要较长时间
+  timeout: 3600000, // 1小时超时，支持大批量点检场景
   withCredentials: true, // 支持 HttpOnly Cookie
 })
 

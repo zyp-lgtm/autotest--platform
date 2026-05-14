@@ -206,6 +206,24 @@ async def startup_event():
     else:
         logger.info("✓ 数据库就绪")
 
+    # 1.5 清理上次未完成的执行记录（服务重启后自动标记为失败）
+    try:
+        from .core.database import SessionLocal
+        from sqlalchemy import text
+        db = SessionLocal()
+        result = db.execute(
+            text("UPDATE test_executions SET status = 'failed', result = 'error', "
+                 "error_message = '服务重启，执行中断', completed_at = datetime('now') "
+                 "WHERE status = 'running'")
+        )
+        cleaned = result.rowcount
+        if cleaned > 0:
+            logger.info(f"✓ 清理了 {cleaned} 个未完成的执行记录")
+        db.commit()
+        db.close()
+    except Exception as e:
+        logger.warning(f"清理执行记录失败（非致命）: {e}")
+
     # 2. 缓存预热
     try:
         from .utils.cache_warmup import warmup_cache

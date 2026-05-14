@@ -115,18 +115,31 @@ class HealthChecker:
                     "message": "未找到 PID 文件"
                 }
 
-            pid = int(pid_file.read_text().strip())
+            # 在所有已存在的 PID 文件中查找运行中的进程
+            alive_pid = None
+            for path in possible_paths:
+                if path.exists():
+                    try:
+                        candidate_pid = int(path.read_text().strip())
+                        os.kill(candidate_pid, 0)
+                        alive_pid = candidate_pid
+                        pid_file = path
+                        break
+                    except (OSError, ValueError):
+                        continue
 
-            # 检查进程是否存在
-            try:
-                os.kill(pid, 0)
-            except OSError:
+            if alive_pid is None:
+                # 所有PID文件中的进程都不在运行
+                pid = int(pid_file.read_text().strip()) if pid_file.exists() else None
+                pid_str = str(pid) if pid else "未知"
                 return {
                     "id": "agent",
                     "name": "Agent",
                     "status": "down",
-                    "message": f"进程 {pid} 不运行"
+                    "message": f"进程 {pid_str} 不运行"
                 }
+
+            pid = alive_pid
 
             # 获取进程信息
             try:
