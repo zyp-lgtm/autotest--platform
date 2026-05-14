@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { recordingApi, CapturedAction, DataPattern } from '../api/recording'
+import { useToast } from '../contexts/ToastContext'
 
 interface RecordingWizardProps {
   taskId: string
@@ -8,6 +9,7 @@ interface RecordingWizardProps {
 }
 
 export default function RecordingWizard({ taskId, onComplete, onCancel }: RecordingWizardProps) {
+  const toast = useToast()
   const [currentStep, setCurrentStep] = useState(1)
   const [scenarioName, setScenarioName] = useState('')
   const [isRecording, setIsRecording] = useState(false)
@@ -62,7 +64,7 @@ export default function RecordingWizard({ taskId, onComplete, onCancel }: Record
 
   const handleStartRecording = async () => {
     if (!scenarioName.trim()) {
-      alert('请输入场景名称')
+      toast.warning('请输入场景名称')
       return
     }
 

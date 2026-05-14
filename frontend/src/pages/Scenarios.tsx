@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { scenariosApi, Scenario, Case, Step } from '../api/scenarios'
 import { keywordsApi, Keyword } from '../api/keywords'
 import { tasksApi, UITask } from '../api/tasks'
+import { useToast } from '../contexts/ToastContext'
 import ScenarioForm from '../components/ScenarioForm'
 import CaseForm from '../components/CaseForm'
 import StepForm from '../components/StepForm'
@@ -13,6 +14,7 @@ type ModalType = 'scenario' | 'case' | 'step' | 'recording' | null
 export default function Scenarios() {
   const { taskId } = useParams<{ taskId: string }>()
   const navigate = useNavigate()
+  const toast = useToast()
   const [scenarios, setScenarios] = useState<Scenario[]>([])
   const [cases, setCases] = useState<Record<string, Case[]>>({})
   const [steps, setSteps] = useState<Record<string, Step[]>>({})
@@ -25,7 +27,6 @@ export default function Scenarios() {
 
   // 步骤多选状态
   const [selectedSteps, setSelectedSteps] = useState<Set<string>>(new Set())
-  const [batchDialogOpen, setBatchDialogOpen] = useState(false)
   const [batchCaseId, setBatchCaseId] = useState<string | null>(null)
 
   // Modal state
@@ -161,7 +162,7 @@ export default function Scenarios() {
     if (scenario.cases && Array.isArray(scenario.cases)) {
       // 这是录制场景，需要调用保存API
       if (!task) {
-        alert('任务信息未加载，请刷新页面重试')
+        toast.warning('任务信息未加载，请刷新页面重试')
         return
       }
 
@@ -196,12 +197,12 @@ export default function Scenarios() {
         await loadData()
 
         // 🔥 显示成功提示
-        alert(`场景 "${savedScenario.name}" 保存成功！`)
+        toast.success(`场景 "${savedScenario.name}" 保存成功！`)
 
         closeModal()
       } catch (error: any) {
         console.error('保存录制场景失败:', error)
-        alert(`保存失败: ${error.message}`)
+        toast.error(`保存失败: ${error.message}`)
       }
     } else {
       // 普通场景（表单创建）
@@ -268,7 +269,7 @@ export default function Scenarios() {
       console.log('[删除场景] 数据已刷新')
     } catch (err: any) {
       console.error('[删除场景] 失败:', err)
-      alert('删除失败: ' + (err.response?.data?.detail || err.message))
+      toast.error('删除失败: ' + (err.response?.data?.detail || err.message))
     }
   }
 
@@ -282,7 +283,7 @@ export default function Scenarios() {
         [scenarioId]: prev[scenarioId].filter(c => c.id !== caseId)
       }))
     } catch (err: any) {
-      alert('删除失败: ' + (err.response?.data?.detail || err.message))
+      toast.error('删除失败: ' + (err.response?.data?.detail || err.message))
     }
   }
 
@@ -301,7 +302,7 @@ export default function Scenarios() {
         }
       }
     } catch (err: any) {
-      alert('删除失败: ' + (err.response?.data?.detail || err.message))
+      toast.error('删除失败: ' + (err.response?.data?.detail || err.message))
     }
   }
 
@@ -328,13 +329,12 @@ export default function Scenarios() {
         parameters: { error_text: '系统错误', timeout: 15000, poll_interval: 500 },
         continue_on_failure: true
       })
-      alert(`已插入 ${result.inserted_count} 个断言步骤`)
+      toast.success(`已插入 ${result.inserted_count} 个断言步骤`)
       clearStepSelection()
-      setBatchDialogOpen(false)
       setBatchCaseId(null)
       await loadData()
     } catch (err: any) {
-      alert('批量插入失败: ' + (err.response?.data?.detail || err.message))
+      toast.error('批量插入失败: ' + (err.response?.data?.detail || err.message))
     }
   }
 
@@ -349,7 +349,7 @@ export default function Scenarios() {
       .map(s => s.id)
 
     if (clickNavStepIds.length === 0) {
-      alert('该用例中没有 CLICK 或 NAVIGATE 步骤')
+      toast.warning('该用例中没有 CLICK 或 NAVIGATE 步骤')
       return
     }
 
@@ -362,10 +362,10 @@ export default function Scenarios() {
         parameters: { error_text: '系统错误', timeout: 15000, poll_interval: 500 },
         continue_on_failure: true
       })
-      alert(`已插入 ${result.inserted_count} 个断言步骤`)
+      toast.success(`已插入 ${result.inserted_count} 个断言步骤`)
       await loadData()
     } catch (err: any) {
-      alert('自动插入失败: ' + (err.response?.data?.detail || err.message))
+      toast.error('自动插入失败: ' + (err.response?.data?.detail || err.message))
     }
   }
 

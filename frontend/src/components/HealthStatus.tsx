@@ -2,12 +2,14 @@
 import { useEffect, useState } from 'react'
 import { healthApi } from '../api/health'
 import { servicesApi } from '../api/services'
+import { useToast } from '../contexts/ToastContext'
 import type { HealthStatus, ServiceStatus } from '../types/health'
 import { ServiceCard } from './health/ServiceCard'
 import { BackendTipBanner } from './health/BackendTipBanner'
 
 export function HealthStatusIndicator() {
   const [health, setHealth] = useState<HealthStatus | null>(null)
+  const toast = useToast()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isOpen, setIsOpen] = useState(false)
@@ -91,7 +93,7 @@ export function HealthStatusIndicator() {
               setHealth(newHealth)
             }
           } else {
-            alert(result.message)
+            toast.error(result.message)
           }
           break
 
@@ -113,7 +115,7 @@ export function HealthStatusIndicator() {
       }
 
       if (!result.success && serviceId !== 'backend') {
-        alert(result.message)
+        toast.error(result.message)
         fetchHealth()
       }
     } catch (err) {
@@ -121,7 +123,7 @@ export function HealthStatusIndicator() {
       if (serviceId === 'backend' && action === 'start') {
         setShowBackendTip(true)
       } else {
-        alert(err instanceof Error ? err.message : '操作失败')
+        toast.error(err instanceof Error ? err.message : '操作失败')
       }
       if (action !== 'stop') {
         fetchHealth()

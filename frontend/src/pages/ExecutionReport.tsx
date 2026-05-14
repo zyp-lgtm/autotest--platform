@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useToast } from '../contexts/ToastContext'
 import { tasksApi } from '../api/tasks'
 import type { TestExecution } from '../types'
 import StepDetail from '../components/execution/StepDetail'
@@ -7,6 +8,7 @@ import StepDetail from '../components/execution/StepDetail'
 export default function ExecutionReport() {
   const { executionId } = useParams<{ executionId: string }>()
   const navigate = useNavigate()
+  const toast = useToast()
   const [execution, setExecution] = useState<TestExecution | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -45,7 +47,7 @@ export default function ExecutionReport() {
       await tasksApi.cancelExecution(executionId)
       await loadExecution()
     } catch (err: any) {
-      alert('停止失败: ' + (err.response?.data?.detail || err.message))
+      toast.error('停止失败: ' + (err.response?.data?.detail || err.message))
     }
   }
 

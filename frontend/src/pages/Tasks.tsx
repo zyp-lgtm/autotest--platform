@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProject } from '../contexts/ProjectContext'
+import { useToast } from '../contexts/ToastContext'
 import { tasksApi } from '../api/tasks'
 import { keywordsApi, Keyword } from '../api/keywords'
 import { scenariosApi } from '../api/scenarios'
@@ -9,6 +10,7 @@ import type { TestExecution } from '../types'
 
 export default function Tasks() {
   const navigate = useNavigate()
+  const toast = useToast()
   const { currentProject, projects, setCurrentProject } = useProject()
   const [tasks, setTasks] = useState<UITask[]>([])
   const [loading, setLoading] = useState(true)
@@ -197,7 +199,7 @@ export default function Tasks() {
         return updated
       })
     } catch (err: any) {
-      alert('删除失败: ' + (err.response?.data?.detail || err.message))
+      toast.error('删除失败: ' + (err.response?.data?.detail || err.message))
     }
   }
 
@@ -215,7 +217,7 @@ export default function Tasks() {
       await loadExecutions(taskId)
       setShowHistory(prev => ({ ...prev, [taskId]: true }))
     } catch (err: any) {
-      alert('执行失败: ' + (err.response?.data?.detail || err.message))
+      toast.error('执行失败: ' + (err.response?.data?.detail || err.message))
     }
   }
 
@@ -229,7 +231,7 @@ export default function Tasks() {
       persistRunning(updated)
       await loadExecutions(taskId)
     } catch (err: any) {
-      alert('停止失败: ' + (err.response?.data?.detail || err.message))
+      toast.error('停止失败: ' + (err.response?.data?.detail || err.message))
     }
   }
 

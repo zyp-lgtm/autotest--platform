@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ProjectProvider } from './contexts/ProjectContext'
+import { ToastProvider } from './contexts/ToastContext'
 import { Layout } from './components/layout/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { lazy, Suspense } from 'react'
@@ -43,6 +44,7 @@ function App() {
     <ErrorBoundary>
       <AuthProvider>
         <ProjectProvider>
+          <ToastProvider>
           <BrowserRouter>
             <Suspense fallback={<LazyLoader />}>
               <Routes>
@@ -74,6 +76,7 @@ function App() {
               </Routes>
             </Suspense>
           </BrowserRouter>
+          </ToastProvider>
         </ProjectProvider>
       </AuthProvider>
     </ErrorBoundary>

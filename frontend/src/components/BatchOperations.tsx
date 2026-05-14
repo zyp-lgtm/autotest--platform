@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { batchApi } from '../api/batch'
+import { useToast } from '../contexts/ToastContext'
 import type { BatchPreviewResult, BatchOperationResult } from '../types/models'
 
 interface BatchOperationsProps {
@@ -13,6 +14,7 @@ export const BatchOperations: React.FC<BatchOperationsProps> = ({
   selectedIds,
   onOperationComplete
 }) => {
+  const toast = useToast()
   const [previewData, setPreviewData] = useState<BatchPreviewResult | null>(null)
   const [operation, setOperation] = useState<string>('')
   const [loading, setLoading] = useState(false)
@@ -20,7 +22,7 @@ export const BatchOperations: React.FC<BatchOperationsProps> = ({
 
   const handlePreview = async (operationType: string) => {
     if (selectedIds.length === 0) {
-      alert('请先选择要操作的项目')
+      toast.warning('请先选择要操作的项目')
       return
     }
 
@@ -31,7 +33,7 @@ export const BatchOperations: React.FC<BatchOperationsProps> = ({
       setPreviewData(data)
     } catch (error) {
       console.error('预览批量操作失败:', error)
-      alert('预览失败，请检查连接')
+      toast.error('预览失败，请检查连接')
     } finally {
       setLoading(false)
     }
@@ -74,10 +76,10 @@ export const BatchOperations: React.FC<BatchOperationsProps> = ({
       setResult(response)
 
       if (response.success) {
-        alert(response.message)
+        toast.success(response.message)
         onOperationComplete?.()
       } else {
-        alert('操作失败: ' + response.message)
+        toast.error('操作失败: ' + response.message)
       }
 
       // 清理状态
@@ -85,7 +87,7 @@ export const BatchOperations: React.FC<BatchOperationsProps> = ({
       setResult(null)
     } catch (error) {
       console.error('执行批量操作失败:', error)
-      alert('执行失败，请检查连接')
+      toast.error('执行失败，请检查连接')
     } finally {
       setLoading(false)
     }
