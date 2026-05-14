@@ -110,8 +110,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     # 格式: (limit, window_seconds)
     RATE_LIMITS = {
         # 登录端点：严格限制
-        "/api/v1/auth/login": (5, 60),  # 5 次/分钟
-        "/api/v1/auth/register": (3, 60),  # 3 次/分钟
+        "/api/v1/auth/login": (20, 60),  # 20 次/分钟
+        "/api/v1/auth/register": (10, 60),  # 10 次/分钟
 
         # UI 相关端点：宽松限制（页面加载时会同时发送多个请求）
         "/api/v1/ui": (300, 60),  # 300 次/分钟 - UI 场景/用例/步骤加载

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react'
 import { projectsApi } from '../api/projects'
+import { useAuth } from './AuthContext'
 
 interface Project {
   id: string
@@ -21,11 +22,16 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const [currentProject, setCurrentProject] = useState<Project | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
+  const { isAuthenticated } = useAuth()
 
-  // 从 API 加载项目列表
+  // 只在用户已认证后才加载项目列表（避免 401 触发登出重定向）
   useEffect(() => {
-    loadProjects()
-  }, [])
+    if (isAuthenticated) {
+      loadProjects()
+    } else {
+      setLoading(false)
+    }
+  }, [isAuthenticated])
 
   // 当项目列表加载完成后，默认选择第一个项目
   useEffect(() => {
