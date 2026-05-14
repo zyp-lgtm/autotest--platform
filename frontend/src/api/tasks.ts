@@ -42,4 +42,9 @@ export const tasksApi = {
     const response = await apiClient.get(`/v1/ui/tasks/executions/${executionId}`)
     return response.data
   },
+
+  cancelExecution: async (executionId: string): Promise<any> => {
+    const response = await apiClient.post(`/v1/ui/tasks/executions/${executionId}/cancel`)
+    return response.data
+  },
 }

@@ -58,6 +58,10 @@ class TaskOrchestrator:
 
             # 2. 按顺序执行场景
             for scenario_order, scenario in enumerate(scenarios, start=1):
+                # 检查是否已取消
+                if self._is_cancelled(execution):
+                    logger.info("任务已被取消，停止执行")
+                    break
                 scenario_execution = await self._orchestrate_scenario_execution(
                     scenario, execution, scenario_order
                 )
@@ -65,10 +69,20 @@ class TaskOrchestrator:
                 # 更新统计
                 self._update_execution_stats(execution)
 
-            # 3. 执行完成，更新状态
-            execution.status = "completed"
-            execution.completed_at = datetime.now(timezone.utc)
-            execution.result = "pass" if execution.failed_steps == 0 else "fail"
+                # 🔥 场景失败立即停止
+                if scenario_execution.status == "failed" or scenario_execution.result == "fail":
+                    logger.info(f"场景失败，停止任务执行: {scenario.name}")
+                    break
+
+            # 检查是否被取消
+            if self._is_cancelled(execution):
+                execution.status = "cancelled"
+                execution.completed_at = datetime.now(timezone.utc)
+                execution.result = "cancelled"
+            else:
+                execution.status = "completed"
+                execution.completed_at = datetime.now(timezone.utc)
+                execution.result = "pass" if execution.failed_steps == 0 else "fail"
 
             # 计算总时长
             started_at = execution.started_at.replace(tzinfo=timezone.utc)
@@ -147,6 +161,11 @@ class TaskOrchestrator:
                 # 更新统计
                 self._update_scenario_stats(scenario_execution)
 
+                # 🔥 用例失败立即停止
+                if case_execution.status == "failed" or case_execution.result == "fail":
+                    logger.info(f"用例失败，停止场景执行: {case.name}")
+                    break
+
             # 更新状态
             scenario_execution.status = "completed"
             scenario_execution.result = "pass" if scenario_execution.failed_steps == 0 else "fail"
@@ -206,6 +225,10 @@ class TaskOrchestrator:
 
             # 2. 按顺序执行步骤
             for step in steps:
+                # 检查是否已取消
+                if self._is_cancelled(task_execution):
+                    logger.info("任务已被取消，停止执行用例步骤")
+                    break
                 step_execution = await self.step_executor.execute_step(
                     step, case_execution, scenario_execution, task_execution, case
                 )
@@ -240,6 +263,12 @@ class TaskOrchestrator:
             self.db.refresh(case_execution)
 
         return case_execution
+
+    @staticmethod
+    def _is_cancelled(execution) -> bool:
+        """检查执行是否已被取消"""
+        from app.api.agent import manager as agent_mgr
+        return agent_mgr.is_cancelled(str(execution.id))
 
     def _load_scenarios(self, task: UITask) -> List[UIScenario]:
         """加载任务的所有场景"""

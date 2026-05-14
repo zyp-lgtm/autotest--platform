@@ -136,13 +136,12 @@ class StepExecutor:
                     step_execution.result = "fail"
                     step_execution.error_message = error_msg
 
-                    # 分类错误
-                    error_info = self.error_classifier.classify(
-                        error_msg,
-                        keyword=keyword.name,
-                        parameters=parameters
-                    )
-                    step_execution.error_info = error_info
+                    # 分类错误并富化错误信息
+                    try:
+                        error_info = ErrorClassifier.enrich_error_info(error_msg)
+                        step_execution.error_info = error_info
+                    except Exception as classify_err:
+                        logger.warning(f"错误分类失败: {classify_err}")
 
             # 保存执行记录
             self.db.add(step_execution)
@@ -172,28 +171,11 @@ class StepExecutor:
         return step_execution
 
     def _should_retry_step(self, step: UIStep, error_message: str) -> bool:
-        """
-        判断是否应该重试步骤
-
-        Args:
-            step: 步骤定义
-            error_message: 错误信息
-
-        Returns:
-            是否应该重试
-        """
-        max_retries = 3  # 最大重试次数
-        current_retry = step.execution.retry_attempt or 0 if hasattr(step, 'execution') else 0
-
-        # 超过最大重试次数
-        if current_retry >= max_retries:
-            return False
-
-        # 检查是否启用了继续执行
+        """判断是否应该重试步骤（仅网络/超时类错误可重试）"""
+        # 检查是否启用了 continue_on_failure（用作重试开关）
         if not step.continue_on_failure:
             return False
 
-        # 检查错误类型是否可重试
         retryable_errors = [
             "TimeoutError",
             "NetworkError",
@@ -202,7 +184,6 @@ class StepExecutor:
             "网络",
             "连接"
         ]
-
         return any(err in error_message for err in retryable_errors)
 
     def _create_step_execution_record(

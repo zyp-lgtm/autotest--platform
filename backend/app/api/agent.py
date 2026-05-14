@@ -39,6 +39,8 @@ class ConnectionManager:
         self.task_results: Dict[str, dict] = {}
         # task_id -> event (用于通知等待的协程)
         self.task_events: Dict[str, asyncio.Event] = {}
+        # task_id -> event (取消信号)
+        self.cancel_events: Dict[str, asyncio.Event] = {}
         self._initialized = True
 
     async def connect(self, websocket: WebSocket, agent_id: str):
@@ -68,8 +70,12 @@ class ConnectionManager:
         return self.agents.get(agent_id)
 
     def get_all_agents(self) -> Dict[str, dict]:
-        """获取所有 Agent"""
-        return self.agents
+        """获取所有活跃 Agent（只返回 WebSocket 连接正常的）"""
+        return {
+            agent_id: info
+            for agent_id, info in self.agents.items()
+            if agent_id in self.active_connections
+        }
 
     async def send_to_agent(self, agent_id: str, message: dict):
         """发送消息给指定 Agent"""
@@ -100,20 +106,29 @@ class ConnectionManager:
         logger.info(f"任务结果已存储: {task_id}")
 
     async def wait_for_task_result(self, task_id: str, timeout: float = 30.0) -> Optional[dict]:
-        """等待任务执行结果"""
-        # 创建事件
+        """等待任务执行结果，支持取消信号。真实结果优先于取消信号"""
         event = asyncio.Event()
         self.task_events[task_id] = event
 
         try:
-            # 等待结果或超时
             await asyncio.wait_for(event.wait(), timeout=timeout)
-            return self.task_results.get(task_id)
+            # 真实结果优先：如果 agent 已返回结果，忽略取消信号
+            real_result = self.task_results.get(task_id)
+            if real_result is not None:
+                # 清理取消标记
+                if task_id in self.cancel_events:
+                    del self.cancel_events[task_id]
+                return real_result
+            # 无真实结果，检查是否被取消
+            if self.is_cancelled(task_id):
+                return {"cancelled": True}
+            return None
         except asyncio.TimeoutError:
             logger.warning(f"等待任务结果超时: {task_id}")
+            if self.is_cancelled(task_id):
+                return {"cancelled": True}
             return None
         finally:
-            # 清理事件
             if task_id in self.task_events:
                 del self.task_events[task_id]
 
@@ -122,17 +137,43 @@ class ConnectionManager:
         if task_id in self.task_results:
             del self.task_results[task_id]
 
+    def cancel_execution(self, task_execution_id: str):
+        """设置取消信号，通知 wait_for_task_result 立即返回"""
+        if task_execution_id in self.task_events:
+            self.task_events[task_execution_id].set()
+        self.cancel_events[task_execution_id] = asyncio.Event()
+        self.cancel_events[task_execution_id].set()
+        logger.info(f"取消信号已设置: {task_execution_id}")
+
+    def is_cancelled(self, task_execution_id: str) -> bool:
+        """检查任务是否已被取消"""
+        event = self.cancel_events.get(task_execution_id)
+        return event is not None and event.is_set()
+
 
 # 全局连接管理器
 manager = ConnectionManager()
 
 
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket 端点"""
+    """WebSocket 端点（含心跳保活 + 断连检测）"""
     await websocket.accept()
     agent_id = None
+    heartbeat_task = None
+
+    async def send_heartbeat():
+        """每30秒发送 ping，保持连接存活"""
+        while True:
+            await asyncio.sleep(30)
+            try:
+                await websocket.send_json({"type": "ping"})
+            except Exception:
+                break
 
     try:
+        # 启动心跳
+        heartbeat_task = asyncio.create_task(send_heartbeat())
+
         # 持续监听消息
         while True:
             message = await websocket.receive()
@@ -182,12 +223,34 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # 处理 WebSocket 关闭
             elif message.get("type") == "websocket.disconnect":
+                code = message.get("code", "未知")
+                reason = message.get("reason", "无")
+                logger.warning(f"Agent {agent_id} WebSocket 断开: code={code}, reason={reason}")
                 break
 
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket 断开: {agent_id}")
+    except WebSocketDisconnect as e:
+        logger.warning(f"Agent {agent_id} WebSocket 断开: code={e.code}, reason={e.reason}")
     except Exception as e:
-        logger.error(f"WebSocket 错误: {e}")
+        logger.error(f"Agent {agent_id} WebSocket 错误: {type(e).__name__}: {e}")
     finally:
+        # 取消心跳
+        if heartbeat_task:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
         if agent_id:
+            # 通知等待中的任务：Agent 已断连
+            for task_id, event in list(manager.task_events.items()):
+                if not event.is_set():
+                    logger.warning(f"Agent {agent_id} 断连，取消等待中的任务: {task_id}")
+                    manager.set_task_result(task_id, {
+                        "agent_id": agent_id,
+                        "result": {
+                            "success": False,
+                            "error": f"Agent {agent_id} 连接断开，任务中断"
+                        }
+                    })
             manager.disconnect(agent_id)

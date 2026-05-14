@@ -118,6 +118,9 @@ class LocalAgent:
         self.browser: Optional[Browser] = None
         self.playwright = None
         self.connected = False
+        self._cancelled = False
+        self._current_task_id = None
+        self._browser_context = None
 
         logger.info(f"初始化 Agent: {self.agent_id}")
 
@@ -177,7 +180,18 @@ class LocalAgent:
         logger.info(f"已注册 Agent: {self.agent_id}")
 
     async def _listen(self, websocket):
-        """监听服务器消息"""
+        """监听服务器消息（含心跳保活）"""
+        async def heartbeat():
+            """每30秒发送 ping，保持连接存活"""
+            while self.connected:
+                await asyncio.sleep(30)
+                try:
+                    await websocket.send(json.dumps({"type": "pong", "agent_id": self.agent_id}))
+                except Exception:
+                    break
+
+        heartbeat_task = asyncio.create_task(heartbeat())
+
         try:
             async for message in websocket:
                 try:
@@ -186,18 +200,27 @@ class LocalAgent:
                 except json.JSONDecodeError:
                     logger.error(f"无效的 JSON 消息: {message}")
                 except Exception as e:
-                    logger.error(f"处理消息错误: {e}")
-        except websockets.exceptions.ConnectionClosed:
-            logger.warning("WebSocket 连接已关闭")
+                    logger.error(f"处理消息错误: {type(e).__name__}: {e}")
+        except websockets.exceptions.ConnectionClosed as e:
+            logger.warning(f"WebSocket 连接已关闭: code={e.code}, reason={e.reason}")
         except Exception as e:
-            logger.error(f"监听循环异常: {e}")
-            raise
+            logger.error(f"监听循环异常: {type(e).__name__}: {e}")
+        finally:
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
 
     async def _handle_message(self, websocket, data: Dict[str, Any]):
         """处理服务器消息"""
         msg_type = data.get("type")
 
-        if msg_type == "ping":
+        if msg_type == "registered":
+            # 服务器确认注册
+            logger.info(f"✓ 服务器确认注册: {data.get('message', '')}")
+
+        elif msg_type == "ping":
             # 心跳
             await websocket.send(json.dumps({
                 "type": "pong",
@@ -205,29 +228,40 @@ class LocalAgent:
             }))
 
         elif msg_type == "task":
-            # 执行测试任务
+            # 执行测试任务（后台异步执行，不阻塞消息接收）
             task_id = data.get("task_id")
             logger.info(f"收到任务: {task_id}")
 
-            try:
-                result = await self._execute_task(data)
-                await websocket.send(json.dumps({
-                    "type": "task_result",
-                    "agent_id": self.agent_id,
-                    "task_id": task_id,
-                    "result": result
-                }))
-            except Exception as e:
-                logger.error(f"执行任务失败: {e}")
-                await websocket.send(json.dumps({
-                    "type": "task_result",
-                    "agent_id": self.agent_id,
-                    "task_id": task_id,
-                    "result": {
-                        "success": False,
-                        "error": str(e)
-                    }
-                }))
+            async def run_task():
+                try:
+                    result = await self._execute_task(data)
+                    await websocket.send(json.dumps({
+                        "type": "task_result",
+                        "agent_id": self.agent_id,
+                        "task_id": task_id,
+                        "result": result
+                    }))
+                except Exception as e:
+                    logger.error(f"执行任务失败: {e}")
+                    await websocket.send(json.dumps({
+                        "type": "task_result",
+                        "agent_id": self.agent_id,
+                        "task_id": task_id,
+                        "result": {
+                            "success": False,
+                            "error": str(e)
+                        }
+                    }))
+            asyncio.create_task(run_task())
+
+        elif msg_type == "cancel_task":
+            # 取消正在执行的任务（后台执行中，设置取消标志）
+            task_execution_id = data.get("task_execution_id")
+            logger.info(f"收到取消信号: {task_execution_id}, current_task={self._current_task_id}")
+            if task_execution_id and task_execution_id == self._current_task_id:
+                self._cancelled = True
+                logger.info(f"  ✓ 已设置取消标志: {task_execution_id}")
+                logger.info(f"收到取消信号: {task_execution_id}")
 
         elif msg_type == "close":
             # 关闭浏览器
@@ -247,6 +281,9 @@ class LocalAgent:
         headless = task_data.get("headless", False)
         url = task_data.get("url")
         steps = task_data.get("steps", [])
+
+        self._current_task_id = task_id
+        self._cancelled = False
 
         logger.info("=" * 60)
         logger.info(f"开始执行任务: {task_id}")
@@ -291,11 +328,21 @@ class LocalAgent:
                 self.browser = await browser_engine.launch(**launch_options)
                 logger.info(f"✓ 浏览器已启动: {browser_type} (headless={headless})")
 
-            # 创建页面
-            page = await self.browser.new_page()
+            # 创建上下文和页面
+            context_options = {}
+            if not headless:
+                context_options["no_viewport"] = True  # 窗口最大化时视口跟随窗口
+            context = await self.browser.new_context(**context_options)
+            self._browser_context = context  # 保存引用以便清理
+            page = await context.new_page()
 
             # 执行步骤
             for i, step in enumerate(steps, 1):
+                # 检查是否收到取消信号
+                if self._cancelled:
+                    logger.info(f"  → 任务已被取消，停止执行")
+                    break
+
                 step_count = i
                 logger.info(f"\n[步骤 {i}/{len(steps)}]")
 
@@ -335,9 +382,10 @@ class LocalAgent:
             await self._close_browser()
 
             return {
-                "success": fail_count == 0,
+                "success": fail_count == 0 and not self._cancelled,
                 "results": results,
-                "message": "任务执行完成"
+                "message": "任务已被手动停止" if self._cancelled else "任务执行完成",
+                "cancelled": self._cancelled
             }
 
         except Exception as e:
@@ -350,8 +398,12 @@ class LocalAgent:
             return {
                 "success": False,
                 "error": str(e),
-                "results": results
+                "results": results,
+                "cancelled": self._cancelled
             }
+        finally:
+            self._current_task_id = None
+            self._cancelled = False
 
     async def _execute_step(self, page: Page, step: Dict[str, Any]) -> Dict[str, Any]:
         """执行单个步骤"""
@@ -401,7 +453,7 @@ class LocalAgent:
         try:
             if action == "navigate":
                 url = params.get("url")
-                await page.goto(url)
+                await page.goto(url, timeout=30000)
                 elapsed = time.time() - start_time
                 add_log("info", f"✓ 成功 | 耗时: {elapsed:.2f}秒")
                 return {
@@ -413,7 +465,7 @@ class LocalAgent:
 
             elif action == "click":
                 selector = params.get("selector")
-                await page.click(selector)
+                await page.click(selector, timeout=10000)
                 elapsed = time.time() - start_time
                 add_log("info", f"✓ 成功 | 耗时: {elapsed:.2f}秒")
                 return {
@@ -480,6 +532,86 @@ class LocalAgent:
                     "logs": logs
                 }
 
+            elif action == "open_browser":
+                # 浏览器已在 _execute_task 中启动，这里只是确认步骤
+                add_log("info", f"✓ 浏览器已就绪 | browser_type={params.get('browser_type', 'chromium')}")
+                elapsed = time.time() - start_time
+                return {
+                    "success": True,
+                    "action": action,
+                    "duration": elapsed,
+                    "logs": logs
+                }
+
+            elif action == "close_browser":
+                await self._close_browser()
+                elapsed = time.time() - start_time
+                add_log("info", f"✓ 浏览器已关闭")
+                return {
+                    "success": True,
+                    "action": action,
+                    "duration": elapsed,
+                    "logs": logs
+                }
+
+            elif action == "assert_no_error":
+                error_text = params.get("error_text", "系统错误")
+                timeout_ms = params.get("timeout", 15000)
+                poll_interval = params.get("poll_interval", 500)
+                elapsed_ms = 0
+
+                add_log("info", f"开始轮询检测错误: error_text='{error_text}', timeout={timeout_ms}ms")
+                while elapsed_ms < timeout_ms:
+                    await asyncio.sleep(poll_interval / 1000)
+                    elapsed_ms += poll_interval
+
+                    # 1. 检测错误弹窗
+                    try:
+                        error_el = page.locator(f'text="{error_text}"')
+                        cnt = await error_el.count()
+                        if cnt > 0:
+                            for j in range(cnt):
+                                if await error_el.nth(j).is_visible():
+                                    add_log("error", f"检测到错误弹窗: {error_text}")
+                                    elapsed = time.time() - start_time
+                                    return {
+                                        "success": False,
+                                        "action": action,
+                                        "error": f"检测到错误弹窗: {error_text}",
+                                        "duration": elapsed,
+                                        "logs": logs
+                                    }
+                    except Exception:
+                        pass
+
+                    # 2. 检测加载状态：spinner消失即加载结束
+                    try:
+                        spinner_count = await page.locator(".ant-spin-spinning").count()
+                        is_loading = spinner_count > 0
+                    except Exception:
+                        is_loading = False
+
+                    if not is_loading:
+                        elapsed = time.time() - start_time
+                        add_log("info", f"✓ 通过 | 加载已完成，未检测到错误 | 耗时: {elapsed:.2f}秒")
+                        return {
+                            "success": True,
+                            "action": action,
+                            "duration": elapsed,
+                            "logs": logs
+                        }
+
+                # 超时：加载未完成
+                elapsed = time.time() - start_time
+                add_log("error", f"超时({timeout_ms}ms): 加载未完成")
+                return {
+                    "success": False,
+                    "action": action,
+                    "error": f"等待超时({timeout_ms}ms): 加载未完成",
+                    "duration": elapsed,
+                    "logs": logs
+                }
+
             else:
                 return {
                     "success": False,
@@ -534,6 +666,9 @@ class LocalAgent:
 
     async def _close_browser(self):
         """关闭浏览器"""
+        if hasattr(self, '_browser_context') and self._browser_context:
+            await self._browser_context.close()
+            self._browser_context = None
         if self.browser:
             await self.browser.close()
             self.browser = None

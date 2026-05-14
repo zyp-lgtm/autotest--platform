@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProject } from '../contexts/ProjectContext'
 import { tasksApi } from '../api/tasks'
@@ -20,12 +20,51 @@ export default function Tasks() {
   const [taskKeywords, setTaskKeywords] = useState<Record<string, string[]>>({})
   const [allProjectTasks, setAllProjectTasks] = useState<Record<string, UITask[]>>({})
   const [showAllTasks, setShowAllTasks] = useState(false)
+  const [runningExecutions, setRunningExecutions] = useState<Record<string, string>>(() => {
+    // 从 sessionStorage 恢复运行中的执行 ID（跨页面导航保持）
+    try {
+      const saved = sessionStorage.getItem('runningExecutions')
+      return saved ? JSON.parse(saved) : {}
+    } catch {
+      return {}
+    }
+  })
 
   useEffect(() => {
     loadTasks()
     loadKeywords()
     loadAllProjectTasks()
   }, [currentProject])
+
+  // 定期检查运行中的执行状态（每5秒），用 ref 避免依赖循环
+  const runningRef = useRef(runningExecutions)
+  runningRef.current = runningExecutions
+
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const current = runningRef.current
+      const taskIds = Object.keys(current)
+      if (taskIds.length === 0) return
+      let changed = false
+      const updated = { ...current }
+      for (const taskId of taskIds) {
+        try {
+          const execs = await tasksApi.getTaskExecutions(taskId, 1)
+          setExecutions(prev => ({ ...prev, [taskId]: execs }))
+          const stillRunning = execs.find((e: any) => e.status === 'running')
+          if (!stillRunning) {
+            delete updated[taskId]
+            changed = true
+          }
+        } catch (_err) {}
+      }
+      if (changed) {
+        setRunningExecutions(updated)
+        persistRunning(updated)
+      }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [])
 
   const loadAllProjectTasks = async () => {
     // 加载所有项目的任务，用于统计显示
@@ -104,6 +143,24 @@ export default function Tasks() {
         }
       }
       setTaskKeywords(taskKwMap)
+
+      // 加载执行历史，检测正在运行的任务
+      const newRunning: Record<string, string> = {}
+      for (const task of data) {
+        try {
+          const execs = await tasksApi.getTaskExecutions(task.id, 3)
+          setExecutions(prev => ({ ...prev, [task.id]: execs }))
+          const running = execs.find((e: any) => e.status === 'running')
+          if (running) {
+            newRunning[task.id] = running.id
+          }
+        } catch (_err) {
+          // 静默忽略
+        }
+      }
+      // 用实际运行中的执行覆盖（清除已完成的）
+      setRunningExecutions(newRunning)
+      persistRunning(newRunning)
     } catch (err: any) {
       setError(err.response?.data?.detail || '加载任务失败')
     } finally {
@@ -144,13 +201,35 @@ export default function Tasks() {
     }
   }
 
+  const persistRunning = (map: Record<string, string>) => {
+    sessionStorage.setItem('runningExecutions', JSON.stringify(map))
+  }
+
   const handleExecute = async (taskId: string) => {
     try {
       const result = await tasksApi.executeTask(taskId)
-      // 执行成功后导航到报告页面
-      navigate(`/executions/${result.id}`)
+      const updated = { ...runningExecutions, [taskId]: result.id }
+      setRunningExecutions(updated)
+      persistRunning(updated)
+      // 立即加载执行历史，让用户看到 running 状态
+      await loadExecutions(taskId)
+      setShowHistory(prev => ({ ...prev, [taskId]: true }))
     } catch (err: any) {
       alert('执行失败: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  const handleCancelExecution = async (taskId: string, executionId: string) => {
+    if (!confirm('确定要停止执行吗？')) return
+    try {
+      await tasksApi.cancelExecution(executionId)
+      const updated = { ...runningExecutions }
+      delete updated[taskId]
+      setRunningExecutions(updated)
+      persistRunning(updated)
+      await loadExecutions(taskId)
+    } catch (err: any) {
+      alert('停止失败: ' + (err.response?.data?.detail || err.message))
     }
   }
 
@@ -178,6 +257,7 @@ export default function Tasks() {
       case 'completed': return 'text-green-600'
       case 'running': return 'text-blue-600'
       case 'failed': return 'text-red-600'
+      case 'cancelled': return 'text-orange-600'
       default: return 'text-gray-600'
     }
   }
@@ -385,12 +465,21 @@ export default function Tasks() {
 
                 {/* 操作按钮 */}
                 <div className="flex items-center space-x-2 ml-4">
-                  <button
-                    onClick={() => handleExecute(task.id)}
-                    className="px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition"
-                  >
-                    执行
-                  </button>
+                  {runningExecutions[task.id] ? (
+                    <button
+                      onClick={() => handleCancelExecution(task.id, runningExecutions[task.id])}
+                      className="px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition animate-pulse"
+                    >
+                      停止
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleExecute(task.id)}
+                      className="px-3 py-1.5 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition"
+                    >
+                      执行
+                    </button>
+                  )}
                   <button
                     onClick={() => toggleHistory(task.id)}
                     className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 transition"
@@ -436,7 +525,7 @@ export default function Tasks() {
                         >
                           <div className="flex items-center gap-3 text-sm">
                             <span className={getStatusColor(execution.status)}>
-                              {execution.status === 'completed' ? (execution.result || '完成') : execution.status}
+                              {execution.status === 'cancelled' ? '已取消' : execution.status === 'completed' ? (execution.result || '完成') : execution.status}
                             </span>
                             <span className="text-gray-500">
                               {execution.started_at ? new Date(execution.started_at).toLocaleString('zh-CN') : '-'}
@@ -445,7 +534,15 @@ export default function Tasks() {
                               耗时: {execution.duration ? `${Math.floor(execution.duration / 60)}分${Math.floor(execution.duration % 60)}秒` : '-'}
                             </span>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                            {execution.status === 'running' && (
+                              <button
+                                onClick={() => handleCancelExecution(task.id, execution.id)}
+                                className="px-2 py-0.5 text-xs bg-red-600 text-white rounded hover:bg-red-700 transition"
+                              >
+                                停止
+                              </button>
+                            )}
                             {execution.result && (
                               <span className={`px-2 py-0.5 text-xs rounded ${getResultBadge(execution.result)}`}>
                                 {execution.result.toUpperCase()}

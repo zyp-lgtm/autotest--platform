@@ -14,6 +14,7 @@ from ...services.execution import TaskExecutor
 from ...utils.cache import cache_response, invalidate_pattern
 from ..utils import validate_and_fetch, validate_uuid, serialize_model
 import logging
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,9 @@ async def execute_ui_task(
     user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
-    """执行 UI 任务"""
+    """执行 UI 任务（立即返回 execution ID，后台执行）"""
+    import asyncio
+
     # 验证任务存在
     task = validate_and_fetch(db, UITask, task_id, "任务")
 
@@ -109,13 +112,10 @@ async def execute_ui_task(
     # 合并浏览器配置（优先级：API参数 > 任务配置 > 默认值）
     final_browser_config = {"headless": False}  # 默认显示浏览器
 
-    # 1. 先应用任务的默认配置
     if task.execution_config and "browser_config" in task.execution_config:
         final_browser_config.update(task.execution_config["browser_config"])
 
-    # 2. 再用 API 参数覆盖（如果提供）
     if browser_config:
-        # 如果 browser_config 中嵌套了 browser_config 键，提取内部配置
         if "browser_config" in browser_config:
             final_browser_config.update(browser_config["browser_config"])
         else:
@@ -130,74 +130,38 @@ async def execute_ui_task(
         environment="production"
     )
 
-    # 创建执行器并执行
+    # Phase 1: 创建执行记录并立即返回
     executor = TaskExecutor(db)
 
     try:
-        execution = await executor.execute_task(request)
+        execution = await executor.create_and_start_execution(request)
 
-        # 重新加载执行记录以获取完整的步骤日志（使用 eager loading 优化 N+1 查询）
-        from ...models.execution import ScenarioExecution, CaseExecution, StepExecution
+        # Phase 2: 后台继续执行（使用独立 DB session）
+        execution_id = execution.id
 
-        # 使用 selectinload 预加载所有关联数据，将 61+ 次查询减少到 3 次
-        execution = db.query(TestExecution).options(
-            selectinload(TestExecution.scenario_executions).selectinload(ScenarioExecution.case_executions).selectinload(CaseExecution.step_executions)
-        ).filter(TestExecution.id == execution.id).first()
+        async def run_in_background():
+            from ...core.database import SessionLocal
+            bg_db = SessionLocal()
+            try:
+                bg_executor = TaskExecutor(bg_db)
+                bg_executor.current_execution = bg_db.query(TestExecution).filter(
+                    TestExecution.id == execution_id
+                ).first()
+                if not bg_executor.current_execution:
+                    logger.error(f"后台执行失败: 找不到执行记录 {execution_id}")
+                    return
+                bg_executor._cached_task = None
+                bg_executor._cached_browser_config = final_browser_config
+                await bg_executor.continue_execution()
+                logger.info(f"后台执行完成: {execution_id}")
+            except Exception as e:
+                logger.error(f"后台执行失败: {execution_id}: {e}", exc_info=True)
+            finally:
+                bg_db.close()
 
-        if not execution:
-            raise HTTPException(status_code=404, detail="执行记录不存在")
+        asyncio.create_task(run_in_background())
 
-        # 构建响应数据（所有数据已预加载，无需额外查询）
-        scenarios_data = []
-        for scenario_exec in execution.scenario_executions:
-            cases_data = []
-            for case_exec in scenario_exec.case_executions:
-                steps_data = []
-                for step_exec in case_exec.step_executions:
-                    steps_data.append({
-                        "step_name": step_exec.step_name,
-                        "step_order": step_exec.step_order,
-                        "keyword_name": step_exec.keyword_name,
-                        "category": step_exec.category,
-                        "status": step_exec.status,
-                        "result": step_exec.result,
-                        "duration": step_exec.duration,
-                        "retry_attempt": step_exec.retry_attempt,
-                        "continue_on_failure": step_exec.continue_on_failure,
-                        "parameters": step_exec.parameters,
-                        "error_message": step_exec.error_message,
-                        "logs": step_exec.logs or [],
-                        "screenshot_path": step_exec.screenshot_path,
-                        "output": step_exec.output
-                    })
-
-                cases_data.append({
-                    "id": str(case_exec.id),
-                    "case_id": str(case_exec.case_id) if case_exec.case_id else None,
-                    "status": case_exec.status,
-                    "result": case_exec.result,
-                    "total_steps": case_exec.total_steps,
-                    "passed_steps": case_exec.passed_steps,
-                    "failed_steps": case_exec.failed_steps,
-                    "duration": case_exec.duration,
-                    "error_message": case_exec.error_message,
-                    "step_executions": steps_data
-                })
-
-            scenarios_data.append({
-                "id": str(scenario_exec.id),
-                "scenario_id": str(scenario_exec.scenario_id) if scenario_exec.scenario_id else None,
-                "status": scenario_exec.status,
-                "result": scenario_exec.result,
-                "execution_order": scenario_exec.execution_order,
-                "total_steps": scenario_exec.total_steps,
-                "passed_steps": scenario_exec.passed_steps,
-                "failed_steps": scenario_exec.failed_steps,
-                "duration": scenario_exec.duration,
-                "case_executions": cases_data
-            })
-
-        # 返回带日志的执行结果（使用完整的字段名 scenario_executions）
+        # 立即返回执行 ID
         return {
             "id": str(execution.id),
             "task_id": str(execution.task_id),
@@ -206,19 +170,16 @@ async def execute_ui_task(
             "status": execution.status,
             "result": execution.result,
             "started_at": execution.started_at.isoformat() if execution.started_at else None,
-            "completed_at": execution.completed_at.isoformat() if execution.completed_at else None,
             "duration": execution.duration,
-            # 统计信息
-            "total_scenarios": execution.total_scenarios,
-            "total_cases": execution.total_cases,
-            "total_steps": execution.total_steps,
-            "passed_steps": execution.passed_steps,
-            "failed_steps": execution.failed_steps,
+            "total_scenarios": execution.total_scenarios or 0,
+            "total_cases": execution.total_cases or 0,
+            "total_steps": execution.total_steps or 0,
+            "passed_steps": execution.passed_steps or 0,
+            "failed_steps": execution.failed_steps or 0,
             "skipped_steps": execution.skipped_steps or 0,
             "error_message": execution.error_message,
             "execution_mode": execution.execution_mode,
-            # 使用完整的字段名，与前端期望保持一致
-            "scenario_executions": scenarios_data
+            "scenario_executions": []
         }
 
     except ValueError as e:
@@ -350,6 +311,55 @@ async def delete_ui_task(
             status_code=500,
             detail=f"删除任务失败: {str(e)}"
         )
+
+
+@router.post("/executions/{execution_id}/cancel")
+async def cancel_execution(
+    execution_id: str,
+    user: User = Depends(get_authenticated_user),
+    db: Session = Depends(get_db)
+):
+    """手动停止正在执行的任务"""
+    execution_id_uuid = validate_uuid(execution_id, "执行记录")
+
+    execution = db.query(TestExecution).filter(
+        TestExecution.id == execution_id_uuid
+    ).first()
+
+    if not execution:
+        raise HTTPException(status_code=404, detail="执行记录不存在")
+
+    if execution.status != "running":
+        raise HTTPException(status_code=400, detail="执行未在运行中，无法停止")
+
+    from app.api.agent import manager as agent_mgr
+
+    # UUID 转字符串（wait_for_task_result 用字符串作为 key）
+    execution_id_str = str(execution_id_uuid)
+
+    # 1. 设置取消信号（让 wait_for_task_result 或 orchestrator 立即检测到）
+    agent_mgr.cancel_execution(execution_id_str)
+
+    # 2. 如果是 agent 模式，发送取消消息给 Agent
+    if execution.execution_mode == "agent":
+        agents = agent_mgr.get_all_agents()
+        if agents:
+            agent_id = list(agents.keys())[0]
+            cancel_msg = {
+                "type": "cancel_task",
+                "task_execution_id": execution_id_str
+            }
+            try:
+                sent = await agent_mgr.send_to_agent(agent_id, cancel_msg)
+                logger.info(f"已发送取消消息给 Agent {agent_id}: {cancel_msg}, sent={sent}")
+            except Exception as e:
+                logger.error(f"发送取消消息失败: {e}")
+
+    logger.info(f"取消信号已设置: {execution_id_uuid}")
+    return {
+        "message": "已发送停止信号",
+        "execution_id": execution_id_uuid
+    }
 
 
 @router.get("/{task_id}/executions")

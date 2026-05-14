@@ -16,11 +16,19 @@ export default function ExecutionReport() {
     loadExecution()
   }, [executionId])
 
+  // 运行中自动刷新
+  useEffect(() => {
+    if (!execution || execution.status !== 'running') return
+    const interval = setInterval(() => {
+      loadExecution()
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [execution?.status])
+
   const loadExecution = async () => {
     if (!executionId) return
 
     try {
-      setLoading(true)
       setError(null)
       const data = await tasksApi.getExecution(executionId)
       setExecution(data)
@@ -28,6 +36,16 @@ export default function ExecutionReport() {
       setError(err.response?.data?.detail || '加载失败')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleStop = async () => {
+    if (!executionId || !confirm('确定要停止执行吗？')) return
+    try {
+      await tasksApi.cancelExecution(executionId)
+      await loadExecution()
+    } catch (err: any) {
+      alert('停止失败: ' + (err.response?.data?.detail || err.message))
     }
   }
 
@@ -58,6 +76,7 @@ export default function ExecutionReport() {
       case 'completed': return 'green'
       case 'running': return 'blue'
       case 'failed': return 'red'
+      case 'cancelled': return 'orange'
       case 'pending': return 'gray'
       default: return 'gray'
     }
@@ -108,12 +127,22 @@ export default function ExecutionReport() {
             执行ID: {execution.id.slice(0, 8)}...
           </p>
         </div>
-        <button
-          onClick={() => navigate(-1)}
-          className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-        >
-          返回
-        </button>
+        <div className="flex items-center gap-2">
+          {execution.status === 'running' && (
+            <button
+              onClick={handleStop}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition animate-pulse"
+            >
+              停止执行
+            </button>
+          )}
+          <button
+            onClick={() => navigate(-1)}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+          >
+            返回
+          </button>
+        </div>
       </div>
 
       {/* 执行概览 */}
@@ -123,7 +152,7 @@ export default function ExecutionReport() {
           <div>
             <p className="text-sm text-gray-500">状态</p>
             <p className="text-lg font-semibold" style={{ color: getStatusColor(execution.status) }}>
-              {execution.status === 'completed' ? execution.result : execution.status}
+              {execution.status === 'cancelled' ? '已取消' : execution.status === 'completed' ? execution.result : execution.status}
             </p>
           </div>
           <div>

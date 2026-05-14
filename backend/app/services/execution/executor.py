@@ -111,17 +111,18 @@ class TaskExecutor:
                 step_executor=self.step_executor
             )
 
-    async def execute_task(self, request: ExecutionRequest) -> TestExecution:
+    async def create_and_start_execution(self, request: ExecutionRequest) -> TestExecution:
         """
-        执行任务
+        创建执行记录并确定执行模式，立即返回。
+        实际执行由 continue_execution 在后台完成。
 
         Args:
             request: 执行请求
 
         Returns:
-            TestExecution: 执行记录
+            TestExecution: 执行记录（status=running，execution_mode 已设置）
         """
-        logger.info(f"Starting task execution: {request.task_id}")
+        logger.info(f"Creating execution record: {request.task_id}")
 
         # 1. 加载任务
         task = self.db.query(UITask).filter(UITask.id == request.task_id).first()
@@ -144,111 +145,119 @@ class TaskExecutor:
         self.db.refresh(execution)
 
         self.current_execution = execution
+        browser_config = request.browser_config or {}
+
+        # 3. 检测 Agent 可用性并设置执行模式
+        from app.api.agent import manager as agent_mgr
+        available_agents = agent_mgr.get_all_agents()
+        logger.info(f"当前可用 Agent 数量: {len(available_agents)}")
+
+        use_agent = browser_config.get("use_agent", True)
+
+        if use_agent:
+            if not available_agents:
+                raise Exception(
+                    "没有可用的 Agent 连接。请先启动 Agent（cd agent && python3 agent.py），"
+                    "或在执行配置中关闭 Agent 执行。"
+                )
+            execution.execution_mode = "agent"
+            logger.info(f"✓ 发现 {len(available_agents)} 个可用 Agent，使用 Agent 执行任务")
+        else:
+            execution.execution_mode = "direct"
+            logger.info("使用服务器直接执行")
+
+        self.db.commit()  # commit 确保 cancel 端点可见
+        self.db.refresh(execution)
+
+        # 保存 task 引用供 continue_execution 使用
+        self._cached_task = task
+        self._cached_browser_config = browser_config
+
+        logger.info(f"执行记录已创建: {execution.id}, mode={execution.execution_mode}")
+        return execution
+
+    async def continue_execution(self) -> TestExecution:
+        """
+        继续执行已创建的执行记录（由 create_and_start_execution 之后调用）。
+        在后台运行实际的测试步骤。
+
+        Returns:
+            TestExecution: 更新后的执行记录
+        """
+        execution = self.current_execution
+        if not execution:
+            raise ValueError("No execution to continue. Call create_and_start_execution first.")
+
+        task = self._cached_task
+        browser_config = self._cached_browser_config
+        if not task:
+            task = self.db.query(UITask).filter(UITask.id == execution.task_id).first()
+        if not task:
+            raise ValueError(f"Task not found: {execution.task_id}")
+
+        logger.info(f"Continuing execution: {execution.id}, mode={execution.execution_mode}")
 
         try:
-            # 3. 获取浏览器配置
-            browser_config = request.browser_config or {}
+            if execution.execution_mode == "agent":
+                # Agent 模式
+                from app.api.agent import manager as agent_mgr
+                available_agents = agent_mgr.get_all_agents()
+                if not available_agents:
+                    raise Exception("Agent 连接已断开")
 
-            # 4. 检查是否有可用的本地 Agent
-            # 直接访问 ConnectionManager 单例，避免 HTTP 认证问题
-            logger.info("[DEBUG] 直接访问 ConnectionManager 单例查询 Agent...")
-            from app.api.agent import manager as agent_mgr
-            available_agents = agent_mgr.get_all_agents()
-
-            logger.info(f"[DEBUG] 查询完成，available_agents 类型: {type(available_agents)}")
-            logger.info(f"[DEBUG] available_agents 是否为 None: {available_agents is None}")
-            logger.info(f"[DEBUG] available_agents 长度: {len(available_agents) if available_agents else 0}")
-            if available_agents:
-                logger.info(f"[DEBUG] Agent IDs: {list(available_agents.keys())}")
-            logger.info(f"当前可用 Agent 数量: {len(available_agents)}")
-            logger.info(f"browser_config: {browser_config}")
-            logger.info(f"use_agent 配置: {browser_config.get('use_agent', True)}")
-
-            if available_agents and browser_config.get("use_agent", True):
-                # 使用本地 Agent 执行
-                execution.execution_mode = "agent"
-                self.db.flush()
-                logger.info(f"✓ 发现 {len(available_agents)} 个可用 Agent，使用 Agent 执行任务")
-
-                # 获取第一个可用的 Agent
                 agent_id = list(available_agents.keys())[0]
-                logger.info(f"使用 Agent: {agent_id}")
-
-                # Agent 执行时默认显示浏览器（除非明确要求 headless）
                 agent_browser_config = browser_config.copy()
                 if "headless" not in agent_browser_config:
                     agent_browser_config["headless"] = False
-                    logger.info("Agent 执行模式：显示浏览器")
 
-                # 获取 manager 实例用于发送消息
-                from app.api import agent as agent_module
-                agent_mgr = agent_module.manager
-
-                # 转换任务为 Agent 格式并下发
-                logger.info(f"开始通过 Agent {agent_id} 执行任务...")
                 result = await self._execute_via_agent(agent_id, task, agent_browser_config, agent_mgr)
-                logger.info(f"Agent 执行完成，result: {result}")
 
-                # 更新执行结果
+                if result.get("cancelled"):
+                    execution.status = "cancelled"
+                    execution.completed_at = datetime.now(timezone.utc)
+                    execution.result = "cancelled"
+                    self.db.commit()
+                    return execution
+
                 execution.completed_at = datetime.now(timezone.utc)
                 started_at_aware = _ensure_datetime_aware(execution.started_at)
                 execution.duration = (execution.completed_at - started_at_aware).total_seconds()
 
-                # Agent 返回格式: {success, results: [{success, action, error}], message}
-                # 需要从 results 数组计算步骤统计
                 agent_results = result.get("results", [])
                 total_steps = len(agent_results)
                 passed_steps = sum(1 for r in agent_results if r.get("success"))
                 failed_steps = total_steps - passed_steps
 
-                logger.info(f"Agent 返回 {total_steps} 个步骤结果: {passed_steps} 成功, {failed_steps} 失败")
-
                 if result.get("success"):
                     execution.status = "completed"
                     execution.result = "pass"
-                    execution.total_steps = total_steps
-                    execution.passed_steps = passed_steps
-                    execution.failed_steps = failed_steps
                 else:
                     execution.status = "completed"
                     execution.result = "fail"
-
-                    # 获取第一个失败步骤的错误信息
-                    error_info = None
                     for step_result in agent_results:
                         if not step_result.get("success"):
-                            error_info = step_result.get("error", "Agent 执行失败")
+                            execution.error_message = step_result.get("error", "Agent 执行失败")
                             break
+                    if not execution.error_message:
+                        execution.error_message = "Agent 执行失败"
 
-                    execution.error_message = error_info or "Agent 执行失败"
-                    execution.total_steps = total_steps
-                    execution.passed_steps = passed_steps
-                    execution.failed_steps = failed_steps
-
+                execution.total_steps = total_steps
+                execution.passed_steps = passed_steps
+                execution.failed_steps = failed_steps
                 self.db.commit()
                 self.db.refresh(execution)
-
                 return execution
 
-            # 5. 没有 Agent 或不使用 Agent，在容器内执行
-            execution.execution_mode = "direct"
-            self.db.flush()
-            logger.info("在容器内执行任务")
-
-            # 6. 设置浏览器管理器
+            # Direct 模式
             await self._setup_browser(browser_config)
-
-            # 7. 初始化关键字引擎和编排器
             self.keyword_engine = KeywordEngine(browser_manager=self.browser_manager)
             self._initialize_orchestrator()
 
-            # 8. 委托给 TaskOrchestrator 执行
             execution = await self.task_orchestrator.orchestrate_task_execution(
                 task=task,
                 execution=execution,
                 browser_config=browser_config
             )
-
             logger.info(f"Task execution completed: {execution.result}")
 
         except Exception as e:
@@ -257,19 +266,29 @@ class TaskExecutor:
             execution.result = "error"
             execution.error_message = str(e)
             execution.completed_at = datetime.now(timezone.utc)
-
             started_at_aware = _ensure_datetime_aware(execution.started_at)
             execution.duration = (execution.completed_at - started_at_aware).total_seconds()
-
             self.db.commit()
             self.db.refresh(execution)
 
         finally:
-            # 9. 清理浏览器
             if self.browser_manager:
                 await self.browser_manager.close()
 
         return execution
+
+    async def execute_task(self, request: ExecutionRequest) -> TestExecution:
+        """
+        执行任务（同步模式，保持向后兼容）
+
+        Args:
+            request: 执行请求
+
+        Returns:
+            TestExecution: 执行记录
+        """
+        await self.create_and_start_execution(request)
+        return await self.continue_execution()
 
     async def _setup_browser(self, browser_config: Dict[str, Any]):
         """
@@ -522,8 +541,8 @@ class TaskExecutor:
 
         logger.info(f"Prepared task with {total_steps} steps for agent execution")
 
-        # 生成任务 ID
-        task_execution_id = str(uuid.uuid4())
+        # 使用 TestExecution.id 作为任务执行 ID（取消时可直接映射）
+        task_execution_id = str(self.current_execution.id)
         logger.info(f"生成的任务执行 ID: {task_execution_id}")
 
         # 扁平化步骤为 Agent 期望的格式
@@ -548,18 +567,39 @@ class TaskExecutor:
         sent = await agent_mgr.send_to_agent(agent_id, task_message)
         logger.info(f"发送任务结果: {sent}")
         if not sent:
-            raise Exception(f"发送任务给 Agent {agent_id} 失败")
+            raise Exception(f"Agent {agent_id} 连接已断开，无法发送任务")
+
+        # 确认 Agent 仍在连接列表中
+        connected_agents = agent_mgr.get_all_agents()
+        if agent_id not in connected_agents:
+            raise Exception(f"Agent {agent_id} 在发送任务后断连")
 
         logger.info(f"开始等待任务执行结果 (超时: 180秒)...")
         # 等待任务执行结果（使用任务 ID）
         wrapper = await agent_mgr.wait_for_task_result(
             task_execution_id,
-            timeout=180.0  # 3分钟超时
+            timeout=3600.0  # 1小时超时（支持大批量点检场景）
         )
         logger.info(f"收到任务执行包装结果: {wrapper}")
 
+        # 检查是否被取消
+        if wrapper and wrapper.get("cancelled"):
+            logger.info(f"任务已被取消: {task_execution_id}")
+            self.current_execution.status = "cancelled"
+            self.current_execution.completed_at = datetime.now(timezone.utc)
+            self.current_execution.result = "cancelled"
+            self.db.commit()
+            return {"success": False, "cancelled": True, "message": "任务已被手动停止"}
+
         if wrapper is None:
-            raise Exception(f"Agent {agent_id} 执行任务超时")
+            # 检查 Agent 是否已断连
+            connected_agents = agent_mgr.get_all_agents()
+            if agent_id not in connected_agents:
+                raise Exception(
+                    f"Agent {agent_id} 执行中断连。"
+                    "请检查 Agent 终端是否仍在运行，或重新启动 Agent (cd agent && python3 agent.py)"
+                )
+            raise Exception(f"Agent {agent_id} 执行超时（60秒），任务可能仍在执行中")
 
         # 从包装中提取实际的执行结果
         result = wrapper.get("result", {})
@@ -753,7 +793,14 @@ class TaskExecutor:
                 "CLICK": "click",
                 "INPUT": "input",
                 "WAIT_FOR_ELEMENT": "wait",
-                "SCREENSHOT": "screenshot"
+                "SCREENSHOT": "screenshot",
+                "OPEN_BROWSER": "open_browser",
+                "CLOSE_BROWSER": "close_browser",
+                "SELECT_OPTION": "select",
+                "HOVER": "hover",
+                "SCROLL_TO_ELEMENT": "scroll",
+                "DOUBLE_CLICK": "double_click",
+                "ASSERT_NO_ERROR": "assert_no_error"
             }
 
             # 获取映射后的 action
@@ -767,53 +814,6 @@ class TaskExecutor:
                 agent_params = {
                     "selector": parameters.get("selector"),
                     "state": parameters.get("state", "visible"),
-                    "timeout": parameters.get("timeout", 5000)
-                }
-                logger.info(f"转换 WAIT_FOR_ELEMENT -> wait, 参数: selector={agent_params['selector']}, state={agent_params['state']}, timeout={agent_params['timeout']}")
-
-            agent_step = {
-                "action": action,
-                "parameters": agent_params
-            }
-            return agent_step
-        except Exception as e:
-            logger.error(f"Failed to convert step to agent format: {e}")
-            return None
-        """
-        将步骤转换为 Agent 格式
-
-        Args:
-            keyword: 关键字定义
-            parameters: 参数
-
-        Returns:
-            Agent 格式的步骤
-        """
-        try:
-            # Agent 支持的操作映射
-            # 后端关键字名称 -> Agent 操作名称
-            action_mapping = {
-                "NAVIGATE": "navigate",
-                "CLICK": "click",
-                "INPUT": "input",
-                "WAIT_FOR_ELEMENT": "wait",  # 映射到 Agent 的 wait 操作
-                "SCREENSHOT": "screenshot"
-            }
-
-            # 获取映射后的 action
-            action = action_mapping.get(keyword.name, keyword.name.lower())
-
-            # 处理参数转换
-            agent_params = parameters.copy()
-
-            # WAIT_FOR_ELEMENT 的参数转换
-            # 后端: {selector, state, timeout}
-            # Agent: {selector, state, timeout}
-            if keyword.name == "WAIT_FOR_ELEMENT":
-                # Agent 现在支持 state 参数
-                agent_params = {
-                    "selector": parameters.get("selector"),
-                    "state": parameters.get("state", "visible"),  # visible/attached/hidden
                     "timeout": parameters.get("timeout", 5000)
                 }
                 logger.info(f"转换 WAIT_FOR_ELEMENT -> wait, 参数: selector={agent_params['selector']}, state={agent_params['state']}, timeout={agent_params['timeout']}")
