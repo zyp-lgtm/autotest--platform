@@ -29,12 +29,18 @@ class AuditMiddleware(BaseHTTPMiddleware):
         "/api/v1/auth/logout": "logout",
         "/api/v1/projects": "project",
         "/api/v1/data": "data",
-        "/api/v1/keywords": "keyword",
+        "/api/v1/ui/tasks/executions": "execution",
+        "/api/v1/ui/tasks": "task",
+        "/api/v1/ui/scenarios": "scenario",
+        "/api/v1/ui/cases": "case",
+        "/api/v1/ui/steps": "step",
+        "/api/v1/ui/keywords": "keyword",
+        "/api/v1/executions": "execution",
+        "/api/v1/tasks": "task",
         "/api/v1/scenarios": "scenario",
         "/api/v1/cases": "case",
         "/api/v1/steps": "step",
-        "/api/v1/tasks": "task",
-        "/api/v1/executions": "execution",
+        "/api/v1/keywords": "keyword",
     }
 
     async def dispatch(self, request: Request, call_next):
@@ -135,8 +141,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
                         # 创建审计日志记录
                         audit_log = AuditLog(
                             user_id=user_id,
-                            action=action,
-                            resource_type=http_action,
+                            action=http_action,
+                            resource_type=action,
                             resource_id=resource_id,
                             ip_address=client_ip,
                             user_agent=user_agent,
@@ -190,12 +196,15 @@ class AuditMiddleware(BaseHTTPMiddleware):
         return action_map.get(method, "unknown")
 
     def _extract_resource_id(self, path: str) -> str | None:
-        """从路径中提取资源ID"""
-        # 示例：/api/v1/projects/123 -> 123
-        parts = path.split("/")
-        if len(parts) >= 5:
-            # 检查最后一段是否是UUID
-            potential_id = parts[4]
-            if len(potential_id) == 36:  # UUID格式
-                return potential_id
+        """从路径中提取资源ID（取最后一个路径段，判断是否为 UUID）"""
+        import re
+        parts = [p for p in path.split("/") if p]
+        if parts:
+            last = parts[-1]
+            uuid_pattern = re.compile(
+                r'^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$',
+                re.IGNORECASE
+            )
+            if uuid_pattern.match(last):
+                return last
         return None

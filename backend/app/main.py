@@ -27,6 +27,7 @@ from .api import services as services_router
 from .api import debug as debug_router
 from .api import cache as cache_router
 from .api import audit as audit_router
+from .api import stats as stats_router
 # 暂时移除所有新增API路由以解决映射问题
 # from .api import environments as environments_router
 # from .api import test_data as test_data_router
@@ -169,6 +170,9 @@ app.include_router(cache_router.router, prefix="/api/v1", tags=["cache"])
 
 # 审计日志路由
 app.include_router(audit_router.router, prefix="/api/v1")
+
+# 仪表盘统计路由
+app.include_router(stats_router.router, prefix="/api/v1")
 
 # Phase 2 & 3 新增路由 - 重新启用
 from .api import environments as environments_router

@@ -2,26 +2,17 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useProject } from '../contexts/ProjectContext'
-import { tasksApi } from '../api/tasks'
-import { scenariosApi } from '../api/scenarios'
+import { statsApi, type DashboardStats } from '../api/stats'
 import { auditApi } from '../api/audit'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { HealthPanel } from '../components/HealthPanel'
 
-interface DashboardStats {
-  totalTasks: number
-  totalScenarios: number
-  totalCases: number
-  totalSteps: number
-  recentExecutions: number
-}
-
 interface AuditLog {
   id: string
   action: string
   resource_type: string
-  details: string
+  details: Record<string, any> | null
   success: boolean
   timestamp: string
 }
@@ -31,11 +22,11 @@ function Dashboard() {
   const { currentProject } = useProject()
   const navigate = useNavigate()
   const [stats, setStats] = useState<DashboardStats>({
-    totalTasks: 0,
-    totalScenarios: 0,
-    totalCases: 0,
-    totalSteps: 0,
-    recentExecutions: 0,
+    total_tasks: 0,
+    total_scenarios: 0,
+    total_cases: 0,
+    total_steps: 0,
+    recent_executions: 0,
   })
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,45 +52,8 @@ function Dashboard() {
 
     try {
       setLoading(true)
-
-      // 获取任务列表
-      const tasks = await tasksApi.getTasks(currentProject.id)
-
-      // 统计场景和用例
-      let totalScenarios = 0
-      let totalCases = 0
-      let totalSteps = 0
-
-      for (const task of tasks) {
-        totalScenarios += task.scenario_ids.length
-
-        // 获取每个场景的用例
-        for (const scenarioId of task.scenario_ids) {
-          try {
-            const cases = await scenariosApi.getCases(scenarioId)
-            totalCases += cases.length
-
-            // 获取每个用例的步骤
-            for (const caseItem of cases) {
-              totalSteps += caseItem.step_ids?.length || 0
-            }
-          } catch (e) {
-            console.error('Failed to load cases:', e)
-          }
-        }
-      }
-
-      // 获取最近的执行记录（统计）
-      // TODO: 后端需要添加获取执行记录统计的 API
-      const recentExecutions = 0
-
-      setStats({
-        totalTasks: tasks.length,
-        totalScenarios,
-        totalCases,
-        totalSteps,
-        recentExecutions,
-      })
+      const data = await statsApi.getDashboardStats(currentProject.id)
+      setStats(data)
     } catch (error) {
       console.error('Failed to fetch stats:', error)
     } finally {
@@ -212,7 +166,7 @@ function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-medium text-gray-600 mb-1">总任务数</h3>
-              <p className="text-2xl font-bold text-blue-600">{stats.totalTasks}</p>
+              <p className="text-2xl font-bold text-blue-600">{stats.total_tasks}</p>
             </div>
             <span className="text-2xl">📋</span>
           </div>
@@ -222,7 +176,7 @@ function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-medium text-gray-600 mb-1">总场景数</h3>
-              <p className="text-2xl font-bold text-green-600">{stats.totalScenarios}</p>
+              <p className="text-2xl font-bold text-green-600">{stats.total_scenarios}</p>
             </div>
             <span className="text-2xl">📑</span>
           </div>
@@ -232,7 +186,7 @@ function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-medium text-gray-600 mb-1">总用例数</h3>
-              <p className="text-2xl font-bold text-purple-600">{stats.totalCases}</p>
+              <p className="text-2xl font-bold text-purple-600">{stats.total_cases}</p>
             </div>
             <span className="text-2xl">📄</span>
           </div>
@@ -242,7 +196,7 @@ function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-medium text-gray-600 mb-1">总步骤数</h3>
-              <p className="text-2xl font-bold text-orange-600">{stats.totalSteps}</p>
+              <p className="text-2xl font-bold text-orange-600">{stats.total_steps}</p>
             </div>
             <span className="text-2xl">⚙️</span>
           </div>
@@ -318,7 +272,12 @@ function Dashboard() {
                   </div>
                   {log.details && (
                     <div className="text-xs text-gray-500 truncate">
-                      {log.details}
+                      {typeof log.details === 'string'
+                        ? log.details
+                        : log.details.path || log.details.method
+                          ? `${log.details.method || ''} ${log.details.path || ''}`
+                          : JSON.stringify(log.details)
+                      }
                     </div>
                   )}
                 </div>

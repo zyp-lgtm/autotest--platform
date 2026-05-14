@@ -7,7 +7,7 @@ export interface AuditLog {
   action: string
   resource_type: string
   resource_id: string
-  details: string
+  details: Record<string, any> | null
   ip_address: string
   success: boolean
   timestamp: string

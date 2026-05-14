@@ -181,3 +181,71 @@ class TestRateLimitRelaxed:
         ui_rule = RateLimitMiddleware.RATE_LIMITS.get("/api/v1/ui")
         assert ui_rule is not None
         assert ui_rule[0] >= 200, f"UI 限制过严: {ui_rule[0]} 次/分钟"
+
+
+class TestDashboardStats:
+    """仪表盘统计 API 测试"""
+
+    def test_stats_query_uses_real_counts(self):
+        """stats API 使用 SQL COUNT 查询而非 scenario_ids 字段"""
+        from unittest.mock import MagicMock
+        from app.api.stats import get_dashboard_stats
+        import uuid as _uuid
+        import asyncio
+
+        pid = str(_uuid.uuid4())
+        mock_db = MagicMock()
+        # scalar() 被调用 5 次，第 4 次通过 .join().filter().scalar() 链
+        # MagicMock 中 .filter().scalar 和 .join().filter().scalar 是不同的属性
+        mock_db.query.return_value.filter.return_value.scalar.side_effect = [5, 12, 30, 3]
+        mock_db.query.return_value.join.return_value.filter.return_value.scalar.return_value = 120
+        mock_user = MagicMock()
+
+        result = asyncio.run(get_dashboard_stats(
+            project_id=pid, user=mock_user, db=mock_db
+        ))
+
+        assert result["total_tasks"] == 5
+        assert result["total_scenarios"] == 12
+        assert result["total_cases"] == 30
+        assert result["total_steps"] == 120
+        assert result["recent_executions"] == 3
+
+    def test_stats_query_returns_zero_for_empty_project(self):
+        """空项目返回全部为 0"""
+        from unittest.mock import MagicMock
+        from app.api.stats import get_dashboard_stats
+        import uuid as _uuid
+        import asyncio
+
+        pid = str(_uuid.uuid4())
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.scalar.return_value = 0
+        mock_db.query.return_value.join.return_value.filter.return_value.scalar.return_value = 0
+        mock_user = MagicMock()
+
+        result = asyncio.run(get_dashboard_stats(
+            project_id=pid, user=mock_user, db=mock_db
+        ))
+
+        assert result["total_tasks"] == 0
+        assert result["total_scenarios"] == 0
+        assert result["total_cases"] == 0
+        assert result["total_steps"] == 0
+
+    def test_audit_paths_include_ui_routes(self):
+        """审计中间件路径应包含 /ui/ 前缀的路径"""
+        from app.middleware.audit import AuditMiddleware
+        paths = AuditMiddleware.AUDIT_PATHS
+        assert "/api/v1/ui/tasks" in paths
+        assert "/api/v1/ui/scenarios" in paths
+        assert "/api/v1/ui/keywords" in paths
+        assert paths["/api/v1/ui/tasks"] == "task"
+
+    def test_audit_execution_path_matches_before_task(self):
+        """executions 路径应在 tasks 之前匹配，避免 startswith 误匹配"""
+        from app.middleware.audit import AuditMiddleware
+        paths = list(AuditMiddleware.AUDIT_PATHS.items())
+        ui_task_idx = next(i for i, (p, _) in enumerate(paths) if p == "/api/v1/ui/tasks")
+        ui_exec_idx = next(i for i, (p, _) in enumerate(paths) if p == "/api/v1/ui/tasks/executions")
+        assert ui_exec_idx < ui_task_idx, "executions 必须排在 tasks 前面"
