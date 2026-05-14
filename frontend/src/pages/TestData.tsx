@@ -3,6 +3,7 @@ import { testDataApi } from '../api/testData'
 import { projectsApi } from '../api/projects'
 import type { TestData } from '../types/models'
 import type { Project } from '../types/models'
+import { TableEditor } from '../components/TableEditor'
 
 // 项目统计信息
 interface ProjectWithStats extends Project {
@@ -23,8 +24,12 @@ const TestDataPage: React.FC = () => {
   const [editingData, setEditingData] = useState<TestData | null>(null)
   const [newDataName, setNewDataName] = useState('')
   const [newDataDescription, setNewDataDescription] = useState('')
-  const [newDataJson, setNewDataJson] = useState('[\n  {"username": "test1", "password": "pass1"}\n]')
-  const [editDataJson, setEditDataJson] = useState('')
+  const [newDataRows, setNewDataRows] = useState<Record<string, any>[]>([
+    { username: 'test1', password: 'pass1' }
+  ])
+  const [newDataColumns, setNewDataColumns] = useState<string[]>(['username', 'password'])
+  const [editRows, setEditRows] = useState<Record<string, any>[]>([])
+  const [editColumns, setEditColumns] = useState<string[]>([])
 
   // 加载项目列表
   useEffect(() => {
@@ -99,8 +104,8 @@ const TestDataPage: React.FC = () => {
       return
     }
 
-    if (!newDataJson.trim()) {
-      showMessage('error', '请输入JSON数据')
+    if (newDataRows.length === 0) {
+      showMessage('error', '请添加至少一行测试数据')
       return
     }
 
@@ -110,13 +115,12 @@ const TestDataPage: React.FC = () => {
     }
 
     try {
-      const parsedData = JSON.parse(newDataJson)
       await testDataApi.createTestData({
         project_id: selectedProjectId,
         name: newDataName,
         description: newDataDescription,
         data_type: 'json',
-        data: parsedData,
+        data: newDataRows,
         tags: []
       })
 
@@ -127,12 +131,8 @@ const TestDataPage: React.FC = () => {
       setShowCreateModal(false)
     } catch (error: any) {
       console.error('创建测试数据失败:', error)
-      if (error instanceof SyntaxError) {
-        showMessage('error', 'JSON格式错误，请检查输入')
-      } else {
-        const errorMsg = error?.response?.data?.detail || error?.message || '创建测试数据失败'
-        showMessage('error', errorMsg)
-      }
+      const errorMsg = error?.response?.data?.detail || error?.message || '创建测试数据失败'
+      showMessage('error', errorMsg)
     }
   }
 
@@ -160,7 +160,9 @@ const TestDataPage: React.FC = () => {
 
   const handleEditData = (data: TestData) => {
     setEditingData(data)
-    setEditDataJson(JSON.stringify(data.data, null, 2))
+    const rows = data.data || []
+    setEditRows(rows)
+    setEditColumns(rows.length > 0 ? Object.keys(rows[0]) : [])
     setShowEditModal(true)
   }
 
@@ -168,12 +170,11 @@ const TestDataPage: React.FC = () => {
     if (!editingData) return
 
     try {
-      const parsedData = JSON.parse(editDataJson)
       await testDataApi.updateTestData(editingData.id, {
         name: editingData.name,
         description: editingData.description,
         data_type: editingData.data_type,
-        data: parsedData,
+        data: editRows,
         tags: editingData.tags
       })
 
@@ -184,19 +185,16 @@ const TestDataPage: React.FC = () => {
       setEditingData(null)
     } catch (error: any) {
       console.error('更新测试数据失败:', error)
-      if (error instanceof SyntaxError) {
-        showMessage('error', 'JSON格式错误，请检查输入')
-      } else {
-        const errorMsg = error?.response?.data?.detail || error?.message || '更新测试数据失败'
-        showMessage('error', errorMsg)
-      }
+      const errorMsg = error?.response?.data?.detail || error?.message || '更新测试数据失败'
+      showMessage('error', errorMsg)
     }
   }
 
   const resetForm = () => {
     setNewDataName('')
     setNewDataDescription('')
-    setNewDataJson('[\n  {"username": "test1", "password": "pass1"}\n]')
+    setNewDataRows([{ username: 'test1', password: 'pass1' }])
+    setNewDataColumns(['username', 'password'])
   }
 
   return (
@@ -332,7 +330,7 @@ const TestDataPage: React.FC = () => {
       {/* 创建测试数据模态框 */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-screen overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 w-full max-w-3xl max-h-screen overflow-y-auto">
             <h2 className="text-xl font-bold mb-4">创建测试数据</h2>
 
             <div className="space-y-4">
@@ -364,18 +362,14 @@ const TestDataPage: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  JSON 数据 <span className="text-red-500">*</span>
+                  数据表格 <span className="text-red-500">*</span>
                 </label>
-                <textarea
-                  value={newDataJson}
-                  onChange={(e) => setNewDataJson(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                  placeholder='[{"username": "test1", "password": "pass1"}]'
-                  rows={8}
+                <TableEditor
+                  columns={newDataColumns}
+                  rows={newDataRows}
+                  onRowsChange={setNewDataRows}
+                  onColumnsChange={setNewDataColumns}
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  请输入有效的 JSON 数组格式，例如：{'[{"username": "test1", "password": "pass1"}]'}
-                </p>
               </div>
 
               <div className="flex justify-end space-x-2">
@@ -436,10 +430,14 @@ const TestDataPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">JSON 数据</label>
-                <pre className="bg-gray-50 p-4 rounded-lg overflow-x-auto text-sm">
-                  {JSON.stringify(viewingData.data, null, 2)}
-                </pre>
+                <label className="block text-sm font-medium text-gray-700 mb-2">数据表格</label>
+                <TableEditor
+                  columns={viewingData.data && viewingData.data.length > 0 ? Object.keys(viewingData.data[0]) : []}
+                  rows={viewingData.data || []}
+                  onRowsChange={() => {}}
+                  onColumnsChange={() => {}}
+                  readOnly={true}
+                />
               </div>
 
               {viewingData.tags && viewingData.tags.length > 0 && (
@@ -526,18 +524,14 @@ const TestDataPage: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  JSON 数据 <span className="text-red-500">*</span>
+                  数据表格 <span className="text-red-500">*</span>
                 </label>
-                <textarea
-                  value={editDataJson}
-                  onChange={(e) => setEditDataJson(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                  placeholder='[{"username": "test1", "password": "pass1"}]'
-                  rows={12}
+                <TableEditor
+                  columns={editColumns}
+                  rows={editRows}
+                  onRowsChange={setEditRows}
+                  onColumnsChange={setEditColumns}
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  请输入有效的 JSON 数组格式
-                </p>
               </div>
 
               <div className="flex justify-end space-x-2 pt-4 border-t">
