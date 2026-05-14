@@ -12,6 +12,7 @@ export function Header() {
     { path: '/test-data', label: '测试数据' },
     { path: '/environments', label: '环境配置' },
     { path: '/scheduled-jobs', label: '定时任务' },
+    { path: '/keywords', label: '关键字管理' },
   ]
 
   return (

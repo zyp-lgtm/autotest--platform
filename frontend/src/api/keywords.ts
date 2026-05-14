@@ -28,4 +28,18 @@ export const keywordsApi = {
     const response = await apiClient.get<Keyword>(`/v1/ui/keywords/${keywordId}`)
     return response.data
   },
+
+  createKeyword: async (data: Record<string, any>): Promise<Keyword> => {
+    const response = await apiClient.post<Keyword>(`/v1/ui/keywords`, data)
+    return response.data
+  },
+
+  updateKeyword: async (keywordId: string, data: Record<string, any>): Promise<Keyword> => {
+    const response = await apiClient.put<Keyword>(`/v1/ui/keywords/${keywordId}`, data)
+    return response.data
+  },
+
+  deleteKeyword: async (keywordId: string): Promise<void> => {
+    await apiClient.delete(`/v1/ui/keywords/${keywordId}`)
+  },
 }

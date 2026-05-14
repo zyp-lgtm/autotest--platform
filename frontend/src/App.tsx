@@ -19,6 +19,7 @@ const ProjectsPage = lazy(() => import('./pages/Projects'))
 const TestDataPage = lazy(() => import('./pages/TestData'))
 const EnvironmentsPage = lazy(() => import('./pages/Environments'))
 const ScheduledJobsPage = lazy(() => import('./pages/ScheduledJobs'))
+const KeywordsPage = lazy(() => import('./pages/Keywords'))
 
 // 懒加载组件的加载指示器
 function LazyLoader() {
@@ -68,6 +69,7 @@ function App() {
                           <Route path="/test-data" element={<TestDataPage />} />
                           <Route path="/environments" element={<EnvironmentsPage />} />
                           <Route path="/scheduled-jobs" element={<ScheduledJobsPage />} />
+                          <Route path="/keywords" element={<KeywordsPage />} />
                         </Routes>
                       </Layout>
                     </ProtectedRoute>

@@ -1,19 +1,22 @@
 """
 关键字 API
-提供关键字查询接口
+提供关键字查询、创建、更新、删除接口
 """
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import json
+import logging
 
 from ...models.keyword import Keyword
 from ...models.user import User
 from ...core.database import get_db
 from ...core.security import get_authenticated_user
+from ...schemas.keyword import KeywordCreate, KeywordResponse
 from ...utils.cache import cache_response, invalidate_pattern
 from ..utils import validate_and_fetch
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ui/keywords", tags=["UI关键字"])
 
 
@@ -108,3 +111,109 @@ async def get_keyword(
         "enabled": keyword.is_valid,
         "examples": []
     }
+
+
+@router.post("/")
+@router.post("")
+async def create_keyword(
+    keyword: KeywordCreate,
+    user: User = Depends(get_authenticated_user),
+    db: Session = Depends(get_db)
+):
+    """创建关键字"""
+    existing = db.query(Keyword).filter(Keyword.name == keyword.name).first()
+    if existing:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"关键字 '{keyword.name}' 已存在")
+
+    new_kw = Keyword(
+        name=keyword.name,
+        keyword_type=keyword.keyword_type,
+        category=keyword.category,
+        description=keyword.description,
+        icon=keyword.icon,
+        parameter_schema=keyword.parameter_schema,
+        return_schema=keyword.return_schema,
+        code_content=keyword.code_content,
+        created_by=user.id,
+    )
+    db.add(new_kw)
+    db.commit()
+    db.refresh(new_kw)
+
+    invalidate_pattern("list_*")
+    logger.info(f"关键字已创建: {new_kw.name} (id={new_kw.id})")
+    return {
+        "id": str(new_kw.id),
+        "name": new_kw.name,
+        "keyword_type": new_kw.keyword_type,
+        "category": new_kw.category,
+        "description": new_kw.description,
+        "icon": new_kw.icon,
+        "parameter_schema": new_kw.parameter_schema,
+        "return_schema": new_kw.return_schema,
+        "code_content": new_kw.code_content,
+        "is_valid": new_kw.is_valid,
+        "created_at": new_kw.created_at.isoformat() if new_kw.created_at else None,
+    }
+
+
+@router.put("/{keyword_id}")
+async def update_keyword(
+    keyword_id: str,
+    keyword: KeywordCreate,
+    user: User = Depends(get_authenticated_user),
+    db: Session = Depends(get_db)
+):
+    """更新关键字"""
+    kw = validate_and_fetch(db, Keyword, keyword_id, "关键字")
+
+    if keyword.name != kw.name:
+        existing = db.query(Keyword).filter(Keyword.name == keyword.name).first()
+        if existing:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail=f"关键字 '{keyword.name}' 已存在")
+
+    kw.name = keyword.name
+    kw.keyword_type = keyword.keyword_type
+    kw.category = keyword.category
+    kw.description = keyword.description
+    kw.icon = keyword.icon
+    kw.parameter_schema = keyword.parameter_schema
+    kw.return_schema = keyword.return_schema
+    kw.code_content = keyword.code_content
+
+    db.commit()
+    db.refresh(kw)
+
+    invalidate_pattern("list_*")
+    logger.info(f"关键字已更新: {kw.name} (id={kw.id})")
+    return {
+        "id": str(kw.id),
+        "name": kw.name,
+        "keyword_type": kw.keyword_type,
+        "category": kw.category,
+        "description": kw.description,
+        "icon": kw.icon,
+        "parameter_schema": kw.parameter_schema,
+        "return_schema": kw.return_schema,
+        "code_content": kw.code_content,
+        "is_valid": kw.is_valid,
+        "created_at": kw.created_at.isoformat() if kw.created_at else None,
+    }
+
+
+@router.delete("/{keyword_id}")
+async def delete_keyword(
+    keyword_id: str,
+    user: User = Depends(get_authenticated_user),
+    db: Session = Depends(get_db)
+):
+    """删除关键字"""
+    kw = validate_and_fetch(db, Keyword, keyword_id, "关键字")
+    db.delete(kw)
+    db.commit()
+
+    invalidate_pattern("list_*")
+    logger.info(f"关键字已删除: {kw.name} (id={kw.id})")
+    return {"message": f"关键字 '{kw.name}' 已删除"}
