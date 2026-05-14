@@ -3,11 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { scenariosApi, Scenario, Case, Step } from '../api/scenarios'
 import { keywordsApi, Keyword } from '../api/keywords'
 import { tasksApi, UITask } from '../api/tasks'
+import { testDataApi } from '../api/testData'
 import { useToast } from '../contexts/ToastContext'
 import ScenarioForm from '../components/ScenarioForm'
 import CaseForm from '../components/CaseForm'
 import StepForm from '../components/StepForm'
 import RecordingWizard from '../components/RecordingWizard'
+import { TableEditor } from '../components/TableEditor'
 
 type ModalType = 'scenario' | 'case' | 'step' | 'recording' | null
 
@@ -36,6 +38,12 @@ export default function Scenarios() {
   const [editingScenario, setEditingScenario] = useState<Scenario | undefined>(undefined)
   const [editingCase, setEditingCase] = useState<Case | undefined>(undefined)
   const [editingStep, setEditingStep] = useState<Step | undefined>(undefined)
+
+  // 测试数据状态（按场景ID索引，支持多个场景同时展开）
+  const [scenarioTestData, setScenarioTestData] = useState<Record<string, any>>({})
+  const [editRows, setEditRows] = useState<Record<string, Record<string, any>[]>>({})
+  const [editColumns, setEditColumns] = useState<Record<string, string[]>>({})
+  const [dataLoading, setDataLoading] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     loadData()
@@ -91,8 +99,77 @@ export default function Scenarios() {
     }
   }
 
+  // ==================== 测试数据管理 ====================
+
+  const loadScenarioTestData = async (scenarioId: string) => {
+    if (!task?.project_id) return
+    setDataLoading(prev => ({ ...prev, [scenarioId]: true }))
+    try {
+      const result = await testDataApi.getTestDataList(task.project_id)
+      if (Array.isArray(result)) {
+        const match = result.find((td: any) => td.scenario_id === scenarioId)
+        if (match) {
+          setScenarioTestData(prev => ({ ...prev, [scenarioId]: match }))
+          const rows = match.data || []
+          setEditRows(prev => ({ ...prev, [scenarioId]: rows }))
+          setEditColumns(prev => ({
+            ...prev,
+            [scenarioId]: rows.length > 0 ? Object.keys(rows[0]) : [],
+          }))
+          setDataLoading(prev => ({ ...prev, [scenarioId]: false }))
+          return
+        }
+      }
+    } catch (e) {
+      console.error('加载测试数据失败', e)
+    }
+    setScenarioTestData(prev => ({ ...prev, [scenarioId]: null }))
+    setEditRows(prev => ({ ...prev, [scenarioId]: [] }))
+    setEditColumns(prev => ({ ...prev, [scenarioId]: [] }))
+    setDataLoading(prev => ({ ...prev, [scenarioId]: false }))
+  }
+
+  const createScenarioTestData = async (scenarioId: string) => {
+    if (!task?.project_id) return
+    try {
+      const newData = await testDataApi.createTestData({
+        project_id: task.project_id,
+        name: '场景测试数据',
+        data_type: 'json',
+        data: [],
+        tags: [],
+      } as any)
+      setScenarioTestData(prev => ({ ...prev, [scenarioId]: newData }))
+      setEditRows(prev => ({ ...prev, [scenarioId]: [] }))
+      setEditColumns(prev => ({ ...prev, [scenarioId]: [] }))
+    } catch (e) {
+      console.error('创建测试数据失败', e)
+    }
+  }
+
+  const saveScenarioTestData = async (scenarioId: string) => {
+    const td = scenarioTestData[scenarioId]
+    if (!td) return
+    try {
+      await testDataApi.updateTestData(td.id, {
+        data: editRows[scenarioId] || [],
+      } as any)
+      toast.success('测试数据已保存')
+    } catch (e: any) {
+      console.error('保存测试数据失败', e)
+      toast.error('保存失败: ' + (e?.response?.data?.detail || e.message))
+    }
+  }
+
   const toggleScenario = (scenarioId: string) => {
-    setExpandedScenarios(prev => ({ ...prev, [scenarioId]: !prev[scenarioId] }))
+    setExpandedScenarios(prev => {
+      const next = { ...prev, [scenarioId]: !prev[scenarioId] }
+      // 展开时加载测试数据
+      if (next[scenarioId] && !scenarioTestData[scenarioId]) {
+        loadScenarioTestData(scenarioId)
+      }
+      return next
+    })
   }
 
   const toggleCase = (caseId: string) => {
@@ -611,6 +688,41 @@ export default function Scenarios() {
                         )}
                       </div>
                     ))
+                  )}
+                </div>
+              )}
+
+              {/* 测试数据区域 */}
+              {expandedScenarios[scenario.id] && (
+                <div className="mt-4 border-t pt-4">
+                  <h4 className="font-bold mb-2 text-sm">测试数据</h4>
+                  {dataLoading[scenario.id] ? (
+                    <div className="text-gray-500 text-center py-4 text-sm">加载中...</div>
+                  ) : scenarioTestData[scenario.id] ? (
+                    <div>
+                      <TableEditor
+                        columns={editColumns[scenario.id] || []}
+                        rows={editRows[scenario.id] || []}
+                        onRowsChange={(rows) => setEditRows(prev => ({ ...prev, [scenario.id]: rows }))}
+                        onColumnsChange={(cols) => setEditColumns(prev => ({ ...prev, [scenario.id]: cols }))}
+                      />
+                      <button
+                        onClick={() => saveScenarioTestData(scenario.id)}
+                        className="mt-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                      >
+                        保存测试数据
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-gray-500 text-sm">
+                      该场景暂无测试数据
+                      <button
+                        onClick={() => createScenarioTestData(scenario.id)}
+                        className="ml-2 px-3 py-1 bg-blue-600 text-white rounded text-sm"
+                      >
+                        + 创建测试数据
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
