@@ -121,7 +121,10 @@ class TaskOrchestrator:
         execution_order: int
     ) -> ScenarioExecution:
         """
-        编排并执行场景
+        编排并执行场景（支持数据驱动迭代）
+
+        查询场景绑定的 TestData，按数据行数迭代执行。每行数据创建独立的
+        ScenarioExecution 记录。
 
         Args:
             scenario: 场景定义
@@ -129,66 +132,94 @@ class TaskOrchestrator:
             execution_order: 执行顺序
 
         Returns:
-            ScenarioExecution: 场景执行记录
+            ScenarioExecution: 最后完成的场景执行记录
         """
         import uuid
+        from ...models.test_data import TestData
 
-        # 创建场景执行记录
-        scenario_execution = ScenarioExecution(
-            id=uuid.uuid4(),
-            test_execution_id=task_execution.id,
-            scenario_id=scenario.id,
-            status="pending",
-            execution_order=execution_order,
-            total_cases=0,
-            total_steps=0,
-            passed_steps=0,
-            failed_steps=0
+        # 查询场景级测试数据
+        test_data = self.db.query(TestData).filter(
+            TestData.scenario_id == str(scenario.id)
+        ).first()
+
+        data_rows = test_data.data if test_data and test_data.data else []
+        max_iterations = max(len(data_rows), 1)
+
+        logger.info(
+            f"场景 {scenario.name} 有 {max_iterations} 行测试数据，将迭代 {max_iterations} 次"
         )
-        self.db.add(scenario_execution)
-        self.db.commit()
 
-        try:
-            # 1. 加载用例
-            cases = self._load_cases(scenario)
+        last_scenario_execution = None
 
-            # 2. 按顺序执行用例
-            for case in cases:
-                case_execution = await self._orchestrate_case_execution(
-                    case, scenario_execution, task_execution
+        for data_row_index in range(max_iterations):
+            data_row = data_rows[data_row_index] if data_row_index < len(data_rows) else {}
+
+            # 创建场景执行记录（每轮迭代一个）
+            scenario_execution = ScenarioExecution(
+                id=uuid.uuid4(),
+                test_execution_id=task_execution.id,
+                scenario_id=scenario.id,
+                status="pending",
+                execution_order=execution_order,
+                iteration=data_row_index,
+                data_row_index=data_row_index,
+                data_row=data_row,
+                total_cases=0,
+                total_steps=0,
+                passed_steps=0,
+                failed_steps=0
+            )
+            self.db.add(scenario_execution)
+            self.db.commit()
+            last_scenario_execution = scenario_execution
+
+            try:
+                # 1. 加载用例
+                cases = self._load_cases(scenario)
+
+                # 2. 按顺序执行用例
+                for case in cases:
+                    # 检查是否已取消
+                    if self._is_cancelled(task_execution):
+                        logger.info("任务已被取消，停止执行场景")
+                        break
+
+                    case_execution = await self._orchestrate_case_execution(
+                        case, scenario_execution, task_execution,
+                        data_row_index=data_row_index
+                    )
+
+                    # 更新统计
+                    self._update_scenario_stats(scenario_execution)
+
+                    # 🔥 用例失败立即停止
+                    if case_execution.status == "failed" or case_execution.result == "fail":
+                        logger.info(f"用例失败，停止场景执行: {case.name}")
+                        break
+
+                # 更新状态
+                scenario_execution.status = "completed"
+                scenario_execution.result = (
+                    "pass" if scenario_execution.failed_steps == 0 else "fail"
                 )
+                self.db.commit()
 
-                # 更新统计
-                self._update_scenario_stats(scenario_execution)
+            except Exception as e:
+                logger.error(f"场景执行失败 (迭代 {data_row_index}): {e}")
+                scenario_execution.status = "failed"
+                scenario_execution.result = "fail"
+                scenario_execution.error_message = str(e)
+                self.db.commit()
+                break  # 某行失败停止后续迭代
 
-                # 🔥 用例失败立即停止
-                if case_execution.status == "failed" or case_execution.result == "fail":
-                    logger.info(f"用例失败，停止场景执行: {case.name}")
-                    break
-
-            # 更新状态
-            scenario_execution.status = "completed"
-            scenario_execution.result = "pass" if scenario_execution.failed_steps == 0 else "fail"
-
-            self.db.commit()
-            self.db.refresh(scenario_execution)
-
-        except Exception as e:
-            logger.error(f"场景执行失败: {e}")
-            scenario_execution.status = "failed"
-            scenario_execution.result = "fail"
-            scenario_execution.error_message = str(e)
-
-            self.db.commit()
-            self.db.refresh(scenario_execution)
-
-        return scenario_execution
+        return last_scenario_execution or scenario_execution
 
     async def _orchestrate_case_execution(
         self,
         case: UICase,
         scenario_execution: ScenarioExecution,
-        task_execution: TestExecution
+        task_execution: TestExecution,
+        data_row_index: int = 0
     ) -> CaseExecution:
         """
         编排并执行用例
@@ -197,6 +228,7 @@ class TaskOrchestrator:
             case: 用例定义
             scenario_execution: 场景执行记录
             task_execution: 任务执行记录
+            data_row_index: 当前数据行索引（数据驱动执行）
 
         Returns:
             CaseExecution: 用例执行记录
@@ -230,7 +262,8 @@ class TaskOrchestrator:
                     logger.info("任务已被取消，停止执行用例步骤")
                     break
                 step_execution = await self.step_executor.execute_step(
-                    step, case_execution, scenario_execution, task_execution, case
+                    step, case_execution, scenario_execution, task_execution, case,
+                    data_row_index=data_row_index
                 )
 
                 # 更新统计
