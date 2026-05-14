@@ -344,23 +344,6 @@ async def save_recorded_scenario(
         # 验证并转换 task_id
         task_id_uuid = uuid.UUID(request.task_id)
 
-        # 保存测试数据（如果有）
-        test_data_id = None
-        if request.test_data and request.test_data.get("data"):
-            test_data_record = TestData(
-                project_id=project_id_uuid,
-                name=request.test_data.get("name", f"{request.scenario_name}_测试数据"),
-                description=request.test_data.get("description", f"从录制自动生成"),
-                data_type="json",
-                data=request.test_data.get("data", []),
-                tags=request.test_data.get("tags", ["recording", "auto-generated"]),
-                created_by=user.id
-            )
-            db.add(test_data_record)
-            db.flush()  # 获取 test_data.id
-            test_data_id = test_data_record.id
-            logger.info(f"创建测试数据: {test_data_record.name} (ID: {test_data_id})")
-
         # 创建场景
         # 🔥 获取当前最大的执行顺序
         from sqlalchemy import func
@@ -380,6 +363,24 @@ async def save_recorded_scenario(
         )
         db.add(scenario)
         db.flush()  # 获取 scenario.id
+
+        # 保存测试数据（如果有）
+        test_data_id = None
+        if request.test_data and request.test_data.get("data"):
+            test_data_record = TestData(
+                project_id=project_id_uuid,
+                scenario_id=scenario.id,  # 新增: 关联场景
+                name=request.test_data.get("name", f"{request.scenario_name}_测试数据"),
+                description=request.test_data.get("description", "从录制自动生成"),
+                data_type="json",
+                data=request.test_data.get("data", []),
+                tags=request.test_data.get("tags", ["recording", "auto-generated"]),
+                created_by=user.id
+            )
+            db.add(test_data_record)
+            db.flush()  # 获取 test_data.id
+            test_data_id = test_data_record.id
+            logger.info(f"创建测试数据: {test_data_record.name} (ID: {test_data_id})")
 
         # 创建用例和步骤
         case_ids = []
