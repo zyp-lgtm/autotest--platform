@@ -54,49 +54,79 @@ class VariableResolver:
                 DataBinding.enabled == 1
             ).all()
 
-            if not bindings:
-                logger.info(f"用例 {case.name} (ID: {case.id}) 没有绑定测试数据")
-                return variables
+            if bindings:
+                # 用例级数据绑定（优先级最高）
+                logger.info(f"✅ 找到 {len(bindings)} 个数据绑定")
+                for binding in bindings:
+                    # 🔥 SQLAlchemy 会自动处理 UUID 对象到数据库存储格式的转换
+                    test_data = self.db.query(TestData).filter(
+                        TestData.id == binding.data_id
+                    ).first()
 
-            logger.info(f"✅ 找到 {len(bindings)} 个数据绑定")
+                    if not test_data:
+                        logger.warning(f"测试数据 {binding.data_id} 不存在")
+                        continue
 
-            # 2. 从每个绑定的测试数据中提取变量
-            for binding in bindings:
-                # 🔥 SQLAlchemy 会自动处理 UUID 对象到数据库存储格式的转换
+                    logger.info(f"✅ 找到测试数据: {test_data.name}")
+                    self._extract_variables_from_test_data(
+                        test_data, data_row_index, variables
+                    )
+            else:
+                # 场景级 fallback：查找场景关联的 TestData
+                logger.info(
+                    f"用例 {case.name} (ID: {case.id}) 没有用例级数据绑定，"
+                    f"尝试场景级数据 (scenario_id={case.scenario_id})"
+                )
                 test_data = self.db.query(TestData).filter(
-                    TestData.id == binding.data_id
+                    TestData.scenario_id == case.scenario_id
                 ).first()
 
                 if not test_data:
-                    logger.warning(f"测试数据 {binding.data_id} 不存在")
-                    continue
+                    logger.info(f"场景 {case.scenario_id} 也没有场景级测试数据")
+                    return variables
 
-                logger.info(f"✅ 找到测试数据: {test_data.name}")
-
-                # 3. 获取指定行的数据
-                data_rows = test_data.data
-                if not isinstance(data_rows, list) or len(data_rows) == 0:
-                    logger.warning(f"测试数据 {test_data.name} 为空")
-                    continue
-
-                # 确保索引有效
-                if data_row_index >= len(data_rows):
-                    logger.warning(f"数据行索引 {data_row_index} 超出范围，使用第一行")
-                    data_row_index = 0
-
-                data_row = data_rows[data_row_index]
-
-                # 4. 将数据行中的字段提取为变量
-                if isinstance(data_row, dict):
-                    variables.update(data_row)
-                    logger.info(f"✅ 从测试数据 {test_data.name} 加载变量: {list(data_row.keys())} = {data_row}")
-                else:
-                    logger.warning(f"数据行格式错误，期望字典，实际: {type(data_row)}")
+                logger.info(f"✅ 找到场景级测试数据: {test_data.name}")
+                self._extract_variables_from_test_data(
+                    test_data, data_row_index, variables
+                )
 
         except Exception as e:
             logger.error(f"解析变量失败: {e}", exc_info=True)
 
         return variables
+
+    def _extract_variables_from_test_data(
+        self,
+        test_data: TestData,
+        data_row_index: int,
+        variables: Dict[str, Any]
+    ) -> None:
+        """
+        从 TestData 中提取指定行的数据到变量字典
+
+        Args:
+            test_data: 测试数据对象
+            data_row_index: 数据行索引
+            variables: 变量字典（原地修改）
+        """
+        data_rows = test_data.data
+        if not isinstance(data_rows, list) or len(data_rows) == 0:
+            logger.warning(f"测试数据 {test_data.name} 为空")
+            return
+
+        # 确保索引有效
+        idx = min(data_row_index, len(data_rows) - 1)
+        data_row = data_rows[idx]
+
+        # 将数据行中的字段提取为变量
+        if isinstance(data_row, dict):
+            variables.update(data_row)
+            logger.info(
+                f"✅ 从测试数据 {test_data.name} 加载变量: "
+                f"{list(data_row.keys())} = {data_row}"
+            )
+        else:
+            logger.warning(f"数据行格式错误，期望字典，实际: {type(data_row)}")
 
     def replace_variables(
         self,
