@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { useProject } from '../contexts/ProjectContext'
 import { statsApi, type DashboardStats } from '../api/stats'
+import { useToast } from '../contexts/ToastContext'
 import { auditApi } from '../api/audit'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
@@ -21,6 +22,7 @@ function Dashboard() {
   const { user } = useAuth()
   const { currentProject } = useProject()
   const navigate = useNavigate()
+  const toast = useToast()
   const [stats, setStats] = useState<DashboardStats>({
     total_tasks: 0,
     total_scenarios: 0,
@@ -54,8 +56,9 @@ function Dashboard() {
       setLoading(true)
       const data = await statsApi.getDashboardStats(currentProject.id)
       setStats(data)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch stats:', error)
+      toast.error('加载统计数据失败，请确认后端已重启')
     } finally {
       setLoading(false)
     }
@@ -70,7 +73,6 @@ function Dashboard() {
       setAuditLogs(response.logs || [])
     } catch (error) {
       console.error('Failed to fetch audit logs:', error)
-      // 非管理员用户可能无法访问日志 API，忽略错误
       setAuditLogs([])
     } finally {
       setLogsLoading(false)
