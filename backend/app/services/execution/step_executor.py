@@ -52,7 +52,8 @@ class StepExecutor:
         case_execution,
         scenario_execution,
         task_execution,
-        case: Optional[UICase] = None
+        case: Optional[UICase] = None,
+        data_row_index: int = 0
     ) -> StepExecution:
         """
         执行单个步骤
@@ -88,7 +89,7 @@ class StepExecutor:
                     parameters = resolver.resolve_step_parameters(
                         step_parameters=parameters,
                         case=case,
-                        data_row_index=0
+                        data_row_index=data_row_index
                     )
 
                     logger.info(f"✅ [变量解析] 解析后参数: {parameters}")

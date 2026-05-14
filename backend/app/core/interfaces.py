@@ -166,7 +166,9 @@ class IStepExecutor(Protocol):
         step: Any,
         case_execution: Any,
         scenario_execution: Any,
-        task_execution: Any
+        task_execution: Any,
+        case: Any = None,
+        data_row_index: int = 0
     ) -> Any:
         """
         执行单个步骤
@@ -176,6 +178,8 @@ class IStepExecutor(Protocol):
             case_execution: 用例执行记录
             scenario_execution: 场景执行记录
             task_execution: 任务执行记录
+            case: 用例定义（可选）
+            data_row_index: 数据行索引（默认 0）
 
         Returns:
             步骤执行记录
