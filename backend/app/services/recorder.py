@@ -17,6 +17,7 @@ class CapturedAction:
     timestamp: float = 0.0
     action_type: str = ""  # click, input, navigate, select, etc.
     selector: str = ""
+    xpath: str = ""  # XPath 选择器（备用/精确匹配）
     selector_strategy: str = "css"  # css, xpath, text
     value: Optional[str] = None
 
@@ -64,117 +65,6 @@ class BrowserRecorder:
 
     def __init__(self):
         self.sessions: Dict[str, RecordingSession] = {}
-        self._recording_script = """(function() {
-    window.__recording = {
-        actions: [],
-        startTime: Date.now(),
-        initialized: false,
-
-        captureAction: function(action) {
-            if (!action.timestamp) {
-                action.timestamp = Date.now() - window.__recording.startTime;
-            }
-            window.__recording.actions.push(action);
-            console.log('[录制] ' + action.action_type + ' @' + action.timestamp.toFixed(0) + 'ms: ' + (action.selector || action.page_url));
-        },
-
-        getSelector: function(element) {
-            if (element.id) {
-                return '#' + element.id;
-            }
-            if (element.name) {
-                return '[name=' + element.name + ']';
-            }
-            if (element.className) {
-                // 获取第一个类名
-                var className = element.className.split(' ')[0];
-                // 🔥 转义特殊字符（方括号、点等）
-                return '.' + className.replace(/([\[\]\\.])/g, '\\$1');
-            }
-            return element.tagName.toLowerCase();
-        },
-
-        captureNavigation: function() {
-            var currentUrl = window.location.href;
-            if (window.__recording.lastCapturedUrl === currentUrl) {
-                return;
-            }
-            if (currentUrl === 'about:blank') {
-                return;
-            }
-            window.__recording.lastCapturedUrl = currentUrl;
-            window.__recording.captureAction({
-                action_type: 'navigate',
-                selector: '',
-                page_url: currentUrl,
-                page_title: document.title
-            });
-        }
-    };
-
-    if (window.location.href !== 'about:blank') {
-        setTimeout(function() {
-            window.__recording.captureNavigation();
-        }, 100);
-    }
-
-    // 监听点击事件
-    document.addEventListener('click', function(e) {
-        var selector = window.__recording.getSelector(e.target);
-        window.__recording.captureAction({
-            action_type: 'click',
-            selector: selector,
-            element_tag: e.target.tagName,
-            element_text: e.target.textContent ? e.target.textContent.trim().substring(0, 50) : null,
-            page_url: window.location.href,
-            page_title: document.title
-        });
-    }, true);
-
-    // 监听输入事件 - 立即捕获版本
-    (function() {
-        var isComposing = {};
-
-        document.addEventListener('compositionstart', function(e) {
-            var selector = window.__recording.getSelector(e.target);
-            isComposing[selector] = true;
-        }, true);
-
-        document.addEventListener('compositionend', function(e) {
-            var selector = window.__recording.getSelector(e.target);
-            isComposing[selector] = false;
-            window.__recording.captureAction({
-                action_type: 'input',
-                selector: selector,
-                value: e.target.value,
-                element_tag: e.target.tagName,
-                element_text: e.target.placeholder,
-                page_url: window.location.href,
-                page_title: document.title
-            });
-        }, true);
-
-        document.addEventListener('input', function(e) {
-            var selector = window.__recording.getSelector(e.target);
-            // 如果正在使用中文输入法，跳过
-            if (isComposing[selector]) {
-                return;
-            }
-            // 🔥 立即捕获输入，不延迟
-            window.__recording.captureAction({
-                action_type: 'input',
-                selector: selector,
-                value: e.target.value,
-                element_tag: e.target.tagName,
-                element_text: e.target.placeholder,
-                page_url: window.location.href,
-                page_title: document.title
-            });
-        }, true);
-    })();
-
-    console.log('[录制] 录制脚本已加载（立即捕获版本）');
-})();"""
 
     async def start_session(
         self,
@@ -193,15 +83,16 @@ class BrowserRecorder:
             self.browser = await self.playwright.chromium.launch(
                 headless=False,
                 args=[
+                    '--start-maximized',
                     '--auto-open-devtools-for-tabs',
                     '--disable-web-security',
                     '--disable-features=VizDisplayCompositor'
                 ]
             )
 
-            # 创建浏览器上下文
+            # 创建浏览器上下文（no_viewport 视口跟随窗口大小，最大化时即全屏）
             context = await self.browser.new_context(
-                viewport={'width': 1280, 'height': 720},
+                no_viewport=True,
                 locale='zh-CN',
                 timezone_id='Asia/Shanghai'
             )
@@ -247,76 +138,338 @@ class BrowserRecorder:
                         if (element.name) {{
                             return '[name="' + CSS.escape(element.name) + '"]';
                         }}
+                        // data-* 属性（测试专属 & 框架标识属性）
+                        var dataAttrs = ['data-testid', 'data-test-id', 'data-cy', 'data-key', 'data-value', 'data-index', 'data-row-key', 'data-node-key'];
+                        for (var di = 0; di < dataAttrs.length; di++) {{
+                            var dv = element.getAttribute(dataAttrs[di]);
+                            if (dv) return '[' + dataAttrs[di] + '="' + dv + '"]';
+                        }}
                         var tag = element.tagName.toLowerCase();
-                        // 获取直接文本（不含子元素）
-                        var ownText = '';
-                        for (var c = element.firstChild; c; c = c.nextSibling) {{
-                            if (c.nodeType === 3) ownText += c.textContent;
-                        }}
-                        ownText = ownText.trim();
-                        // 如果无直接文本，用 aria-label/title
-                        if (!ownText) {{
-                            ownText = (element.getAttribute('aria-label') || element.getAttribute('title') || '').trim();
-                        }}
-                        ownText = ownText.substring(0, 30);
-                        // 提取类名（最多3个，排除通用工具类）
-                        var skipSet = {{'cursor-pointer':1,'flex':1,'block':1,'inline':1,
-                            'relative':1,'absolute':1,'w-full':1,'h-full':1,
+                        // 提取类名（排除纯视觉工具类，保留语义化类名）
+                        var skipSet = {{
+                            // Tailwind 布局/间距/装饰类（无数值，完全无区分的）
+                            'cursor-pointer':1,'flex':1,'block':1,'inline':1,'inline-block':1,
+                            'relative':1,'absolute':1,'fixed':1,'sticky':1,
+                            'w-full':1,'h-full':1,'w-screen':1,'h-screen':1,
                             'line-clamp-1':1,'line-clamp-2':1,'truncate':1,
-                            'flex-1':1,'flex-col':1,'flex-wrap':1,'flex-row':1,
-                            'justify-start':1,'justify-between':1,'justify-center':1,
-                            'items-center':1,'items-start':1,'items-end':1,
-                            'rounded':1,'rounded-sm':1,'rounded-md':1,'rounded-lg':1,
-                            'shadow':1,'shadow-sm':1,'shadow-md':1,
-                            'p-1':1,'p-2':1,'p-3':1,'p-4':1,
-                            'm-1':1,'m-2':1,'m-3':1,'m-4':1,
-                            'px-1':1,'px-2':1,'px-3':1,'px-4':1,
-                            'py-1':1,'py-2':1,'py-3':1,'py-4':1,
-                            'text-sm':1,'text-xs':1,'text-lg':1,'text-base':1}};
+                            'flex-1':1,'flex-col':1,'flex-wrap':1,'flex-row':1,'flex-shrink-0':1,'flex-grow':1,
+                            'justify-start':1,'justify-between':1,'justify-center':1,'justify-end':1,
+                            'items-center':1,'items-start':1,'items-end':1,'self-center':1,
+                            'rounded':1,'rounded-sm':1,'rounded-md':1,'rounded-lg':1,'rounded-full':1,
+                            'shadow':1,'shadow-sm':1,'shadow-md':1,'shadow-lg':1,
+                            'p-1':1,'p-2':1,'p-3':1,'p-4':1,'p-5':1,'p-6':1,
+                            'm-1':1,'m-2':1,'m-3':1,'m-4':1,'mx-auto':1,
+                            'px-1':1,'px-2':1,'px-3':1,'px-4':1,'px-5':1,'px-6':1,
+                            'py-1':1,'py-2':1,'py-3':1,'py-4':1,'py-5':1,'py-6':1,
+                            'text-sm':1,'text-xs':1,'text-lg':1,'text-base':1,'text-xl':1,'text-2xl':1,
+                            'font-bold':1,'font-medium':1,'font-normal':1,'font-semibold':1,
+                            'overflow-hidden':1,'overflow-auto':1,'box-border':1,'box-content':1,
+                            'text-left':1,'text-center':1,'text-right':1,
+                            'gap-1':1,'gap-2':1,'gap-3':1,'gap-4':1,'space-x-1':1,'space-x-2':1,'space-y-1':1,'space-y-2':1,
+                            'border':1,'border-t':1,'border-b':1,'border-l':1,'border-r':1,'border-0':1,
+                            'bg-white':1,'bg-gray-50':1,'bg-gray-100':1,'bg-blue-50':1,'bg-transparent':1,
+                            'text-white':1,'text-gray-500':1,'text-gray-600':1,'text-gray-700':1,'text-gray-900':1,'text-blue-500':1,'text-blue-600':1,
+                            'hidden':1,'visible':1,'opacity-50':1,'opacity-0':1,'z-10':1,'z-20':1
+                        }};
+                        var twUtilRe = /(^|:)(p|pl|pr|pt|pb|px|py|m|ml|mr|mt|mb|mx|my|w|h|min-w|min-h|max-w|max-h|top|right|bottom|left|inset|text|font|leading|tracking|bg|border|rounded|flex|order|col|row|gap|space|shadow|opacity|z|object|overflow|grid|place|justify|items|self|ring|outline|rotate|scale|skew|translate|transition|duration|ease|delay|animate|aspect|backdrop|scroll|sr)-/;
+                        function isUtilityClass(cls) {{
+                            if (skipSet[cls]) return true;
+                            return twUtilRe.test(cls);
+                        }}
                         var usefulClasses = [];
                         if (element.className && typeof element.className === 'string') {{
                             var classNames = element.className.trim().split(/\\s+/);
                             for (var i = 0; i < classNames.length && usefulClasses.length < 3; i++) {{
                                 var cn = classNames[i];
-                                if (cn && !skipSet[cn]) {{
+                                if (cn && !isUtilityClass(cn)) {{
                                     usefulClasses.push(CSS.escape(cn));
                                 }}
                             }}
+                        }}
+                        // 获取元素文本：先读直接文本节点，再用 textContent 兜底
+                        var ownText = '';
+                        for (var c = element.firstChild; c; c = c.nextSibling) {{
+                            if (c.nodeType === 3) ownText += c.textContent;
+                        }}
+                        ownText = ownText.trim();
+                        if (!ownText) {{
+                            ownText = (element.getAttribute('aria-label') || element.getAttribute('title') || '').trim();
+                        }}
+                        // 🔥 textContent 兜底只对交互元素使用，避免 div/span 产生泛选择器
+                        if (!ownText) {{
+                            var interactiveTags = {{'button':1,'a':1,'input':1,'textarea':1,'select':1,'label':1,'summary':1,'li':1,'td':1,'th':1}};
+                            if (interactiveTags[tag] || (element.getAttribute && element.getAttribute('role'))) {{
+                                var tc = (element.textContent || '').trim();
+                                if (tc.length <= 60) ownText = tc;
+                            }}
+                        }}
+                        ownText = ownText.substring(0, 30);
+                        // 转义 :has-text() 中的双引号
+                        function escText(t) {{
+                            return t.replace(/"/g, '\\\\"');
+                        }}
+                        // 计算同标签兄弟中的位置（1-based）
+                        function nthOfType(el) {{
+                            var idx = 1;
+                            for (var s = el.previousElementSibling; s; s = s.previousElementSibling) {{
+                                if (s.tagName === el.tagName) idx++;
+                            }}
+                            return idx;
+                        }}
+                        // 🔥 辅助函数：向上查找有意义的祖先（最多4层）
+                        function findAncestorContext(el, levels) {{
+                            var a = el.parentElement;
+                            for (var d = 0; d < levels && a && a !== document.body && a !== document.documentElement; d++) {{
+                                if (a.id) return '#' + CSS.escape(a.id) + ' ';
+                                if (a.className && typeof a.className === 'string') {{
+                                    var ac = a.className.trim().split(/\\s+/);
+                                    for (var k = 0; k < ac.length; k++) {{
+                                        if (ac[k] && !isUtilityClass(ac[k])) {{
+                                            return a.tagName.toLowerCase() + '.' + CSS.escape(ac[k]) + ' ';
+                                        }}
+                                    }}
+                                }}
+                                a = a.parentElement;
+                            }}
+                            return '';
                         }}
                         // 🔥 策略1：input/textarea 用 placeholder 或 name
                         if (tag === 'input' || tag === 'textarea') {{
                             var placeholder = element.getAttribute('placeholder') || '';
                             if (placeholder) {{
-                                return 'input[placeholder="' + placeholder.trim().substring(0, 30) + '"]';
+                                return 'input[placeholder="' + escText(placeholder.trim().substring(0, 30)) + '"]';
                             }}
                             var inputType = element.getAttribute('type') || 'text';
                             if (usefulClasses.length > 0) {{
                                 return 'input[type="' + inputType + '"].' + usefulClasses.join('.');
                             }}
+                            var ictx = findAncestorContext(element, 3);
+                            if (ictx) return ictx + '> input[type="' + inputType + '"]:nth-of-type(' + nthOfType(element) + ')';
                             return 'input[type="' + inputType + '"]';
                         }}
-                        // 🔥 策略2：有直接文本 → tag.class:has-text("text")，必须有类名
+                        // 🔥 策略2：有文本
                         if (ownText) {{
                             if (usefulClasses.length > 0) {{
-                                return tag + '.' + usefulClasses[0] + ':has-text("' + ownText + '")';
+                                return tag + '.' + usefulClasses[0] + ':has-text("' + escText(ownText) + '")';
                             }}
-                            // 无类名但有兄弟上下文：尝试用父元素的类名
-                            var parent = element.parentElement;
-                            if (parent && parent.className && typeof parent.className === 'string') {{
-                                var pClasses = parent.className.trim().split(/\\s+/);
-                                for (var i = 0; i < pClasses.length; i++) {{
-                                    if (pClasses[i] && !skipSet[pClasses[i]]) {{
-                                        return tag + ':has-text("' + ownText + '")';
-                                    }}
-                                }}
+                            // 无自身类名时，向上查找祖先上下文
+                            var ctx = findAncestorContext(element, 4);
+                            if (ctx) {{
+                                return ctx + tag + ':has-text("' + escText(ownText) + '")';
                             }}
-                            return tag + ':has-text("' + ownText + '")';
+                            // 最后防线：文本 + 位置限定，避免裸 tag:has-text() 匹配到错误元素
+                            var n = nthOfType(element);
+                            if (n > 1 || element.nextElementSibling || element.previousElementSibling) {{
+                                return tag + ':nth-of-type(' + n + '):has-text("' + escText(ownText) + '")';
+                            }}
+                            return tag + ':has-text("' + escText(ownText) + '")';
                         }}
                         // 🔥 策略3：无文本，用类名组合
                         if (usefulClasses.length > 0) {{
                             return tag + '.' + usefulClasses.join('.');
                         }}
+                        // 🔥 策略4：祖先上下文 + nth-of-type（尝试用 textContent 兜底）
+                        var ctx2 = findAncestorContext(element, 4);
+                        if (ctx2) {{
+                            var tcFallback = (element.textContent || '').trim().substring(0, 40);
+                            if (tcFallback) {{
+                                return ctx2 + '> ' + tag + ':nth-of-type(' + nthOfType(element) + '):has-text("' + escText(tcFallback) + '")';
+                            }}
+                            return ctx2 + '> ' + tag + ':nth-of-type(' + nthOfType(element) + ')';
+                        }}
+                        // 最后兜底：tag + textContent
+                        var tcLast = (element.textContent || '').trim().substring(0, 40);
+                        if (tcLast) return tag + ':has-text("' + escText(tcLast) + '")';
                         return tag;
+                    }},
+
+                    // ============ 智能 XPath 生成（相对路径，无绝对路径）============
+                    getXPath: function(element) {{
+                        var tag = element.tagName.toLowerCase();
+                        // 策略1: id → //*[@id='xxx']
+                        if (element.id) return '//*[@id="' + element.id + '"]';
+                        // 策略2: data-* 属性
+                        var dataAttrs = ['data-testid', 'data-test-id', 'data-cy', 'data-key', 'data-value', 'data-index', 'data-row-key', 'data-node-key'];
+                        for (var di = 0; di < dataAttrs.length; di++) {{
+                            var dv = element.getAttribute(dataAttrs[di]);
+                            if (dv) return '//' + tag + '[@' + dataAttrs[di] + '="' + dv + '"]';
+                        }}
+                        // 策略3: aria-label
+                        var aria = element.getAttribute('aria-label');
+                        if (aria) return '//' + tag + '[@aria-label="' + aria + '"]';
+                        // 策略4: title
+                        var title = element.getAttribute('title');
+                        if (title) return '//' + tag + '[@title="' + title + '"]';
+                        // 获取直接文本
+                        var directText = '';
+                        for (var c = element.firstChild; c; c = c.nextSibling) {{
+                            if (c.nodeType === 3) directText += c.textContent;
+                        }}
+                        directText = directText.trim().substring(0, 40);
+                        // 获取一个有意义的类名
+                        var usefulCls = '';
+                        if (element.className && typeof element.className === 'string') {{
+                            var clsList = element.className.trim().split(/\\s+/);
+                            for (var ci = 0; ci < clsList.length; ci++) {{
+                                var c = clsList[ci];
+                                if (c && !window.__recording._isUtilityClass(c)) {{ usefulCls = c; break; }}
+                            }}
+                        }}
+                        // 策略5: 精确文本匹配（XPath 的 text() 只匹配直接文本节点）
+                        if (directText) {{
+                            if (usefulCls) return '//' + tag + '[contains(@class,"' + usefulCls + '")][text()="' + directText + '"]';
+                            // 向上查找祖先上下文
+                            var ctx = window.__recording._findAncestorCls(element, 4);
+                            if (ctx) {{
+                                var ctxSel = ctx.isId ? ('//' + ctx.tag + '[@id="' + ctx.cls + '"]') : ('//' + ctx.tag + '[contains(@class,"' + ctx.cls + '")]');
+                                return ctxSel + '//' + tag + '[text()="' + directText + '"]';
+                            }}
+                            return '//' + tag + '[text()="' + directText + '"]';
+                        }}
+                        // 策略6: 无精确文本，尝试 textContent（交互元素）
+                        var tc = (element.textContent || '').trim();
+                        if (tc && tc.length <= 50) {{
+                            var interactiveTags = {{'button':1,'a':1,'input':1,'textarea':1,'select':1,'label':1,'summary':1,'li':1,'td':1,'th':1,'dt':1}};
+                            // 🔥 扩展：非交互元素也允许 textContent 兜底（避免回退到纯位置选择器）
+                            var canUseText = interactiveTags[tag] || element.getAttribute('role') || (usefulCls === '' && !directText);
+                            if (canUseText) {{
+                                if (usefulCls) return '//' + tag + '[contains(@class,"' + usefulCls + '")][contains(text(),"' + tc + '")]';
+                                var ctx2 = window.__recording._findAncestorCls(element, 4);
+                                if (ctx2) {{
+                                    var ctxSel2 = ctx2.isId ? ('//' + ctx2.tag + '[@id="' + ctx2.cls + '"]') : ('//' + ctx2.tag + '[contains(@class,"' + ctx2.cls + '")]');
+                                    return ctxSel2 + '//' + tag + '[contains(text(),"' + tc + '")]';
+                                }}
+                                return '//' + tag + '[contains(text(),"' + tc + '")]';
+                            }}
+                        }}
+                        // 策略7: 类名组合
+                        if (usefulCls) return '//' + tag + '[contains(@class,"' + usefulCls + '")]';
+                        // 策略8: 祖先上下文 + 位置（尝试 textContent 兜底）
+                        var ctx3 = window.__recording._findAncestorCls(element, 4);
+                        if (ctx3) {{
+                            var idx = 1;
+                            for (var s = element.previousElementSibling; s; s = s.previousElementSibling) {{
+                                if (s.tagName === element.tagName) idx++;
+                            }}
+                            var ctxSel3 = ctx3.isId ? ('//' + ctx3.tag + '[@id="' + ctx3.cls + '"]') : ('//' + ctx3.tag + '[contains(@class,"' + ctx3.cls + '")]');
+                            var xpTc = (element.textContent || '').trim().substring(0, 40);
+                            if (xpTc) return ctxSel3 + '//' + tag + '[contains(text(),"' + xpTc + '")]';
+                            return ctxSel3 + '//' + tag + '[' + idx + ']';
+                        }}
+                        // 最后兜底: tag + textContent
+                        var xpTc2 = (element.textContent || '').trim().substring(0, 40);
+                        if (xpTc2) return '//' + tag + '[contains(text(),"' + xpTc2 + '")]';
+                        return '';
+                    }},
+
+                    // 辅助: 缓存 skipSet 供 getXPath 使用
+                    _skipSet: {{'cursor-pointer':1,'flex':1,'block':1,'inline':1,'inline-block':1,
+                        'relative':1,'absolute':1,'fixed':1,'sticky':1,
+                        'w-full':1,'h-full':1,'w-screen':1,'h-screen':1,
+                        'line-clamp-1':1,'line-clamp-2':1,'truncate':1,
+                        'flex-1':1,'flex-col':1,'flex-wrap':1,'flex-row':1,'flex-shrink-0':1,'flex-grow':1,
+                        'justify-start':1,'justify-between':1,'justify-center':1,'justify-end':1,
+                        'items-center':1,'items-start':1,'items-end':1,'self-center':1,
+                        'rounded':1,'rounded-sm':1,'rounded-md':1,'rounded-lg':1,'rounded-full':1,
+                        'shadow':1,'shadow-sm':1,'shadow-md':1,'shadow-lg':1,
+                        'p-1':1,'p-2':1,'p-3':1,'p-4':1,'p-5':1,'p-6':1,
+                        'm-1':1,'m-2':1,'m-3':1,'m-4':1,'mx-auto':1,
+                        'px-1':1,'px-2':1,'px-3':1,'px-4':1,'px-5':1,'px-6':1,
+                        'py-1':1,'py-2':1,'py-3':1,'py-4':1,'py-5':1,'py-6':1,
+                        'text-sm':1,'text-xs':1,'text-lg':1,'text-base':1,'text-xl':1,'text-2xl':1,
+                        'font-bold':1,'font-medium':1,'font-normal':1,'font-semibold':1,
+                        'overflow-hidden':1,'overflow-auto':1,'box-border':1,'box-content':1,
+                        'text-left':1,'text-center':1,'text-right':1,
+                        'gap-1':1,'gap-2':1,'gap-3':1,'gap-4':1,'space-x-1':1,'space-x-2':1,'space-y-1':1,'space-y-2':1,
+                        'border':1,'border-t':1,'border-b':1,'border-l':1,'border-r':1,'border-0':1,
+                        'bg-white':1,'bg-gray-50':1,'bg-gray-100':1,'bg-blue-50':1,'bg-transparent':1,
+                        'text-white':1,'text-gray-500':1,'text-gray-600':1,'text-gray-700':1,'text-gray-900':1,'text-blue-500':1,'text-blue-600':1,
+                        'hidden':1,'visible':1,'opacity-50':1,'opacity-0':1,'z-10':1,'z-20':1}},
+                    _twUtilRe: /(^|:)(p|pl|pr|pt|pb|px|py|m|ml|mr|mt|mb|mx|my|w|h|min-w|min-h|max-w|max-h|top|right|bottom|left|inset|text|font|leading|tracking|bg|border|rounded|flex|order|col|row|gap|space|shadow|opacity|z|object|overflow|grid|place|justify|items|self|ring|outline|rotate|scale|skew|translate|transition|duration|ease|delay|animate|aspect|backdrop|scroll|sr)-/,
+                    _isUtilityClass: function(cls) {{
+                        if (window.__recording._skipSet[cls]) return true;
+                        return window.__recording._twUtilRe.test(cls);
+                    }},
+
+                    // 辅助: 向上查找有类名的祖先（供 getXPath 用）
+                    _findAncestorCls: function(el, levels) {{
+                        var isUtil = window.__recording._isUtilityClass;
+                        var a = el.parentElement;
+                        for (var d = 0; d < levels && a && a !== document.body && a !== document.documentElement; d++) {{
+                            if (a.id) return {{tag: a.tagName.toLowerCase(), cls: a.id, isId: true}};
+                            if (a.className && typeof a.className === 'string') {{
+                                var ac = a.className.trim().split(/\\s+/);
+                                for (var k = 0; k < ac.length; k++) {{
+                                    if (ac[k] && !isUtil(ac[k])) return {{tag: a.tagName.toLowerCase(), cls: ac[k], isId: false}};
+                                }}
+                            }}
+                            a = a.parentElement;
+                        }}
+                        return null;
+                    }},
+
+                    // 统计选择器匹配数（处理 :has-text() 等 Playwright 专有伪类）
+                    countMatches: function(selector, strategy) {{
+                        try {{
+                            if (strategy === 'xpath') {{
+                                var result = document.evaluate(selector, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+                                return result.snapshotLength;
+                            }}
+                            // CSS: 处理 Playwright 专有伪类 :has-text()
+                            var css = selector;
+                            var hasTextReg = /:has-text\("(.+?)"\)/g;
+                            var match;
+                            var texts = [];
+                            while ((match = hasTextReg.exec(css)) !== null) {{
+                                texts.push(match[1]);
+                            }}
+                            if (texts.length > 0) {{
+                                var baseCss = css.replace(/:has-text\("(.+?)"\)/g, '');
+                                var all = document.querySelectorAll(baseCss);
+                                var count = 0;
+                                for (var i = 0; i < all.length; i++) {{
+                                    var el = all[i];
+                                    var tc = (el.textContent || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('title') || '') + ' ' + (el.getAttribute('placeholder') || '');
+                                    var ok = true;
+                                    for (var t = 0; t < texts.length; t++) {{
+                                        if (tc.indexOf(texts[t]) === -1) {{ ok = false; break; }}
+                                    }}
+                                    if (ok) count++;
+                                }}
+                                return count;
+                            }}
+                            return document.querySelectorAll(css).length;
+                        }} catch(e) {{
+                            return -1;
+                        }}
+                    }},
+
+                    // 最优选择器：CSS vs XPath，谁唯一匹配就用谁
+                    getBestSelector: function(element) {{
+                        var css = window.__recording.getSelector(element);
+                        var xpath = window.__recording.getXPath(element);
+                        var cssCount = window.__recording.countMatches(css, 'css');
+                        var xpathCount = xpath ? window.__recording.countMatches(xpath, 'xpath') : -1;
+                        // 决策: 唯一匹配 > 更少匹配 > XPath优先（text()更精确）> CSS兜底
+                        if (cssCount === 1 && xpathCount === 1) {{
+                            // 都唯一: XPath text() 比 CSS :has-text() 精确，优先 XPath
+                            if (xpath.indexOf('text()') !== -1) {{
+                                return {{selector: css, xpath: xpath, strategy: 'xpath'}};
+                            }}
+                            // CSS 用 has-text 无类名限定 → 用 XPath
+                            if (css.indexOf(':has-text') !== -1 && css.indexOf('.') === -1) {{
+                                return {{selector: css, xpath: xpath, strategy: 'xpath'}};
+                            }}
+                            return {{selector: css, xpath: xpath, strategy: 'css'}};
+                        }}
+                        if (xpathCount === 1) return {{selector: css, xpath: xpath, strategy: 'xpath'}};
+                        if (cssCount === 1) return {{selector: css, xpath: xpath, strategy: 'css'}};
+                        if (xpathCount > 0 && cssCount > 0) {{
+                            return xpathCount <= cssCount ? {{selector: css, xpath: xpath, strategy: 'xpath'}} : {{selector: css, xpath: xpath, strategy: 'css'}};
+                        }}
+                        if (xpathCount > 0) return {{selector: css, xpath: xpath, strategy: 'xpath'}};
+                        if (cssCount > 0) return {{selector: css, xpath: xpath, strategy: 'css'}};
+                        return {{selector: css, xpath: xpath, strategy: 'css'}};
                     }},
 
                     captureNavigation: function() {{
@@ -350,30 +503,78 @@ class BrowserRecorder:
                     }}, 100);
                 }}
 
-                // 监听点击事件 - 智能目标识别
+                // 监听点击事件 - 智能目标识别（点击前刷新待处理的输入）
                 document.addEventListener('click', function(e) {{
+                    // 先刷新 debounce 中未捕获的输入
+                    if (window.__recording.flushAllInputs) window.__recording.flushAllInputs();
                     var target = e.target;
-                    // 🔥 向上查找有意义的可交互元素
-                    var skipTags = {{'svg':1,'path':1,'circle':1,'rect':1,'line':1,'polygon':1,'polyline':1,'ellipse':1,'g':1,'use':1}};
-                    var skipClasses = {{'anticon':1}};  // Ant Design 图标包裹器
+                    // 🔥 向上查找有意义元素：跳过 SVG、图标壳、空壳 div/span
+                    var skipTags = {{'svg':1,'path':1,'circle':1,'rect':1,'line':1,'polygon':1,'polyline':1,'ellipse':1,'g':1,'use':1,'style':1,'script':1,'link':1,'meta':1,'head':1,'br':1,'hr':1}};
+                    var iconClassPatterns = [/\\banticon\\b/, /\\bicon-\\b/, /\\bicon\\b/, /\\bfa-\\b/, /\\bfa\\b/, /\\bglyphicon\\b/, /\\bmaterial-icons\\b/, /\\bio-\\b/, /\\bsvg\\b/, /\\bico\\b/];
+                    function isIconOnly(el) {{
+                        return looksLikeIconWrapper(el);
+                    }}
                     while (target && target !== document.body) {{
                         var t = target.tagName.toLowerCase();
-                        // 跳过 SVG 元素和纯图标包裹器
                         if (skipTags[t]) {{ target = target.parentElement; continue; }}
-                        // 跳过 anticon span（只含 SVG 图标的空壳）
-                        if (t === 'span' && target.className && typeof target.className === 'string') {{
-                            var cls = target.className;
-                            var isIconOnly = /\\banticon\\b/.test(cls) || /\\bicon-\\b/.test(cls);
-                            var hasText = target.textContent && target.textContent.trim().length > 2;
-                            if (isIconOnly && !hasText) {{ target = target.parentElement; continue; }}
-                        }}
+                        if (isIconOnly(target)) {{ target = target.parentElement; continue; }}
                         break;
                     }}
                     if (!target || target === document.body) target = e.target;
-                    var selector = window.__recording.getSelector(target);
+                    // 🔥 下钻：如果目标是无直接文本的空壳 div/span，找真正有文本的子元素
+                    function hasDirectText(el) {{
+                        for (var c = el.firstChild; c; c = c.nextSibling) {{
+                            if (c.nodeType === 3 && c.textContent.trim()) return true;
+                        }}
+                        return false;
+                    }}
+                    // 检查元素自身是否像图标（用于 while 循环跳过图标壳）
+                    // 注意：isIconOnly 只看 class 和结构，不递归文本长度！
+                    // 文本判断交给 drillToTextChild 处理
+                    function looksLikeIconWrapper(el) {{
+                        if (el.id) return false;
+                        // 🔥 class 优先：图标 class 是最强的图标信号（即使有 aria-label/role 也是图标）
+                        if (el.className && typeof el.className === 'string') {{
+                            for (var p = 0; p < iconClassPatterns.length; p++) {{
+                                if (iconClassPatterns[p].test(el.className)) return true;
+                            }}
+                        }}
+                        // 没有图标 class 时，aria-label/title/role 的存在表示这是有意义的元素，不是空壳图标
+                        if (el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('role'))) return false;
+                        return false;
+                    }}
+                    function drillToTextChild(el) {{
+                        var tag = el.tagName.toLowerCase();
+                        // 只对非交互的包装元素下钻
+                        if (el.id || el.getAttribute('data-testid') || el.getAttribute('data-node-key') || el.getAttribute('data-key')) return el;
+                        var interactive = {{'button':1,'a':1,'input':1,'textarea':1,'select':1,'label':1}};
+                        if (interactive[tag]) return el;
+                        if (!hasDirectText(el)) {{
+                            // 找第一个有文本的非空壳子元素（有多个时选第一个，总比空壳 nth-of-type 强）
+                            var bestChild = null;
+                            for (var c = el.firstElementChild; c; c = c.nextElementSibling) {{
+                                var ct = c.tagName.toLowerCase();
+                                if (skipTags[ct]) continue;
+                                if (isIconOnly(c)) continue;
+                                var hasText = c.textContent && c.textContent.trim();
+                                if (hasText) {{
+                                    bestChild = c;
+                                    break;  // 取第一个即可
+                                }}
+                            }}
+                            if (bestChild) return drillToTextChild(bestChild);
+                        }}
+                        return el;
+                    }}
+                    target = drillToTextChild(target);
+                    window.__lastClickTarget = target;
+                    window.__lastClickDrilled = true;
+                    var best = window.__recording.getBestSelector(target);
                     window.__recording.captureAction({{
                         action_type: 'click',
-                        selector: selector,
+                        selector: best.selector,
+                        xpath: best.xpath,
+                        selector_strategy: best.strategy,
                         element_tag: target.tagName,
                         element_text: target.textContent ? target.textContent.trim().substring(0, 50) : null,
                         page_url: window.location.href,
@@ -381,25 +582,64 @@ class BrowserRecorder:
                     }});
                 }}, true);
 
-                // 监听输入事件 - 中文输入法支持和立即捕获
+                // 监听输入事件 - 去重版本（400ms debounce）
                 (function() {{
-                    var isComposing = {{}};    // 跟踪每个输入框的中文输入状态
+                    var isComposing = {{}};
+                    var justComposed = {{}};   // 🔥 修复：标记刚完成 composition 的字段
+                    var pendingInputs = {{}};   // selector -> {{timer, value, target, placeholder}}
+                    var DEBOUNCE_MS = 400;
 
-                    // 监听中文输入开始
-                    document.addEventListener('compositionstart', function(e) {{
-                        var selector = window.__recording.getSelector(e.target);
-                        isComposing[selector] = true;
-                    }}, true);
-
-                    // 监听中文输入结束
-                    document.addEventListener('compositionend', function(e) {{
-                        var selector = window.__recording.getSelector(e.target);
-                        isComposing[selector] = false;
-
-                        // 中文输入完成，立即捕获
+                    function flushInput(selector) {{
+                        var pending = pendingInputs[selector];
+                        if (!pending) return;
+                        clearTimeout(pending.timer);
+                        delete pendingInputs[selector];
+                        var best = window.__recording.getBestSelector(pending.target);
                         window.__recording.captureAction({{
                             action_type: 'input',
-                            selector: selector,
+                            selector: best.selector,
+                            xpath: best.xpath,
+                            selector_strategy: best.strategy,
+                            value: pending.value,
+                            element_tag: pending.target.tagName,
+                            element_text: pending.placeholder,
+                            page_url: window.location.href,
+                            page_title: document.title,
+                            timestamp: Date.now()
+                        }});
+                    }}
+
+                    // 暴露 flushAll 给 click 等事件使用
+                    window.__recording.flushAllInputs = function() {{
+                        Object.keys(pendingInputs).forEach(function(sel) {{
+                            flushInput(sel);
+                        }});
+                    }};
+
+                    document.addEventListener('compositionstart', function(e) {{
+                        var best = window.__recording.getBestSelector(e.target);
+                        isComposing[best.selector] = true;
+                        if (pendingInputs[best.selector]) {{
+                            clearTimeout(pendingInputs[best.selector].timer);
+                            delete pendingInputs[best.selector];
+                        }}
+                    }}, true);
+
+                    // 🔥 修复：compositionend 只捕获一次，并阻止后续 input 事件重复捕获
+                    document.addEventListener('compositionend', function(e) {{
+                        var best = window.__recording.getBestSelector(e.target);
+                        isComposing[best.selector] = false;
+                        // 清除可能残留的 debounce 定时器
+                        if (pendingInputs[best.selector]) {{
+                            clearTimeout(pendingInputs[best.selector].timer);
+                            delete pendingInputs[best.selector];
+                        }}
+                        // 直接捕获 composition 后的最终值
+                        window.__recording.captureAction({{
+                            action_type: 'input',
+                            selector: best.selector,
+                            xpath: best.xpath,
+                            selector_strategy: best.strategy,
                             value: e.target.value,
                             element_tag: e.target.tagName,
                             element_text: e.target.placeholder,
@@ -407,29 +647,33 @@ class BrowserRecorder:
                             page_title: document.title,
                             timestamp: Date.now()
                         }});
+                        // 🔥 关键：标记刚完成，阻止浏览器随后触发的 input 事件再次进入 debounce
+                        justComposed[best.selector] = true;
                     }}, true);
 
-                    // 监听普通输入事件（英文等）- 🔥 立即捕获，无延迟
                     document.addEventListener('input', function(e) {{
-                        var selector = window.__recording.getSelector(e.target);
-
-                        // 如果正在使用中文输入法，跳过
-                        if (isComposing[selector]) {{
+                        var best = window.__recording.getBestSelector(e.target);
+                        if (isComposing[best.selector]) return;
+                        // 🔥 修复：刚完成 composition，跳过（已在 compositionend 中直接捕获）
+                        if (justComposed[best.selector]) {{
+                            delete justComposed[best.selector];
                             return;
                         }}
 
-                        // 🔥 立即捕获输入，不使用延迟
-                        window.__recording.captureAction({{
-                            action_type: 'input',
-                            selector: selector,
+                        // 清除旧定时器，更新为最新值
+                        if (pendingInputs[best.selector]) clearTimeout(pendingInputs[best.selector].timer);
+                        pendingInputs[best.selector] = {{
+                            timer: setTimeout(function() {{ flushInput(best.selector); }}, DEBOUNCE_MS),
                             value: e.target.value,
-                            element_tag: e.target.tagName,
-                            element_text: e.target.placeholder,
-                            page_url: window.location.href,
-                            page_title: document.title,
-                            timestamp: Date.now()
-                        }});
+                            target: e.target,
+                            placeholder: e.target.placeholder
+                        }};
                     }}, true);
+
+                    // 页面卸载前刷新所有待处理输入
+                    window.addEventListener('beforeunload', function() {{
+                        Object.keys(pendingInputs).forEach(function(sel) {{ flushInput(sel); }});
+                    }});
                 }})();
 
                 // 监听导航事件（使用多种方法确保不遗漏）
@@ -652,6 +896,8 @@ class BrowserRecorder:
             # 🔥 去重和排序：先按时间戳排序，再合并重复输入
             captured_actions = sorted(captured_actions, key=lambda x: x.timestamp)
             captured_actions = self._merge_duplicate_inputs(captured_actions)
+            # 🔥 更新会话中的操作列表为去重后的版本
+            session.captured_actions = captured_actions
             print(f"📊 去重后剩余 {len(captured_actions)} 个操作")
 
             # 🔍 调试信息：打印每个操作
@@ -718,6 +964,8 @@ class BrowserRecorder:
             "timestamp": action.timestamp,
             "action_type": action.action_type,
             "selector": action.selector,
+            "xpath": action.xpath,
+            "selector_strategy": action.selector_strategy,
             "value": action.value,
             "element_tag": action.element_tag,
             "element_text": action.element_text,
@@ -726,43 +974,78 @@ class BrowserRecorder:
         }
 
     def _merge_duplicate_inputs(self, actions: List[CapturedAction]) -> List[CapturedAction]:
-        """去重和合并输入操作（跨越等待步骤）"""
+        """去重：按时间窗口合并重复输入 + 快速重复点击"""
         if not actions:
             return actions
 
-        # 按选择器分组所有输入操作
-        input_groups = {}
-        input_indices = set()
+        # 确保按时间戳排序
+        actions = sorted(actions, key=lambda x: x.timestamp)
 
+        to_remove = set()
+
+        # ---- 1. 输入去重：同一选择器的连续输入，保留最后一个（时间窗口内） ----
+        INPUT_MERGE_WINDOW_MS = 3000  # 3秒内的连续输入视为同一次输入会话
+
+        # 按选择器分组，再按时间窗口拆分子组
+        selector_inputs = {}
         for i, action in enumerate(actions):
             if action.action_type == 'input' and action.selector:
-                if action.selector not in input_groups:
-                    input_groups[action.selector] = []
-                input_groups[action.selector].append((i, action))
+                if action.selector not in selector_inputs:
+                    selector_inputs[action.selector] = []
+                selector_inputs[action.selector].append((i, action))
 
-        for selector, input_list in input_groups.items():
-            if len(input_list) > 1:
-                print(f"🔍 发现选择器 {selector} 有 {len(input_list)} 个输入操作")
-                best_index, best_action = max(input_list, key=lambda x: len(x[1].value or ''))
-                print(f"  ✓ 保留: '{best_action.value}'")
-                for idx, action in input_list:
-                    if idx != best_index:
-                        print(f"  ✗ 移除: '{action.value}'")
-                        input_indices.add(idx)
-                        if idx > 0:
-                            prev_idx = idx - 1
-                            while prev_idx >= 0 and prev_idx in input_indices:
-                                prev_idx -= 1
-                            if prev_idx >= 0:
-                                prev_action = actions[prev_idx]
-                                if (prev_action.action_type == 'wait' and
-                                    prev_action.selector == action.selector):
-                                    input_indices.add(prev_idx)
+        for selector, input_list in selector_inputs.items():
+            # 按时间窗口拆分子组（相邻输入间隔 < 3秒视为同一会话）
+            sessions = []
+            current_session = [input_list[0]]
+            for j in range(1, len(input_list)):
+                prev_ts = input_list[j-1][1].timestamp
+                curr_ts = input_list[j][1].timestamp
+                if curr_ts - prev_ts < INPUT_MERGE_WINDOW_MS:
+                    current_session.append(input_list[j])
+                else:
+                    sessions.append(current_session)
+                    current_session = [input_list[j]]
+            sessions.append(current_session)
 
-        merged = [action for i, action in enumerate(actions) if i not in input_indices]
+            # 每个会话只保留最长值的输入
+            for session in sessions:
+                if len(session) > 1:
+                    best_idx, best_action = max(session, key=lambda x: len(x[1].value or ''))
+                    for idx, action in session:
+                        if idx != best_idx:
+                            to_remove.add(idx)
+                    print(f"🔍 合并输入 [{selector[:40]}]: {len(session)}次 → 保留 '{best_action.value}'")
+
+        # ---- 2. 点击去重：同一选择器的快速重复点击（双击保护） ----
+        CLICK_DEDUP_WINDOW_MS = 800  # 800ms 内的重复点击视为双击
+
+        for i in range(len(actions)):
+            if i in to_remove:
+                continue
+            action = actions[i]
+            if action.action_type != 'click':
+                continue
+            # 向后查找同选择器的点击
+            for j in range(i + 1, len(actions)):
+                if j in to_remove:
+                    continue
+                next_action = actions[j]
+                if next_action.action_type != 'click':
+                    break  # 只合并连续的 click
+                if next_action.selector != action.selector:
+                    break
+                time_diff = next_action.timestamp - action.timestamp
+                if time_diff < CLICK_DEDUP_WINDOW_MS:
+                    to_remove.add(j)
+                    print(f"🔍 合并重复点击 [{action.selector[:40]}]: 间隔 {time_diff*1000:.0f}ms")
+                else:
+                    break
+
+        merged = [action for i, action in enumerate(actions) if i not in to_remove]
         removed_count = len(actions) - len(merged)
         if removed_count > 0:
-            print(f"📊 去重完成: 移除了 {removed_count} 个重复操作")
+            print(f"📊 去重完成: 移除了 {removed_count} 个重复操作，剩余 {len(merged)} 个")
         return merged
 
     async def close_session(self, session_id: str):

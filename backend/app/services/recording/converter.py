@@ -99,6 +99,12 @@ class RecordingConverter:
             steps=[]
         )
 
+        # 🔥 第一步：打开浏览器（全屏视口）
+        step_counter = 0
+        open_browser_step = await self._create_open_browser_step(step_counter)
+        main_case.steps.append(open_browser_step)
+        step_counter += 1
+
         # 🔥 关键修复：确保 navigate 操作总是第一步
         # 将操作分为 navigate 操作和其他操作
         navigate_actions = [a for a in actions if a.action_type == 'navigate']
@@ -139,7 +145,7 @@ class RecordingConverter:
         ordered_actions.extend(other_actions)
 
         # 🔥 新增：转换操作为步骤（支持智能等待和变量替换）
-        step_counter = 0
+        # step_counter 从 1 开始，因为步骤 0 是"打开浏览器"
         for index, action in enumerate(ordered_actions):
             steps = await self._convert_action_to_step(
                 action,
@@ -183,7 +189,7 @@ class RecordingConverter:
                     "timeout": 5000
                 },
                 enabled=True,
-                continue_on_failure=True,   # 🔥 等待失败不阻断后续步骤
+                continue_on_failure=True,    # 等待只是预检查，失败不应阻断后续操作
                 step_order=index
             )
             steps.append(wait_step)
@@ -208,7 +214,7 @@ class RecordingConverter:
             keyword_id=keyword_id,
             parameters=parameters,
             enabled=True,
-            continue_on_failure=True,   # 🔥 点击失败不阻断后续步骤
+            continue_on_failure=False,   # 操作步骤失败时停止执行（fail-fast）
             step_order=index
         )
         steps.append(actual_step)
@@ -227,6 +233,8 @@ class RecordingConverter:
 
         parameters = {
             "selector": action.selector,
+            "xpath": action.xpath or "",
+            "selector_strategy": action.selector_strategy or "css",
             "timeout": 30000  # 默认30秒超时
         }
 
@@ -353,6 +361,23 @@ class RecordingConverter:
                 ))
 
         return assertions
+
+    async def _create_open_browser_step(self, step_order: int) -> TestStep:
+        """创建「打开浏览器」步骤（全屏视口）"""
+        return TestStep(
+            id=str(uuid.uuid4()),
+            step_name="打开浏览器",
+            keyword_id=await self._get_keyword_id("OPEN_BROWSER"),
+            parameters={
+                "browser_type": "chromium",
+                "headless": False,
+                "viewport": {"width": 1920, "height": 1080},
+                "use_local": False
+            },
+            enabled=True,
+            continue_on_failure=False,
+            step_order=step_order
+        )
 
     async def _get_keyword_id(self, keyword_name: str) -> str:
         """获取关键字ID（从缓存或数据库）"""
