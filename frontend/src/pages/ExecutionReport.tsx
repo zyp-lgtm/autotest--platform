@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useToast } from '../contexts/ToastContext'
 import { tasksApi } from '../api/tasks'
-import type { TestExecution } from '../types'
+import type { TestExecution, ScenarioExecution } from '../types'
 import StepDetail from '../components/execution/StepDetail'
 
 export default function ExecutionReport() {
@@ -118,6 +118,17 @@ export default function ExecutionReport() {
       </div>
     )
   }
+
+  // 按迭代分组场景执行结果
+  const scenarioExecutions = execution.scenario_executions || [];
+  const groupedByIteration = scenarioExecutions.reduce((groups: Record<number, ScenarioExecution[]>, se) => {
+    const iter = se.iteration ?? 0;
+    if (!groups[iter]) groups[iter] = [];
+    groups[iter].push(se);
+    return groups;
+  }, {} as Record<number, ScenarioExecution[]>);
+  const iterationKeys = Object.keys(groupedByIteration).map(Number).sort((a, b) => a - b);
+  const hasMultipleIterations = iterationKeys.length > 1 || (iterationKeys.length === 1 && iterationKeys[0] > 0);
 
   return (
     <div className="space-y-6">
@@ -236,63 +247,149 @@ export default function ExecutionReport() {
       {/* 场景执行详情 */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold">场景执行详情</h2>
-        {execution.scenario_executions.map((scenarioExec) => (
-          <div key={scenarioExec.id} className="bg-white border border-gray-200 rounded-lg p-4">
-            <div className="flex justify-between items-start mb-2">
-              <h3 className="font-medium">场景 #{scenarioExec.execution_order}</h3>
-              <span className={`px-2 py-1 text-xs rounded ${
-                scenarioExec.result === 'pass' ? 'bg-green-100 text-green-700' :
-                scenarioExec.result === 'fail' ? 'bg-red-100 text-red-700' :
-                'bg-gray-100 text-gray-700'
-              }`}>
-                {scenarioExec.result?.toUpperCase() || scenarioExec.status}
-              </span>
-            </div>
-
-            <div className="text-sm text-gray-500 mb-3">
-              用例数: {scenarioExec.total_cases} •
-              通过步骤: {scenarioExec.passed_steps} •
-              失败步骤: {scenarioExec.failed_steps} •
-              时长: {formatDuration(scenarioExec.duration)}
-            </div>
-
-            {/* 用例执行列表 */}
-            {scenarioExec.case_executions.map((caseExec) => (
-              <details key={caseExec.id} className="ml-4 mt-2 border-l-2 border-gray-200 pl-4">
-                <summary className="cursor-pointer py-1 font-medium text-sm hover:text-blue-600">
-                  用例: {caseExec.id.slice(0, 8)}...
-                  <span className={`ml-2 px-2 py-0.5 text-xs rounded ${
-                    caseExec.result === 'pass' ? 'bg-green-100 text-green-700' :
-                    caseExec.result === 'fail' ? 'bg-red-100 text-red-700' :
-                    'bg-gray-100 text-gray-700'
-                  }`}>
-                    {caseExec.result?.toUpperCase() || caseExec.status}
-                  </span>
-                </summary>
-
-                <div className="mt-2 space-y-2">
-                  {caseExec.step_executions.map((stepExec) => (
-                    <StepDetail
-                      key={stepExec.id}
-                      step={{
-                        step_name: stepExec.step_name,
-                        keyword_name: stepExec.keyword_name,
-                        parameters: stepExec.parameters || {},
-                        status: stepExec.status,
-                        result: stepExec.result,
-                        duration: stepExec.duration,
-                        error_message: stepExec.error_message,
-                        logs: stepExec.logs,
-                        screenshot_path: stepExec.screenshot_path,
-                        output: stepExec.output
-                      }}
-                    />
-                  ))}
+        {hasMultipleIterations ? (
+          iterationKeys.map(iterKey => {
+            const executions = groupedByIteration[iterKey];
+            const dataRow = executions[0]?.data_row;
+            return (
+              <div key={iterKey} className="mb-4 p-4 border rounded-lg bg-white">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-bold">迭代 {iterKey + 1}</h4>
+                  {dataRow && Object.keys(dataRow).length > 0 && (
+                    <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                      数据行 #{iterKey + 1}
+                    </span>
+                  )}
                 </div>
-              </details>
-            ))}
-          </div>
-        ))}
+                {dataRow && Object.keys(dataRow).length > 0 && (
+                  <div className="mb-3 p-2 bg-gray-50 rounded text-xs font-mono">
+                    <span className="text-gray-500 mr-1">数据：</span>
+                    {Object.entries(dataRow).map(([k, v]) => (
+                      <span key={k} className="mr-2">
+                        <span className="text-blue-700">{k}</span>=<span className="text-green-700">&quot;{String(v)}&quot;</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {executions.map((scenarioExec) => (
+                  <div key={scenarioExec.id} className="bg-white border border-gray-200 rounded-lg p-4 mt-2">
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="font-medium">场景 #{scenarioExec.execution_order}</h3>
+                      <span className={`px-2 py-1 text-xs rounded ${
+                        scenarioExec.result === 'pass' ? 'bg-green-100 text-green-700' :
+                        scenarioExec.result === 'fail' ? 'bg-red-100 text-red-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {scenarioExec.result?.toUpperCase() || scenarioExec.status}
+                      </span>
+                    </div>
+
+                    <div className="text-sm text-gray-500 mb-3">
+                      用例数: {scenarioExec.total_cases} •
+                      通过步骤: {scenarioExec.passed_steps} •
+                      失败步骤: {scenarioExec.failed_steps} •
+                      时长: {formatDuration(scenarioExec.duration)}
+                    </div>
+
+                    {/* 用例执行列表 */}
+                    {scenarioExec.case_executions.map((caseExec) => (
+                      <details key={caseExec.id} className="ml-4 mt-2 border-l-2 border-gray-200 pl-4">
+                        <summary className="cursor-pointer py-1 font-medium text-sm hover:text-blue-600">
+                          用例: {caseExec.id.slice(0, 8)}...
+                          <span className={`ml-2 px-2 py-0.5 text-xs rounded ${
+                            caseExec.result === 'pass' ? 'bg-green-100 text-green-700' :
+                            caseExec.result === 'fail' ? 'bg-red-100 text-red-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {caseExec.result?.toUpperCase() || caseExec.status}
+                          </span>
+                        </summary>
+
+                        <div className="mt-2 space-y-2">
+                          {caseExec.step_executions.map((stepExec) => (
+                            <StepDetail
+                              key={stepExec.id}
+                              step={{
+                                step_name: stepExec.step_name,
+                                keyword_name: stepExec.keyword_name,
+                                parameters: stepExec.parameters || {},
+                                status: stepExec.status,
+                                result: stepExec.result,
+                                duration: stepExec.duration,
+                                error_message: stepExec.error_message,
+                                logs: stepExec.logs,
+                                screenshot_path: stepExec.screenshot_path,
+                                output: stepExec.output
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </details>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            );
+          })
+        ) : (
+          scenarioExecutions.map((scenarioExec) => (
+            <div key={scenarioExec.id} className="bg-white border border-gray-200 rounded-lg p-4">
+              <div className="flex justify-between items-start mb-2">
+                <h3 className="font-medium">场景 #{scenarioExec.execution_order}</h3>
+                <span className={`px-2 py-1 text-xs rounded ${
+                  scenarioExec.result === 'pass' ? 'bg-green-100 text-green-700' :
+                  scenarioExec.result === 'fail' ? 'bg-red-100 text-red-700' :
+                  'bg-gray-100 text-gray-700'
+                }`}>
+                  {scenarioExec.result?.toUpperCase() || scenarioExec.status}
+                </span>
+              </div>
+
+              <div className="text-sm text-gray-500 mb-3">
+                用例数: {scenarioExec.total_cases} •
+                通过步骤: {scenarioExec.passed_steps} •
+                失败步骤: {scenarioExec.failed_steps} •
+                时长: {formatDuration(scenarioExec.duration)}
+              </div>
+
+              {/* 用例执行列表 */}
+              {scenarioExec.case_executions.map((caseExec) => (
+                <details key={caseExec.id} className="ml-4 mt-2 border-l-2 border-gray-200 pl-4">
+                  <summary className="cursor-pointer py-1 font-medium text-sm hover:text-blue-600">
+                    用例: {caseExec.id.slice(0, 8)}...
+                    <span className={`ml-2 px-2 py-0.5 text-xs rounded ${
+                      caseExec.result === 'pass' ? 'bg-green-100 text-green-700' :
+                      caseExec.result === 'fail' ? 'bg-red-100 text-red-700' :
+                      'bg-gray-100 text-gray-700'
+                    }`}>
+                      {caseExec.result?.toUpperCase() || caseExec.status}
+                    </span>
+                  </summary>
+
+                  <div className="mt-2 space-y-2">
+                    {caseExec.step_executions.map((stepExec) => (
+                      <StepDetail
+                        key={stepExec.id}
+                        step={{
+                          step_name: stepExec.step_name,
+                          keyword_name: stepExec.keyword_name,
+                          parameters: stepExec.parameters || {},
+                          status: stepExec.status,
+                          result: stepExec.result,
+                          duration: stepExec.duration,
+                          error_message: stepExec.error_message,
+                          logs: stepExec.logs,
+                          screenshot_path: stepExec.screenshot_path,
+                          output: stepExec.output
+                        }}
+                      />
+                    ))}
+                  </div>
+                </details>
+              ))}
+            </div>
+          ))
+        )}
       </div>
 
       {/* 截图预览模态框 */}
