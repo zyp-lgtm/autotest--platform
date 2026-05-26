@@ -1,9 +1,9 @@
 # 测试自动化平台
 
-> **当前版本**: v1.5.1
-> **当前状态**: 🟢 核心功能已完成，录制功能全面增强
+> **当前版本**: v1.6.0
+> **当前状态**: 🟢 核心功能完善，生产就绪
 > **成熟度**: ⭐⭐⭐⭐⭐/⭐⭐⭐⭐⭐ (5/5)
-> **最后更新**: 2026-04-30
+> **最后更新**: 2026-05-26
 > **详细计划**: 查看 [DEVELOPMENT_PLAN.md](./DEVELOPMENT_PLAN.md) 了解完整的开发路线图
 
 关键字驱动测试自动化平台，支持 API 和 UI 测试，采用四层结构设计（任务 → 场景 → 用例 → 步骤），完全分离 UI 和 API 测试类型。
@@ -12,7 +12,7 @@
 
 - 📋 [开发计划](./DEVELOPMENT_PLAN.md) - 完整的功能规划和优先级
 - 📖 [CLAUDE.md](./CLAUDE.md) - 项目宪法和开发规范
-- 🤖 [Agent 指南](./AGENT_GUIDE.md) - Agent 使用说明
+- 🤖 [Agent 指南](./docs/guides/AGENT_GUIDE.md) - Agent 使用说明
 - 📝 [更新日志](./CHANGELOG.md) - 版本更新历史
 
 ## 📊 当前能力评估
@@ -115,12 +115,14 @@
   - 数据名即变量名
   - 支持多种数据类型：string、number、boolean、json
   - 支持多环境配置
+  - 完整的数据驱动测试支持
 
 - 📝 **强大的变量系统**
-  - 统一语法：`{变量名}`
-  - 支持嵌套访问：`{user.id}`
+  - 统一语法：`${变量名}`
+  - 支持嵌套访问：`${user.id}`
   - 参数自动解析和替换
   - 支持测试数据引用
+  - ✅ 修复 UUID 兼容性问题，确保变量正确替换
 
 - 🔍 **详细的执行日志**
   - 步骤级日志记录
@@ -352,7 +354,13 @@ npm run lint
 
 ## 系统关键字
 
-### UI 关键字（15个）
+### UI 关键字（18个）
+
+#### 浏览器控制
+| 关键字 | 描述 | 参数 |
+|---------|------|------|
+| `OPEN_BROWSER` | 打开浏览器 | browser_type, headless, viewport |
+| `CLOSE_BROWSER` | 关闭浏览器 | - |
 
 #### 导航类
 | 关键字 | 描述 | 参数 |
@@ -383,6 +391,12 @@ npm run lint
 | `ASSERT_TEXT` | 断言元素文本 | selector, text |
 | `ASSERT_TITLE` | 断言页面标题 | title |
 | `ASSERT_URL` | 断言当前 URL | url |
+| `ASSERT_NO_ERROR` | 断言页面无错误弹窗 | error_text, timeout, poll_interval |
+
+#### 调试类
+| 关键字 | 描述 | 参数 |
+|---------|------|------|
+| `SCREENSHOT` | 截取屏幕截图 | filename, full_page |
 
 ### API 关键字
 
@@ -513,6 +527,6 @@ MIT License
 
 ---
 
-**最后更新**: 2026-04-30
-**当前版本**: v1.5.1
-**GitHub**: https://github.com/zyp-lgtm/autotest--platform
+**最后更新**: 2026-05-26
+**当前版本**: v1.6.0
+**最新修复**: 变量替换功能、浏览器启动、测试数据管理

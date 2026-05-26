@@ -5,6 +5,77 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.6.0] - 2026-05-26
+
+### 🎉 重要修复
+
+#### 核心功能修复
+- ✅ 修复变量替换功能 - UUID 类型不匹配导致变量无法替换为实际值
+- ✅ 修复浏览器启动失败 - 添加缺失的关键字映射（OPEN_BROWSER, CLOSE_BROWSER, ASSERT_NO_ERROR）
+- ✅ 修复测试数据管理 - UUID 格式匹配和创建测试数据功能
+
+### 🐛 修复详情
+
+#### 变量替换功能修复
+- 🐛 修复 DataBinding 模型的 UUID 类型不匹配问题
+  - case_id 和 data_id 从 UUID(as_uuid=True) 改为 String(36)
+  - 兼容 SQLite 中 UUID 存储为无横线字符串的特性
+- 🐛 修复 VariableResolver 中 TestData 查询的 UUID 转换
+  - 添加 UUID 字符串到 UUID 对象的转换处理
+  - 修复 "str object has no attribute 'hex'" 错误
+- 🔧 添加详细的诊断日志用于问题排查
+  - UUID 格式转换日志
+  - 测试数据绑定查询日志
+  - 变量替换过程追踪
+
+#### 浏览器启动修复
+- 🐛 添加缺失的关键字映射
+  - OPEN_BROWSER → open_browser
+  - CLOSE_BROWSER → close_browser
+  - ASSERT_NO_ERROR → assert_no_error
+- 🔧 修复执行器中的关键字转换逻辑
+
+#### 测试数据管理修复
+- 🐛 修复前端场景详情页面的 UUID 格式匹配问题
+  - 同时支持有横线和无横线的 UUID 格式
+  - 修复 "该场景暂无测试数据" 的误报
+- 🐛 修复创建测试数据时缺少 scenario_id 的问题
+  - 创建时正确关联到对应场景
+  - 添加错误提示和用户反馈
+
+### 📝 技术改进
+
+#### 数据库兼容性
+- 🔧 更新 CLAUDE.md 数据库架构宪法，强化 SQLite UUID 处理规范
+- 🔧 添加跨数据库兼容的最佳实践
+- 🔧 UUID 类型选择指导：String(36) 优于 UUID(as_uuid=True)
+
+#### 代码质量
+- 🔧 添加详细的错误日志和诊断信息
+- 🔧 改进变量替换的可观测性
+- 🔧 增强前端错误处理和用户提示
+
+### 📊 影响范围
+
+#### 修复的文件
+- backend/app/models/test_data.py - 数据绑定模型类型修复
+- backend/app/services/variable_resolver.py - UUID 转换和日志增强
+- backend/app/services/executor.py - 关键字映射修复
+- frontend/src/pages/Scenarios.tsx - UUID 格式匹配修复
+
+#### 兼容性
+- ✅ 不影响现有数据，仅调整模型定义
+- ✅ 向后兼容，支持旧格式数据
+- ✅ 数据库迁移无需处理
+
+### 🔧 已知问题
+- 无
+
+### 📞 支持
+如有问题，请查看项目文档或提交 Issue
+
+---
+
 ## [1.5.2] - 2026-04-30
 
 ### 🐛 修复
