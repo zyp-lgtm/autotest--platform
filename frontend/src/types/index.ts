@@ -126,6 +126,9 @@ export interface ScenarioExecution {
   total_steps: number
   passed_steps: number
   failed_steps: number
+  iteration?: number
+  data_row_index?: number
+  data_row?: Record<string, any>
   case_executions: CaseExecution[]
 }
 

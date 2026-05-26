@@ -18,7 +18,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from ..models.ui_task import UITask, UIScenario, UICase, UIStep
-from ..models.execution import TestExecution, ScenarioExecution, CaseExecution, StepExecution
+from ..models.execution import (
+    TestExecution,
+    ScenarioExecution,
+    CaseExecution,
+    StepExecution,
+)
 from ..models.keyword import Keyword
 from ..services.keyword_engine import KeywordEngine
 from ..services.playwright_browser import PlaywrightBrowser
@@ -94,7 +99,7 @@ class TaskExecutor:
             started_at=datetime.now(timezone.utc),
             execution_config=request.execution_config or {},
             browser_config=request.browser_config or {},
-            environment=request.environment
+            environment=request.environment,
         )
         self.db.add(execution)
         self.db.commit()
@@ -116,7 +121,9 @@ class TaskExecutor:
                 # 使用本地 Agent 执行
                 execution.execution_mode = "agent"
                 self.db.flush()
-                logger.info(f"发现 {len(available_agents)} 个可用 Agent，使用 Agent 执行任务")
+                logger.info(
+                    f"发现 {len(available_agents)} 个可用 Agent，使用 Agent 执行任务"
+                )
 
                 # 获取第一个可用的 Agent
                 agent_id = list(available_agents.keys())[0]
@@ -129,12 +136,16 @@ class TaskExecutor:
                     logger.info("Agent 执行模式：显示浏览器")
 
                 # 转换任务为 Agent 格式并下发
-                result = await self._execute_via_agent(agent_id, task, agent_browser_config)
+                result = await self._execute_via_agent(
+                    agent_id, task, agent_browser_config
+                )
 
                 # 更新执行结果
                 execution.completed_at = datetime.now(timezone.utc)
                 started_at_aware = _ensure_datetime_aware(execution.started_at)
-                execution.duration = (execution.completed_at - started_at_aware).total_seconds()
+                execution.duration = (
+                    execution.completed_at - started_at_aware
+                ).total_seconds()
 
                 if result.get("success"):
                     execution.status = "completed"
@@ -162,15 +173,19 @@ class TaskExecutor:
 
             # 自动尝试连接本地浏览器（如果未配置）
             # 优先级：1. 明确配置的 use_local/remote_url 2. 自动尝试本地浏览器 3. 容器内浏览器
-            if not browser_config.get("use_local") and not browser_config.get("remote_url"):
+            if not browser_config.get("use_local") and not browser_config.get(
+                "remote_url"
+            ):
                 # 尝试自动检测并连接本地浏览器
                 logger.info("尝试自动连接本地浏览器...")
                 try:
                     # 直接尝试创建并连接本地浏览器
-                    self.browser_manager = PlaywrightBrowser(config={
-                        "use_local": True,
-                        "headless": browser_config.get("headless", False)
-                    })
+                    self.browser_manager = PlaywrightBrowser(
+                        config={
+                            "use_local": True,
+                            "headless": browser_config.get("headless", False),
+                        }
+                    )
                     await self.browser_manager.start_browser()
                     logger.info("✓ 检测到本地浏览器可用，将使用本地浏览器")
 
@@ -179,11 +194,15 @@ class TaskExecutor:
                 except Exception as e:
                     logger.info(f"本地浏览器不可用 ({e})，将使用容器内浏览器")
                     # 本地浏览器不可用，创建容器内浏览器
-                    self.browser_manager = PlaywrightBrowser(config={
-                        "browser_type": browser_config.get("browser_type", "chromium"),
-                        "headless": browser_config.get("headless", True),
-                        "use_local": False
-                    })
+                    self.browser_manager = PlaywrightBrowser(
+                        config={
+                            "browser_type": browser_config.get(
+                                "browser_type", "chromium"
+                            ),
+                            "headless": browser_config.get("headless", True),
+                            "use_local": False,
+                        }
+                    )
                     await self.browser_manager.start_browser()
 
                     # 设置调试收集器
@@ -201,15 +220,23 @@ class TaskExecutor:
             # 4. 加载场景（优化：使用 IN 子句避免 N+1 查询）
             scenario_id_uuids = []
             for scenario_id in task.scenario_ids:
-                scenario_id_uuid = uuid.UUID(scenario_id) if isinstance(scenario_id, str) else scenario_id
+                scenario_id_uuid = (
+                    uuid.UUID(scenario_id)
+                    if isinstance(scenario_id, str)
+                    else scenario_id
+                )
                 scenario_id_uuids.append(scenario_id_uuid)
 
-            scenarios = self.db.query(UIScenario).filter(
-                and_(
-                    UIScenario.id.in_(scenario_id_uuids),
-                    UIScenario.task_id == task.id
+            scenarios = (
+                self.db.query(UIScenario)
+                .filter(
+                    and_(
+                        UIScenario.id.in_(scenario_id_uuids),
+                        UIScenario.task_id == task.id,
+                    )
                 )
-            ).all()
+                .all()
+            )
 
             # 按执行顺序排序
             scenarios.sort(key=lambda s: s.execution_order)
@@ -230,7 +257,9 @@ class TaskExecutor:
             # 6. 更新执行结果
             execution.completed_at = datetime.now(timezone.utc)
             started_at_aware = _ensure_datetime_aware(execution.started_at)
-            execution.duration = (execution.completed_at - started_at_aware).total_seconds()
+            execution.duration = (
+                execution.completed_at - started_at_aware
+            ).total_seconds()
             execution.total_scenarios = len(scenarios)
             execution.total_steps = total_steps
             execution.passed_steps = passed_steps
@@ -257,7 +286,9 @@ class TaskExecutor:
 
             if execution.started_at:
                 started_at_aware = _ensure_datetime_aware(execution.started_at)
-                execution.duration = (execution.completed_at - started_at_aware).total_seconds()
+                execution.duration = (
+                    execution.completed_at - started_at_aware
+                ).total_seconds()
 
             self.db.commit()
             self.db.refresh(execution)
@@ -270,9 +301,7 @@ class TaskExecutor:
         return execution
 
     async def _execute_scenario(
-        self,
-        task_execution: TestExecution,
-        scenario: UIScenario
+        self, task_execution: TestExecution, scenario: UIScenario
     ) -> Dict[str, int]:
         """执行场景"""
         logger.info(f"Executing scenario: {scenario.name}")
@@ -283,7 +312,7 @@ class TaskExecutor:
             scenario_id=scenario.id,
             status="running",
             started_at=datetime.now(timezone.utc),
-            execution_order=scenario.execution_order
+            execution_order=scenario.execution_order,
         )
         self.db.add(scenario_execution)
         self.db.commit()
@@ -297,20 +326,27 @@ class TaskExecutor:
                 try:
                     case_ids_list = json.loads(case_ids_list)
                 except (json.JSONDecodeError, TypeError) as e:
-                    logger.warning(f"Failed to parse case_ids JSON: {e}, using empty list")
+                    logger.warning(
+                        f"Failed to parse case_ids JSON: {e}, using empty list"
+                    )
                     case_ids_list = []
 
             case_id_uuids = []
             for case_id in case_ids_list:
-                case_id_uuid = uuid.UUID(case_id) if isinstance(case_id, str) else case_id
+                case_id_uuid = (
+                    uuid.UUID(case_id) if isinstance(case_id, str) else case_id
+                )
                 case_id_uuids.append(case_id_uuid)
 
-            cases = self.db.query(UICase).filter(
-                and_(
-                    UICase.id.in_(case_id_uuids),
-                    UICase.scenario_id == scenario.id
+            cases = (
+                self.db.query(UICase)
+                .filter(
+                    and_(
+                        UICase.id.in_(case_id_uuids), UICase.scenario_id == scenario.id
+                    )
                 )
-            ).all()
+                .all()
+            )
 
             logger.info(f"Loaded {len(cases)} cases for scenario")
 
@@ -328,7 +364,9 @@ class TaskExecutor:
             # 更新场景执行结果
             scenario_execution.completed_at = datetime.now(timezone.utc)
             started_at_aware = _ensure_datetime_aware(scenario_execution.started_at)
-            scenario_execution.duration = (scenario_execution.completed_at - started_at_aware).total_seconds()
+            scenario_execution.duration = (
+                scenario_execution.completed_at - started_at_aware
+            ).total_seconds()
             scenario_execution.total_cases = len(cases)
             scenario_execution.total_steps = total_steps
             scenario_execution.passed_steps = passed_steps
@@ -346,7 +384,7 @@ class TaskExecutor:
             return {
                 "total_steps": total_steps,
                 "passed_steps": passed_steps,
-                "failed_steps": failed_steps
+                "failed_steps": failed_steps,
             }
 
         except Exception as e:
@@ -359,9 +397,7 @@ class TaskExecutor:
             raise
 
     async def _execute_case(
-        self,
-        scenario_execution: ScenarioExecution,
-        case: UICase
+        self, scenario_execution: ScenarioExecution, case: UICase
     ) -> Dict[str, int]:
         """执行用例"""
         logger.info(f"Executing case: {case.name}")
@@ -374,7 +410,7 @@ class TaskExecutor:
             case_id=case.id,
             status="running",
             started_at=datetime.now(timezone.utc),
-            priority=case.priority
+            priority=case.priority,
         )
         self.db.add(case_execution)
         self.db.commit()
@@ -390,18 +426,21 @@ class TaskExecutor:
                 try:
                     step_ids_list = json.loads(step_ids_list)
                 except (json.JSONDecodeError, TypeError) as e:
-                    logger.warning(f"Failed to parse step_ids JSON: {e}, using empty list")
+                    logger.warning(
+                        f"Failed to parse step_ids JSON: {e}, using empty list"
+                    )
                     step_ids_list = []
 
             for step_id in step_ids_list:
                 # 将字符串 ID 转换为 UUID 对象
-                step_id_uuid = uuid.UUID(step_id) if isinstance(step_id, str) else step_id
-                step = self.db.query(UIStep).filter(
-                    and_(
-                        UIStep.id == step_id_uuid,
-                        UIStep.case_id == case.id
-                    )
-                ).first()
+                step_id_uuid = (
+                    uuid.UUID(step_id) if isinstance(step_id, str) else step_id
+                )
+                step = (
+                    self.db.query(UIStep)
+                    .filter(and_(UIStep.id == step_id_uuid, UIStep.case_id == case.id))
+                    .first()
+                )
                 if step:
                     steps.append(step)
 
@@ -431,13 +470,17 @@ class TaskExecutor:
 
                     # 如果不继续失败，停止执行
                     if not step.continue_on_failure:
-                        logger.warning(f"Step failed and continue_on_failure=False, stopping case execution")
+                        logger.warning(
+                            f"Step failed and continue_on_failure=False, stopping case execution"
+                        )
                         break
 
             # 更新用例执行结果
             case_execution.completed_at = datetime.now(timezone.utc)
             started_at_aware = _ensure_datetime_aware(case_execution.started_at)
-            case_execution.duration = (case_execution.completed_at - started_at_aware).total_seconds()
+            case_execution.duration = (
+                case_execution.completed_at - started_at_aware
+            ).total_seconds()
             case_execution.total_steps = total_steps
             case_execution.passed_steps = passed_steps
             case_execution.failed_steps = failed_steps
@@ -454,7 +497,7 @@ class TaskExecutor:
             return {
                 "total_steps": total_steps,
                 "passed_steps": passed_steps,
-                "failed_steps": failed_steps
+                "failed_steps": failed_steps,
             }
 
         except Exception as e:
@@ -468,7 +511,9 @@ class TaskExecutor:
                     case_execution.completed_at = datetime.now(timezone.utc)
                     self.db.commit()
                 except Exception as commit_error:
-                    logger.error(f"Failed to update case_execution status: {commit_error}")
+                    logger.error(
+                        f"Failed to update case_execution status: {commit_error}"
+                    )
             raise
 
     async def _execute_step(
@@ -477,10 +522,11 @@ class TaskExecutor:
         step: UIStep,
         case: UICase = None,  # 🔥 新增：用例对象，用于变量解析
         step_execution: StepExecution = None,
-        is_retry: bool = False
+        is_retry: bool = False,
     ) -> Dict[str, Any]:
         """执行单个步骤（集成调试信息收集）"""
         import time
+
         start_time = time.time()
 
         logger.info(f"Executing step: {step.step_name}")
@@ -489,7 +535,7 @@ class TaskExecutor:
         self.debug_collector.log_step_start(
             step_name=step.step_name,
             keyword=step.keyword_id,
-            parameters=step.parameters or {}
+            parameters=step.parameters or {},
         )
 
         # 创建步骤执行记录（如果不是重试的话）
@@ -507,7 +553,7 @@ class TaskExecutor:
                 parameters=step.parameters,
                 continue_on_failure=step.continue_on_failure,
                 retry_attempt=0,
-                logs=[]
+                logs=[],
             )
             self.db.add(step_execution)
             self.db.commit()
@@ -515,7 +561,9 @@ class TaskExecutor:
 
         try:
             # 获取关键字
-            keyword = self.db.query(Keyword).filter(Keyword.id == step.keyword_id).first()
+            keyword = (
+                self.db.query(Keyword).filter(Keyword.id == step.keyword_id).first()
+            )
             if not keyword:
                 raise ValueError(f"Keyword not found: {step.keyword_id}")
 
@@ -524,35 +572,47 @@ class TaskExecutor:
 
             # 记录开始执行日志（详细）
             execution_logs = []
-            execution_logs.append({
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "level": "info",
-                "message": f"开始执行步骤: {step.step_name}"
-            })
-            execution_logs.append({
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "level": "debug",
-                "message": f"关键字: {keyword.name} ({keyword.category})"
-            })
-            execution_logs.append({
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "level": "debug",
-                "message": f"关键字ID: {step.keyword_id}"
-            })
+            execution_logs.append(
+                {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "level": "info",
+                    "message": f"开始执行步骤: {step.step_name}",
+                }
+            )
+            execution_logs.append(
+                {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "level": "debug",
+                    "message": f"关键字: {keyword.name} ({keyword.category})",
+                }
+            )
+            execution_logs.append(
+                {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "level": "debug",
+                    "message": f"关键字ID: {step.keyword_id}",
+                }
+            )
 
             # 记录参数日志（详细）
             if step.parameters:
-                execution_logs.append({
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "level": "info",
-                    "message": f"原始参数: {json.dumps(step.parameters, ensure_ascii=False)}"
-                })
+                execution_logs.append(
+                    {
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "level": "info",
+                        "message": f"原始参数: {json.dumps(step.parameters, ensure_ascii=False)}",
+                    }
+                )
 
             # 🔥 变量替换：解析步骤参数中的变量引用
             resolved_params = step.parameters or {}
-            logger.info(f"🔍 [变量解析] case对象: {case is not None}, case类型: {type(case) if case else 'None'}")
+            logger.info(
+                f"🔍 [变量解析] case对象: {case is not None}, case类型: {type(case) if case else 'None'}"
+            )
             if case:
-                logger.info(f"🔍 [变量解析] case ID: {case.id if hasattr(case, 'id') else 'No id'}")
+                logger.info(
+                    f"🔍 [变量解析] case ID: {case.id if hasattr(case, 'id') else 'No id'}"
+                )
                 try:
                     # 创建变量解析器
                     resolver = VariableResolver(self.db)
@@ -560,14 +620,16 @@ class TaskExecutor:
                     resolved_params = resolver.resolve_step_parameters(
                         step_parameters=step.parameters or {},
                         case=case,
-                        data_row_index=0  # TODO: 支持多行数据驱动测试
+                        data_row_index=0,  # TODO: 支持多行数据驱动测试
                     )
 
-                    execution_logs.append({
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "level": "info",
-                        "message": f"解析后参数: {json.dumps(resolved_params, ensure_ascii=False)}"
-                    })
+                    execution_logs.append(
+                        {
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "level": "info",
+                            "message": f"解析后参数: {json.dumps(resolved_params, ensure_ascii=False)}",
+                        }
+                    )
 
                     # 记录每个参数的解析
                     for param_name, param_value in (step.parameters or {}).items():
@@ -576,67 +638,79 @@ class TaskExecutor:
                         self.debug_collector.log_parameter_resolution(
                             param_name=param_name,
                             raw_value=raw_value,
-                            resolved_value=resolved_value
+                            resolved_value=resolved_value,
                         )
                 except Exception as e:
                     logger.error(f"变量解析失败: {e}", exc_info=True)
-                    execution_logs.append({
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "level": "warning",
-                        "message": f"变量解析失败: {str(e)}，使用原始参数"
-                    })
+                    execution_logs.append(
+                        {
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "level": "warning",
+                            "message": f"变量解析失败: {str(e)}，使用原始参数",
+                        }
+                    )
                     resolved_params = step.parameters or {}
 
             # 执行关键字（使用解析后的参数）
             result = await self.keyword_engine.execute(
-                keyword_def=keyword,
-                parameters=resolved_params,
-                context={}
+                keyword_def=keyword, parameters=resolved_params, context={}
             )
 
             # 记录执行结果日志（详细）
             duration = time.time() - start_time
 
             if result.get("success"):
-                execution_logs.append({
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "level": "info",
-                    "message": f"✓ 步骤执行成功: {step.step_name} (耗时: {duration:.2f}s)"
-                })
-                execution_logs.append({
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "level": "debug",
-                    "message": f"返回值: {json.dumps(result, ensure_ascii=False)}"
-                })
+                execution_logs.append(
+                    {
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "level": "info",
+                        "message": f"✓ 步骤执行成功: {step.step_name} (耗时: {duration:.2f}s)",
+                    }
+                )
+                execution_logs.append(
+                    {
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "level": "debug",
+                        "message": f"返回值: {json.dumps(result, ensure_ascii=False)}",
+                    }
+                )
             else:
-                error_msg = result.get('error', '未知错误')
-                execution_logs.append({
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "level": "error",
-                    "message": f"✗ 步骤执行失败: {error_msg}"
-                })
+                error_msg = result.get("error", "未知错误")
+                execution_logs.append(
+                    {
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "level": "error",
+                        "message": f"✗ 步骤执行失败: {error_msg}",
+                    }
+                )
 
                 # 记录详细的错误堆栈
                 if "traceback" in result:
-                    execution_logs.append({
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "level": "error",
-                        "message": f"错误堆栈: {result['traceback']}"
-                    })
+                    execution_logs.append(
+                        {
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "level": "error",
+                            "message": f"错误堆栈: {result['traceback']}",
+                        }
+                    )
 
             # 添加关键字引擎返回的日志
             if "logs" in result:
                 for log in result["logs"]:
-                    execution_logs.append({
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "level": "info",
-                        "message": str(log)
-                    })
+                    execution_logs.append(
+                        {
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "level": "info",
+                            "message": str(log),
+                        }
+                    )
 
             # 更新执行结果
             step_execution.completed_at = datetime.now(timezone.utc)
             started_at_aware = _ensure_datetime_aware(step_execution.started_at)
-            step_execution.duration = (step_execution.completed_at - started_at_aware).total_seconds()
+            step_execution.duration = (
+                step_execution.completed_at - started_at_aware
+            ).total_seconds()
             step_execution.status = "completed"
             step_execution.result = "pass" if result.get("success") else "fail"
             step_execution.output = result
@@ -644,47 +718,61 @@ class TaskExecutor:
 
             # 设置错误消息（如果失败）
             if not result.get("success"):
-                error_msg = result.get('error') or result.get('message', '未知错误')
+                error_msg = result.get("error") or result.get("message", "未知错误")
                 step_execution.error_message = error_msg
 
                 # 使用错误分类器丰富错误信息
                 error_info = ErrorClassifier.enrich_error_info(error_msg)
                 logger.info(f"步骤失败: {error_msg}")
-                logger.info(f"错误分类: {error_info['category']}, 严重程度: {error_info['severity']}")
+                logger.info(
+                    f"错误分类: {error_info['category']}, 严重程度: {error_info['severity']}"
+                )
 
                 # 将错误分类信息添加到output中
                 if not step_execution.output:
                     step_execution.output = {}
-                step_execution.output['error_category'] = error_info['category']
-                step_execution.output['error_severity'] = error_info['severity']
-                step_execution.output['error_suggestion'] = error_info['suggestion']
+                step_execution.output["error_category"] = error_info["category"]
+                step_execution.output["error_severity"] = error_info["severity"]
+                step_execution.output["error_suggestion"] = error_info["suggestion"]
 
                 # 在日志中记录错误建议
-                suggestion = error_info['suggestion']
-                execution_logs.append({
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "level": "info",
-                    "message": f"💡 建议: {suggestion['title']} - {suggestion['description']}"
-                })
-                for solution in suggestion['solutions'][:2]:  # 只显示前2个建议
-                    execution_logs.append({
+                suggestion = error_info["suggestion"]
+                execution_logs.append(
+                    {
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                         "level": "info",
-                        "message": f"   • {solution}"
-                    })
+                        "message": f"💡 建议: {suggestion['title']} - {suggestion['description']}",
+                    }
+                )
+                for solution in suggestion["solutions"][:2]:  # 只显示前2个建议
+                    execution_logs.append(
+                        {
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "level": "info",
+                            "message": f"   • {solution}",
+                        }
+                    )
 
                 # 强制刷新到数据库
                 self.db.flush()
 
                 # 检查是否应该重试
-                should_retry = self._should_retry_step(step, error_msg, step_execution.retry_attempt)
+                should_retry = self._should_retry_step(
+                    step, error_msg, step_execution.retry_attempt
+                )
 
                 if should_retry:
                     # 执行重试
                     retry_attempt = step_execution.retry_attempt + 1
-                    max_retries = step.execution_config.get('max_retries', 3) if step.execution_config else 3
+                    max_retries = (
+                        step.execution_config.get("max_retries", 3)
+                        if step.execution_config
+                        else 3
+                    )
 
-                    logger.info(f"步骤失败，执行第 {retry_attempt}/{max_retries} 次重试")
+                    logger.info(
+                        f"步骤失败，执行第 {retry_attempt}/{max_retries} 次重试"
+                    )
 
                     # 创建重试记录
                     retry_step_execution = StepExecution(
@@ -701,23 +789,25 @@ class TaskExecutor:
                         continue_on_failure=step.continue_on_failure,
                         retry_attempt=retry_attempt,
                         retry_of=step_execution.id,
-                        logs=[]
+                        logs=[],
                     )
                     self.db.add(retry_step_execution)
                     self.db.commit()
 
                     # 递归调用自己执行重试
-                    return await self._execute_step(case_execution, step, retry_step_execution, is_retry=True)
+                    return await self._execute_step(
+                        case_execution, step, retry_step_execution, is_retry=True
+                    )
 
                 # 记录失败不需要重试或重试次数已用尽
                 if step_execution.retry_attempt > 0:
-                    logger.info(f"步骤在 {step_execution.retry_attempt} 次尝试后仍然失败，放弃重试")
+                    logger.info(
+                        f"步骤在 {step_execution.retry_attempt} 次尝试后仍然失败，放弃重试"
+                    )
 
             # 记录步骤完成（调试收集器）
             self.debug_collector.log_step_complete(
-                step_name=step.step_name,
-                result=result,
-                duration=duration
+                step_name=step.step_name, result=result, duration=duration
             )
 
             self.db.commit()
@@ -725,7 +815,7 @@ class TaskExecutor:
             return {
                 "result": step_execution.result,
                 "duration": step_execution.duration,
-                "output": result
+                "output": result,
             }
 
         except Exception as e:
@@ -741,13 +831,17 @@ class TaskExecutor:
                         page=page,
                         step_name=step.step_name,
                         error=str(e),
-                        selector=step.parameters.get("selector") if step.parameters else None
+                        selector=(
+                            step.parameters.get("selector") if step.parameters else None
+                        ),
                     )
 
                     # 更新执行记录
                     step_execution.screenshot_path = debug_info.get("screenshot")
                     # 将 debug_info 转换为 JSON 字符串以便存储
-                    step_execution.debug_info = json.dumps(debug_info, ensure_ascii=False)
+                    step_execution.debug_info = json.dumps(
+                        debug_info, ensure_ascii=False
+                    )
 
                     logger.info(f"已捕获失败调试信息: {debug_info.get('report_path')}")
                 except Exception as debug_error:
@@ -755,25 +849,31 @@ class TaskExecutor:
 
             step_execution.completed_at = datetime.now(timezone.utc)
             started_at_aware = _ensure_datetime_aware(step_execution.started_at)
-            step_execution.duration = (step_execution.completed_at - started_at_aware).total_seconds()
+            step_execution.duration = (
+                step_execution.completed_at - started_at_aware
+            ).total_seconds()
             step_execution.status = "completed"
             step_execution.result = "fail"
             step_execution.error_message = str(e)
 
             # 使用错误分类器丰富异常信息
             error_info = ErrorClassifier.enrich_error_info(str(e))
-            logger.info(f"异常分类: {error_info['category']}, 严重程度: {error_info['severity']}")
+            logger.info(
+                f"异常分类: {error_info['category']}, 严重程度: {error_info['severity']}"
+            )
 
             # 将错误分类信息添加到output中
             if not step_execution.output:
                 step_execution.output = {}
-            step_execution.output['error_category'] = error_info['category']
-            step_execution.output['error_severity'] = error_info['severity']
-            step_execution.output['error_suggestion'] = error_info['suggestion']
+            step_execution.output["error_category"] = error_info["category"]
+            step_execution.output["error_severity"] = error_info["severity"]
+            step_execution.output["error_suggestion"] = error_info["suggestion"]
 
             # 在日志中记录错误建议
-            suggestion = error_info['suggestion']
-            logger.info(f"💡 异常建议: {suggestion['title']} - {suggestion['description']}")
+            suggestion = error_info["suggestion"]
+            logger.info(
+                f"💡 异常建议: {suggestion['title']} - {suggestion['description']}"
+            )
 
             # 失败时尝试截图（备用方案）
             if not step_execution.screenshot_path:
@@ -786,12 +886,11 @@ class TaskExecutor:
 
             self.db.commit()
 
-            return {
-                "result": "fail",
-                "error": str(e)
-            }
+            return {"result": "fail", "error": str(e)}
 
-    async def _execute_via_agent(self, agent_id: str, task: UITask, browser_config: dict) -> Dict[str, Any]:
+    async def _execute_via_agent(
+        self, agent_id: str, task: UITask, browser_config: dict
+    ) -> Dict[str, Any]:
         """
         通过本地 Agent 执行任务（带完整日志记录）
 
@@ -814,15 +913,20 @@ class TaskExecutor:
 
         scenario_id_uuids = []
         for scenario_id in task.scenario_ids:
-            scenario_id_uuid = uuid.UUID(scenario_id) if isinstance(scenario_id, str) else scenario_id
+            scenario_id_uuid = (
+                uuid.UUID(scenario_id) if isinstance(scenario_id, str) else scenario_id
+            )
             scenario_id_uuids.append(scenario_id_uuid)
 
-        scenarios = self.db.query(UIScenario).filter(
-            and_(
-                UIScenario.id.in_(scenario_id_uuids),
-                UIScenario.task_id == task.id
+        scenarios = (
+            self.db.query(UIScenario)
+            .filter(
+                and_(
+                    UIScenario.id.in_(scenario_id_uuids), UIScenario.task_id == task.id
+                )
             )
-        ).all()
+            .all()
+        )
 
         for scenario in scenarios:
 
@@ -832,7 +936,7 @@ class TaskExecutor:
                 scenario_id=scenario.id,
                 status="running",
                 started_at=datetime.now(timezone.utc),
-                execution_order=scenario.execution_order
+                execution_order=scenario.execution_order,
             )
             self.db.add(scenario_execution)
             self.db.commit()
@@ -844,21 +948,28 @@ class TaskExecutor:
                 try:
                     case_ids_list = json.loads(case_ids_list)
                 except (json.JSONDecodeError, TypeError) as e:
-                    logger.warning(f"Failed to parse case_ids JSON: {e}, using empty list")
+                    logger.warning(
+                        f"Failed to parse case_ids JSON: {e}, using empty list"
+                    )
                     case_ids_list = []
 
             # 优化：使用 IN 子句避免 N+1 查询
             case_id_uuids = []
             for case_id in case_ids_list:
-                case_id_uuid = uuid.UUID(case_id) if isinstance(case_id, str) else case_id
+                case_id_uuid = (
+                    uuid.UUID(case_id) if isinstance(case_id, str) else case_id
+                )
                 case_id_uuids.append(case_id_uuid)
 
-            cases = self.db.query(UICase).filter(
-                and_(
-                    UICase.id.in_(case_id_uuids),
-                    UICase.scenario_id == scenario.id
+            cases = (
+                self.db.query(UICase)
+                .filter(
+                    and_(
+                        UICase.id.in_(case_id_uuids), UICase.scenario_id == scenario.id
+                    )
                 )
-            ).all()
+                .all()
+            )
 
             for case in cases:
 
@@ -867,7 +978,7 @@ class TaskExecutor:
                     scenario_execution_id=scenario_execution.id,
                     case_id=case.id,
                     status="running",
-                    started_at=datetime.now(timezone.utc)
+                    started_at=datetime.now(timezone.utc),
                 )
                 self.db.add(case_execution)
                 self.db.commit()
@@ -883,21 +994,33 @@ class TaskExecutor:
                     try:
                         step_ids_list = json.loads(step_ids_list)
                     except (json.JSONDecodeError, TypeError) as e:
-                        logger.warning(f"Failed to parse step_ids JSON: {e}, using empty list")
+                        logger.warning(
+                            f"Failed to parse step_ids JSON: {e}, using empty list"
+                        )
                         step_ids_list = []
 
                 for step_id in step_ids_list:
                     # 将字符串 ID 转换为 UUID 对象
-                    step_id_uuid = uuid.UUID(step_id) if isinstance(step_id, str) else step_id
-                    step = self.db.query(UIStep).filter(
-                        and_(UIStep.id == step_id_uuid, UIStep.case_id == case.id)
-                    ).first()
+                    step_id_uuid = (
+                        uuid.UUID(step_id) if isinstance(step_id, str) else step_id
+                    )
+                    step = (
+                        self.db.query(UIStep)
+                        .filter(
+                            and_(UIStep.id == step_id_uuid, UIStep.case_id == case.id)
+                        )
+                        .first()
+                    )
 
                     if not step or not step.enabled:
                         continue
 
                     # 获取关键字
-                    keyword = self.db.query(Keyword).filter(Keyword.id == step.keyword_id).first()
+                    keyword = (
+                        self.db.query(Keyword)
+                        .filter(Keyword.id == step.keyword_id)
+                        .first()
+                    )
                     if not keyword:
                         continue
 
@@ -916,31 +1039,38 @@ class TaskExecutor:
                             resolved_params = resolver.resolve_step_parameters(
                                 step_parameters=step.parameters or {},
                                 case=case,
-                                data_row_index=0
+                                data_row_index=0,
                             )
                             logger.info(f"✅ Agent 执行: 参数变量替换成功")
                             logger.info(f"   原始参数: {step.parameters}")
                             logger.info(f"   解析后参数: {resolved_params}")
                         except Exception as e:
-                            logger.error(f"❌ Agent 执行: 变量解析失败: {e}，使用原始参数")
+                            logger.error(
+                                f"❌ Agent 执行: 变量解析失败: {e}，使用原始参数"
+                            )
                             import traceback
+
                             logger.error(f"❌ 错误详情: {traceback.format_exc()}")
                             resolved_params = step.parameters or {}
                     else:
                         logger.warning(f"⚠️ case对象为None，无法进行变量替换")
 
                     # 转换为 Agent 步骤格式（使用解析后的参数）
-                    agent_step = self._convert_step_to_agent_format(keyword, resolved_params)
+                    agent_step = self._convert_step_to_agent_format(
+                        keyword, resolved_params
+                    )
                     if agent_step:
                         agent_steps.append(agent_step)
-                        step_mappings.append({
-                            "step_id": step.id,
-                            "step_name": step.step_name,
-                            "keyword_name": keyword.name,
-                            "keyword_id": keyword.id,
-                            "parameters": step.parameters,
-                            "step_order": step.step_order
-                        })
+                        step_mappings.append(
+                            {
+                                "step_id": step.id,
+                                "step_name": step.step_name,
+                                "keyword_name": keyword.name,
+                                "keyword_id": keyword.id,
+                                "parameters": step.parameters,
+                                "step_order": step.step_order,
+                            }
+                        )
                         total_steps += 1
 
                 # 下发任务给 Agent
@@ -949,11 +1079,13 @@ class TaskExecutor:
                     "task_id": str(task.id),
                     "browser_type": browser_config.get("browser_type", "chromium"),
                     "headless": browser_config.get("headless", False),
-                    "steps": agent_steps
+                    "steps": agent_steps,
                 }
 
                 logger.info(f"下发 {len(agent_steps)} 个步骤到 Agent")
-                success = await agent_manager.manager.send_to_agent(agent_id, task_message)
+                success = await agent_manager.manager.send_to_agent(
+                    agent_id, task_message
+                )
 
                 if not success:
                     # 记录失败
@@ -963,14 +1095,16 @@ class TaskExecutor:
                             mapping,
                             mapping["keyword_id"],
                             "failed",
-                            error="发送任务到 Agent 失败"
+                            error="发送任务到 Agent 失败",
                         )
                     failed_steps += len(step_mappings)
                     continue
 
                 # 等待 Agent 执行完成
                 logger.info("等待 Agent 执行完成...")
-                task_result_data = await agent_manager.manager.wait_for_task_result(str(task.id), timeout=60.0)
+                task_result_data = await agent_manager.manager.wait_for_task_result(
+                    str(task.id), timeout=60.0
+                )
 
                 # 清理任务结果缓存
                 agent_manager.manager.clear_task_result(str(task.id))
@@ -986,53 +1120,67 @@ class TaskExecutor:
                 # 根据实际结果创建执行记录
                 for i, mapping in enumerate(step_mappings):
                     # 获取对应步骤的执行结果
-                    step_agent_result = agent_results[i] if i < len(agent_results) else {}
+                    step_agent_result = (
+                        agent_results[i] if i < len(agent_results) else {}
+                    )
 
                     if step_agent_result.get("success"):
                         step_result = "pass"
                         status = "completed"
 
                         # 构建详细日志
-                        logs = [{
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "level": "info",
-                            "message": f"开始执行步骤: {mapping['step_name']} (关键字: {mapping['keyword_name']})"
-                        }]
+                        logs = [
+                            {
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "level": "info",
+                                "message": f"开始执行步骤: {mapping['step_name']} (关键字: {mapping['keyword_name']})",
+                            }
+                        ]
 
                         # 添加参数日志
                         if mapping.get("parameters"):
-                            params_str = ", ".join([f"{k}={v}" for k, v in mapping["parameters"].items()])
-                            logs.append({
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                                "level": "info",
-                                "message": f"参数: {params_str}"
-                            })
+                            params_str = ", ".join(
+                                [f"{k}={v}" for k, v in mapping["parameters"].items()]
+                            )
+                            logs.append(
+                                {
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "level": "info",
+                                    "message": f"参数: {params_str}",
+                                }
+                            )
 
                         # 添加成功完成日志
-                        logs.append({
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "level": "info",
-                            "message": f"✓ 步骤执行成功: {mapping['step_name']}"
-                        })
+                        logs.append(
+                            {
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "level": "info",
+                                "message": f"✓ 步骤执行成功: {mapping['step_name']}",
+                            }
+                        )
 
                         # 如果有截图路径，添加到日志中
                         if step_agent_result.get("screenshot"):
-                            logs.append({
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                                "level": "info",
-                                "message": f"截图已保存: {step_agent_result['screenshot']}"
-                            })
+                            logs.append(
+                                {
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "level": "info",
+                                    "message": f"截图已保存: {step_agent_result['screenshot']}",
+                                }
+                            )
                     else:
                         step_result = "fail"
                         status = "failed"
 
                         error_msg = step_agent_result.get("error", "未知错误")
 
-                        logs = [{
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "level": "error",
-                            "message": f"步骤执行失败: {mapping['step_name']} - {error_msg}"
-                        }]
+                        logs = [
+                            {
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "level": "error",
+                                "message": f"步骤执行失败: {mapping['step_name']} - {error_msg}",
+                            }
+                        ]
 
                     self._create_step_execution_record(
                         case_execution.id,
@@ -1041,7 +1189,11 @@ class TaskExecutor:
                         status,
                         result=step_result,
                         logs=logs,
-                        error=step_agent_result.get("error") if not step_agent_result.get("success") else None
+                        error=(
+                            step_agent_result.get("error")
+                            if not step_agent_result.get("success")
+                            else None
+                        ),
                     )
 
                     if step_result == "pass":
@@ -1052,17 +1204,21 @@ class TaskExecutor:
                 # 更新用例执行结果
                 case_execution.completed_at = datetime.now(timezone.utc)
                 started_at_aware = _ensure_datetime_aware(case_execution.started_at)
-                case_execution.duration = (case_execution.completed_at - started_at_aware).total_seconds()
+                case_execution.duration = (
+                    case_execution.completed_at - started_at_aware
+                ).total_seconds()
                 case_execution.total_steps = len(step_mappings)
                 case_execution.passed_steps = passed_steps
                 case_execution.failed_steps = failed_steps
                 case_execution.status = "completed"
                 case_execution.result = "pass" if failed_steps == 0 else "fail"
                 self.db.commit()
-                            # 更新场景执行结果
+                # 更新场景执行结果
             scenario_execution.completed_at = datetime.now(timezone.utc)
             started_at_aware = _ensure_datetime_aware(scenario_execution.started_at)
-            scenario_execution.duration = (scenario_execution.completed_at - started_at_aware).total_seconds()
+            scenario_execution.duration = (
+                scenario_execution.completed_at - started_at_aware
+            ).total_seconds()
             scenario_execution.total_cases = 1
             scenario_execution.total_steps = total_steps
             scenario_execution.passed_steps = passed_steps
@@ -1074,14 +1230,11 @@ class TaskExecutor:
             "success": True,
             "total_steps": total_steps,
             "passed_steps": passed_steps,
-            "failed_steps": failed_steps
+            "failed_steps": failed_steps,
         }
 
     def _should_retry_step(
-        self,
-        step: UIStep,
-        error_msg: str,
-        current_attempt: int
+        self, step: UIStep, error_msg: str, current_attempt: int
     ) -> bool:
         """判断步骤是否应该重试
 
@@ -1094,11 +1247,15 @@ class TaskExecutor:
             bool: True表示应该重试
         """
         # 检查步骤配置是否允许重试
-        if step.execution_config and not step.execution_config.get('retry_on_failure', True):
+        if step.execution_config and not step.execution_config.get(
+            "retry_on_failure", True
+        ):
             return False
 
         # 检查最大重试次数
-        max_retries = step.execution_config.get('max_retries', 3) if step.execution_config else 3
+        max_retries = (
+            step.execution_config.get("max_retries", 3) if step.execution_config else 3
+        )
 
         if current_attempt >= max_retries:
             return False
@@ -1108,22 +1265,22 @@ class TaskExecutor:
         # 不应重试的错误：断言失败、元素不存在（非超时原因）、脚本错误
 
         retryable_errors = [
-            'timeout',
-            '超时',
-            'Timeout',
-            'network',
-            'network error',
-            'connection',
-            'connection refused',
-            'Temporary',
-            'temporary'
+            "timeout",
+            "超时",
+            "Timeout",
+            "network",
+            "network error",
+            "connection",
+            "connection refused",
+            "Temporary",
+            "temporary",
         ]
 
         # 检查错误消息是否包含可重试的关键词
         should_retry = any(keyword in error_msg for keyword in retryable_errors)
 
         # 特殊情况：元素找不到如果是超时导致的，可以重试
-        if not should_retry and 'Timeout' in error_msg:
+        if not should_retry and "Timeout" in error_msg:
             should_retry = True
 
         return should_retry
@@ -1136,7 +1293,7 @@ class TaskExecutor:
         status: str,
         result: str = None,
         error: str = None,
-        logs: list = None
+        logs: list = None,
     ):
         """创建步骤执行记录"""
         step_execution = StepExecution(
@@ -1155,13 +1312,16 @@ class TaskExecutor:
             continue_on_failure=False,
             logs=logs or [],
             error_message=error,
-            result=result or ("pass" if status == "completed" and not error else "fail")
+            result=result
+            or ("pass" if status == "completed" and not error else "fail"),
         )
         self.db.add(step_execution)
         self.db.flush()  # 先 flush 确保 error_message 保存
         self.db.commit()
 
-    def _convert_step_to_agent_format(self, keyword: Keyword, parameters: dict) -> Optional[dict]:
+    def _convert_step_to_agent_format(
+        self, keyword: Keyword, parameters: dict
+    ) -> Optional[dict]:
         """
         将关键字步骤转换为 Agent 格式
 
@@ -1180,7 +1340,10 @@ class TaskExecutor:
             "CLICK": "click",
             "INPUT": "input",
             "WAIT_FOR_ELEMENT": "wait",
-            "SCREENSHOT": "screenshot"
+            "SCREENSHOT": "screenshot",
+            "OPEN_BROWSER": "open_browser",
+            "CLOSE_BROWSER": "close_browser",
+            "ASSERT_NO_ERROR": "assert_no_error",
         }
 
         agent_action = keyword_mapping.get(keyword_name)
@@ -1189,7 +1352,4 @@ class TaskExecutor:
             logger.warning(f"关键字 {keyword_name} 在 Agent 中不支持")
             return None
 
-        return {
-            "action": agent_action,
-            "parameters": parameters
-        }
+        return {"action": agent_action, "parameters": parameters}

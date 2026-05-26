@@ -4,8 +4,10 @@
 负责解析和替换步骤参数中的变量引用
 支持测试数据绑定和变量替换功能
 """
+
 import re
 import logging
+import uuid
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 
@@ -27,12 +29,10 @@ class VariableResolver:
         """
         self.db = db
         # 变量引用正则：${variable_name}
-        self.var_pattern = re.compile(r'\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}')
+        self.var_pattern = re.compile(r"\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
     def resolve_case_variables(
-        self,
-        case: UICase,
-        data_row_index: int = 0
+        self, case: UICase, data_row_index: int = 0
     ) -> Dict[str, Any]:
         """
         解析用例的所有变量
@@ -47,21 +47,49 @@ class VariableResolver:
         variables = {}
 
         try:
+            logger.info(f"🔍 [VAR_RESOLVE] 开始解析用例变量，case_id: {case.id}")
+
             # 1. 获取用例绑定的测试数据
-            # 🔥 SQLAlchemy 会自动处理 UUID 对象到数据库存储格式的转换
-            bindings = self.db.query(DataBinding).filter(
-                DataBinding.case_id == case.id,
-                DataBinding.enabled == 1
-            ).all()
+            # 🔥 SQLite 中 UUID 存储为字符串（无横线），需要转换 case.id 为字符串进行比较
+            case_id_str = str(case.id).replace("-", "") if case.id else case.id
+
+            logger.info(f"🔍 [VAR_RESOLVE] 转换后的 case_id_str: {case_id_str}")
+
+            # 先查询所有绑定的测试数据（不带过滤条件，诊断用）
+            all_bindings = self.db.query(DataBinding).all()
+            logger.info(f"🔍 [VAR_RESOLVE] 数据库中共有 {len(all_bindings)} 个数据绑定")
+            for b in all_bindings:
+                logger.info(
+                    f"🔍 [VAR_RESOLVE] 绑定记录: case_id={b.case_id}(类型:{type(b.case_id)}), data_id={b.data_id}, enabled={b.enabled}"
+                )
+
+            bindings = (
+                self.db.query(DataBinding)
+                .filter(DataBinding.case_id == case_id_str, DataBinding.enabled == 1)
+                .all()
+            )
+
+            logger.info(f"🔍 [VAR_RESOLVE] 找到 {len(bindings)} 个匹配的数据绑定")
 
             if bindings:
                 # 用例级数据绑定（优先级最高）
                 logger.info(f"✅ 找到 {len(bindings)} 个数据绑定")
                 for binding in bindings:
-                    # 🔥 SQLAlchemy 会自动处理 UUID 对象到数据库存储格式的转换
-                    test_data = self.db.query(TestData).filter(
-                        TestData.id == binding.data_id
-                    ).first()
+                    # 🔥 将字符串格式的 data_id 转换为 UUID 对象进行查询
+                    # DataBinding.data_id 是 String(36)，但 TestData.id 是 UUID 类型
+                    try:
+                        data_id_uuid = uuid.UUID(binding.data_id)
+                    except (ValueError, AttributeError) as e:
+                        logger.error(
+                            f"无效的 data_id 格式: {binding.data_id}, 错误: {e}"
+                        )
+                        continue
+
+                    test_data = (
+                        self.db.query(TestData)
+                        .filter(TestData.id == data_id_uuid)
+                        .first()
+                    )
 
                     if not test_data:
                         logger.warning(f"测试数据 {binding.data_id} 不存在")
@@ -77,9 +105,11 @@ class VariableResolver:
                     f"用例 {case.name} (ID: {case.id}) 没有用例级数据绑定，"
                     f"尝试场景级数据 (scenario_id={case.scenario_id})"
                 )
-                test_data = self.db.query(TestData).filter(
-                    TestData.scenario_id == case.scenario_id
-                ).first()
+                test_data = (
+                    self.db.query(TestData)
+                    .filter(TestData.scenario_id == case.scenario_id)
+                    .first()
+                )
 
                 if not test_data:
                     logger.info(f"场景 {case.scenario_id} 也没有场景级测试数据")
@@ -96,10 +126,7 @@ class VariableResolver:
         return variables
 
     def _extract_variables_from_test_data(
-        self,
-        test_data: TestData,
-        data_row_index: int,
-        variables: Dict[str, Any]
+        self, test_data: TestData, data_row_index: int, variables: Dict[str, Any]
     ) -> None:
         """
         从 TestData 中提取指定行的数据到变量字典
@@ -109,7 +136,15 @@ class VariableResolver:
             data_row_index: 数据行索引
             variables: 变量字典（原地修改）
         """
+        logger.info(
+            f"🔍 [VAR_RESOLVE] 从测试数据提取变量: test_data.id={test_data.id}, test_data.name={test_data.name}"
+        )
+
         data_rows = test_data.data
+        logger.info(
+            f"🔍 [VAR_RESOLVE] 测试数据内容: {data_rows}, 类型: {type(data_rows)}"
+        )
+
         if not isinstance(data_rows, list) or len(data_rows) == 0:
             logger.warning(f"测试数据 {test_data.name} 为空")
             return
@@ -118,6 +153,10 @@ class VariableResolver:
         idx = min(data_row_index, len(data_rows) - 1)
         data_row = data_rows[idx]
 
+        logger.info(
+            f"🔍 [VAR_RESOLVE] 选择数据行 {idx}: {data_row}, 类型: {type(data_row)}"
+        )
+
         # 将数据行中的字段提取为变量
         if isinstance(data_row, dict):
             variables.update(data_row)
@@ -125,13 +164,12 @@ class VariableResolver:
                 f"✅ 从测试数据 {test_data.name} 加载变量: "
                 f"{list(data_row.keys())} = {data_row}"
             )
+            logger.info(f"🔍 [VAR_RESOLVE] 当前变量字典: {variables}")
         else:
             logger.warning(f"数据行格式错误，期望字典，实际: {type(data_row)}")
 
     def replace_variables(
-        self,
-        parameters: Dict[str, Any],
-        variables: Dict[str, Any]
+        self, parameters: Dict[str, Any], variables: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         替换参数中的变量引用
@@ -158,7 +196,7 @@ class VariableResolver:
 
         for key, value in parameters.items():
             # 跳过内部字段（以下划线开头）
-            if key.startswith('_'):
+            if key.startswith("_"):
                 result[key] = value
                 continue
 
@@ -174,7 +212,11 @@ class VariableResolver:
             # 处理列表
             elif isinstance(value, list):
                 result[key] = [
-                    self._replace_string(item, variables) if isinstance(item, str) else item
+                    (
+                        self._replace_string(item, variables)
+                        if isinstance(item, str)
+                        else item
+                    )
                     for item in value
                 ]
             else:
@@ -194,6 +236,7 @@ class VariableResolver:
         Returns:
             替换后的字符串
         """
+
         def replacer(match):
             var_name = match.group(1)
             if var_name in variables:
@@ -204,7 +247,9 @@ class VariableResolver:
 
         return self.var_pattern.sub(replacer, text)
 
-    def get_all_variables(self, case: UICase, data_row_index: int = 0) -> Dict[str, Any]:
+    def get_all_variables(
+        self, case: UICase, data_row_index: int = 0
+    ) -> Dict[str, Any]:
         """
         获取用例的所有变量（便捷方法）
 
@@ -218,10 +263,7 @@ class VariableResolver:
         return self.resolve_case_variables(case, data_row_index)
 
     def resolve_step_parameters(
-        self,
-        step_parameters: Dict[str, Any],
-        case: UICase,
-        data_row_index: int = 0
+        self, step_parameters: Dict[str, Any], case: UICase, data_row_index: int = 0
     ) -> Dict[str, Any]:
         """
         解析步骤参数（一站式服务）

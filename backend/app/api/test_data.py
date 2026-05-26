@@ -45,6 +45,17 @@ async def create_test_data(
         if not project:
             raise HTTPException(status_code=404, detail="项目不存在")
 
+        # 检查同名测试数据
+        existing = db.query(TestData).filter(
+            TestData.project_id == project_id_uuid,
+            TestData.name == data.get("name")
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"测试数据 '{data.get('name')}' 已存在，请使用不同的名称"
+            )
+
         # 创建测试数据
         new_data = TestData(
             project_id=project_id_uuid,
@@ -116,6 +127,20 @@ async def update_test_data(
 ):
     """更新测试数据"""
     test_data = validate_and_fetch(db, TestData, data_id, "测试数据")
+
+    # 检查更名时是否与同项目其他数据重名
+    new_name = data_update.get("name")
+    if new_name and new_name != test_data.name:
+        dup = db.query(TestData).filter(
+            TestData.project_id == test_data.project_id,
+            TestData.name == new_name,
+            TestData.id != test_data.id
+        ).first()
+        if dup:
+            raise HTTPException(
+                status_code=409,
+                detail=f"测试数据 '{new_name}' 已存在，请使用不同的名称"
+            )
 
     update_fields = ["name", "description", "data", "data_type", "tags"]
     for field in update_fields:

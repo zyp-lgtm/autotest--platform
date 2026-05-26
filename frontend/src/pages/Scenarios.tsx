@@ -107,7 +107,12 @@ export default function Scenarios() {
     try {
       const result = await testDataApi.getTestDataList(task.project_id)
       if (Array.isArray(result)) {
-        const match = result.find((td: any) => td.scenario_id === scenarioId)
+        // 🔥 修复 UUID 格式不匹配：将 scenarioId 转换为无横线格式进行匹配
+        const scenarioIdNoDash = scenarioId.replace(/-/g, '')
+        const match = result.find((td: any) => {
+          const tdScenarioId = td.scenario_id || ''
+          return tdScenarioId === scenarioId || tdScenarioId === scenarioIdNoDash
+        })
         if (match) {
           setScenarioTestData(prev => ({ ...prev, [scenarioId]: match }))
           const rows = match.data || []
@@ -132,18 +137,22 @@ export default function Scenarios() {
   const createScenarioTestData = async (scenarioId: string) => {
     if (!task?.project_id) return
     try {
+      // 🔥 修复：创建测试数据时设置 scenario_id
       const newData = await testDataApi.createTestData({
         project_id: task.project_id,
         name: '场景测试数据',
         data_type: 'json',
         data: [],
         tags: [],
+        scenario_id: scenarioId,  // 关联到场景
       } as any)
       setScenarioTestData(prev => ({ ...prev, [scenarioId]: newData }))
       setEditRows(prev => ({ ...prev, [scenarioId]: [] }))
       setEditColumns(prev => ({ ...prev, [scenarioId]: [] }))
-    } catch (e) {
+      toast.success('测试数据创建成功')
+    } catch (e: any) {
       console.error('创建测试数据失败', e)
+      toast.error('创建失败: ' + (e?.response?.data?.detail || e.message))
     }
   }
 

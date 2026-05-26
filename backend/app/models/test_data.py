@@ -3,7 +3,18 @@
 
 提供测试数据管理和数据驱动测试功能
 """
-from sqlalchemy import Column, String, Text, Boolean, DateTime, ForeignKey, Enum, JSON, Integer
+
+from sqlalchemy import (
+    Column,
+    String,
+    Text,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Enum,
+    JSON,
+    Integer,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -18,6 +29,7 @@ class TestData(Base):
 
     支持多种数据格式（JSON、CSV、SQL）用于数据驱动测试
     """
+
     __tablename__ = "test_data"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -30,12 +42,16 @@ class TestData(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    scenario_id = Column(String(36), ForeignKey("ui_scenarios.id"), nullable=True, index=True)
+    scenario_id = Column(
+        String(36), ForeignKey("ui_scenarios.id"), nullable=True, index=True
+    )
 
     # Relationships - 使用字符串引用外键避免映射冲突
     creator = relationship("User", foreign_keys="TestData.created_by")
     project = relationship("Project", foreign_keys="TestData.project_id")
-    bindings = relationship("DataBinding", foreign_keys="DataBinding.data_id", cascade="all, delete-orphan")
+    bindings = relationship(
+        "DataBinding", foreign_keys="DataBinding.data_id", cascade="all, delete-orphan"
+    )
 
 
 class DataBinding(Base):
@@ -44,11 +60,12 @@ class DataBinding(Base):
 
     将测试数据绑定到测试用例，实现数据驱动测试
     """
+
     __tablename__ = "data_bindings"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    case_id = Column(UUID(as_uuid=True), ForeignKey("ui_test_cases.id"), nullable=False)
-    data_id = Column(UUID(as_uuid=True), ForeignKey("test_data.id"), nullable=False)
+    case_id = Column(String(36), ForeignKey("ui_test_cases.id"), nullable=False)
+    data_id = Column(String(36), ForeignKey("test_data.id"), nullable=False)
     enabled = Column(Integer, default=1)  # 布尔值，1=启用，0=禁用
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
